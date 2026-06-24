@@ -1,0 +1,61 @@
+{
+  "__guid": "b0000000-0000-4000-8000-000000000000",
+  "GameObjects": [
+    {
+      "__guid": "b0000001-0000-4000-8000-000000000001",
+      "Name": "World",
+      "Position": "0,0,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.FloorBuilder",
+          "__guid": "b0000001-0001-4000-8000-000000000001",
+          "__enabled": true,
+          "Size": 1024,
+          "Thickness": 16,
+          "FloorColor": "0.30,0.32,0.36,1"
+        }
+      ]
+    },
+    {
+      "__guid": "b0000002-0000-4000-8000-000000000002",
+      "Name": "Terry",
+      "Position": "0,0,16",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.TerryController",
+          "__guid": "b0000002-0001-4000-8000-000000000002",
+          "__enabled": true,
+          "Gravity": 800
+        },
+        {
+          "__type": "Sandbox.SkinnedModelRenderer",
+          "__guid": "b0000002-0002-4000-8000-000000000002",
+          "__enabled": true,
+          "Model": "models/citizen/citizen.vmdl"
+        }
+      ]
+    },
+    {
+      "__guid": "b0000003-0000-4000-8000-000000000003",
+      "Name": "Sun",
+      "Position": "0,0,256",
+      "Rotation": "-0.27,0.27,0.65,0.65",
+      "Enabled": true,
+      "Components": [
+        { "__type": "Sandbox.DirectionalLight", "__guid": "b0000003-0001-4000-8000-000000000003", "__enabled": true }
+      ]
+    },
+    {
+      "__guid": "b0000004-0000-4000-8000-000000000004",
+      "Name": "Camera",
+      "Position": "-300,0,200",
+      "Rotation": "0,0.18,0,0.98",
+      "Enabled": true,
+      "Components": [
+        { "__type": "Sandbox.CameraComponent", "__guid": "b0000004-0001-4000-8000-000000000004", "__enabled": true }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# s&box editor state (machine-specific)
+.sbox/
+/bin/
+/obj/
+*.user
+# editor-generated project files (regenerated on open)
+*.csproj
+*.slnx
