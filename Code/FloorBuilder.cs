@@ -10,7 +10,7 @@ namespace Terryball;
 public sealed class FloorBuilder : Component, Component.ExecuteInEditor
 {
 	[Property] public float Size { get; set; } = 102400f;
-	[Property] public float Thickness { get; set; } = 16f;
+	[Property] public float Thickness { get; set; } = 256f;
 	[Property] public Color FloorColor { get; set; } = Color.White;
 
 	protected override void OnEnabled()

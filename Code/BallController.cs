@@ -20,7 +20,7 @@ public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
-	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.05f;
+	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.1f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
 	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
 
@@ -68,8 +68,7 @@ public sealed class BallController : Component
 		// volume (BuildMass), which would otherwise clobber our MassOverride.
 		_body.AngularDamping = AngularDamping;
 		_body.MassOverride = Mass; // realistic bowling-ball mass vs the pins
-		_body.OverrideMassCenter = true;
-		_body.MassCenterOverride = Vector3.Down * (Radius * MassOffsetFactor);
+		_body.EnhancedCcd = true;  // don't tunnel through the pins at speed
 
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.
 		var visual = new GameObject( true, "BallVisual" )
@@ -136,13 +135,16 @@ public sealed class BallController : Component
 		_dir = (_dir + _vel * dt).Normal;
 		_vel -= _vel.Dot( _dir ) * _dir; // keep velocity tangent to the sphere
 
-		// Feed the occupant's offset into the ball's mass-centre (in body-local space, so it
-		// tracks correctly as the ball rolls). Off-centre CG → gravity torque → the ball rolls.
-		var localOffset = WorldRotation.Inverse * (_dir * (Radius * MassOffsetFactor));
-		_body.MassCenterOverride = localOffset;
+		// Roll the ball with the gravitational torque an off-centre weight at Terry's
+		// position would create — WITHOUT moving the mass centre. (Updating MassCenterOverride
+		// every frame injected spurious motion as Terry settled, sinking the ball through the
+		// floor.) τ = r × (m·g); it's zero when Terry is at the bottom, so the ball settles.
+		var rOffset = _dir * (Radius * MassOffsetFactor);
+		var torque = Vector3.Cross( rOffset, Mass * Scene.PhysicsWorld.Gravity );
+		_body.ApplyTorque( torque );
 
-		// Keep the body awake while the CG is off the bottom or input is held.
-		if ( wish.Length > 0.01f || _dir.Dot( Vector3.Down ) < 0.999f )
+		// Keep the body awake while input is held or it's still moving.
+		if ( wish.Length > 0.01f || _body.Velocity.LengthSquared > 1f )
 			_body.Sleeping = false;
 	}
 

@@ -12,7 +12,7 @@
           "__guid": "b0000001-0001-4000-8000-000000000001",
           "__enabled": true,
           "Size": 102400,
-          "Thickness": 16,
+          "Thickness": 256,
           "FloorColor": "1,1,1,1"
         }
       ]
@@ -54,7 +54,7 @@
           "__enabled": true,
           "Radius": 100,
           "Friction": 1,
-          "AngularDamping": 0.05,
+          "AngularDamping": 0.1,
           "Mass": 6.8,
           "CubeSize": 26,
           "CubeColor": "0.92,0.45,0.20,1",

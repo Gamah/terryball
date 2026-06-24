@@ -95,9 +95,12 @@ a large **glass ball** with **Terry (the Citizen)** riding the inside.
     acceleration up the inner wall; gravity's tangential component always pulls Terry
     back toward the bottom; damping settles him. Holding W ≈ 1 s climbs ~90° (then the run
     direction loses leverage near the equator, so it asymptotes there — by design).
-  - **Ball roll**: Terry's offset drives the Rigidbody's `MassCenterOverride`. Real
-    physics rolls the ball forward to bring that CG back under the contact point; releasing
-    input lets him fall to the bottom and the ball coast to rest (`AngularDamping`).
+  - **Ball roll**: each frame the ball gets the gravitational torque an off-centre weight
+    at Terry's position would produce — `ApplyTorque(r × m·g)` — so it's zero when Terry is
+    at the bottom and the ball settles. (We do *not* move the mass centre per-frame; doing
+    so injected spurious motion that sank the ball through the floor as Terry settled.)
+    Releasing input lets Terry fall to the bottom and the ball coasts to rest
+    (`AngularDamping`).
   - **Animation**: run cycle is driven from Terry's actual world-space speed (ball roll +
     his climbing), so the legs match the visible speed. He's oriented "standing on the
     wall" (up = inward normal) for a natural lean.
