@@ -42,6 +42,7 @@ public sealed class BallController : Component
 	// (starts straight down); _vel is his velocity along the sphere surface.
 	private Vector3 _dir = Vector3.Down;
 	private Vector3 _vel = Vector3.Zero;
+	private Vector3 _faceDir = Vector3.Forward; // last meaningful heading (ball travel dir)
 	private bool _built;
 
 	protected override void OnEnabled()
@@ -156,11 +157,16 @@ public sealed class BallController : Component
 		var innerR = Radius - 2f;
 		_terry.WorldPosition = WorldPosition + _dir * innerR;
 
-		// Stand him on the wall: "up" is the inward normal (-_dir), facing his travel
-		// direction — gives a natural lean as he runs up the curve.
+		// Face the direction the ball is actually rolling ("if he can" — keep the last
+		// heading while it's nearly stationary so he doesn't spin). "up" is the inward
+		// normal (-_dir), so he leans into the curve as he climbs.
 		var up = -_dir;
-		var fwd = _vel.Length > 0.01f ? _vel.Normal : Vector3.Forward;
-		fwd -= fwd.Dot( up ) * up;
+		var travel = _body.IsValid() ? _body.Velocity : Vector3.Zero;
+		travel -= travel.Dot( up ) * up; // onto his standing plane
+		if ( travel.Length > 5f )
+			_faceDir = travel.Normal;
+
+		var fwd = _faceDir - _faceDir.Dot( up ) * up;
 		fwd = fwd.Length > 0.001f ? fwd.Normal : Vector3.Forward;
 		_terry.WorldRotation = Rotation.LookAt( fwd, up );
 	}

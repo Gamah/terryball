@@ -113,6 +113,18 @@ a large **glass ball** with **Terry (the Citizen)** riding the inside.
 Goal: press Play, mouse to look, WASD to run the cube up the wall, watch the ball roll and
 settle. Tune to taste.
 
+## Milestone 3 — Bowling lane (implemented)
+
+- **`Code/LaneBuilder.cs`** (on the `Lane` object) builds, at runtime, a bowling alley
+  scaled so the ball reads as a real 8.5" bowling ball. It derives units-per-inch from the
+  ball's actual size (200 u = 8.5" → ~23.5 u/in), then builds in real dimensions:
+  - Two cube **walls** a lane-width apart (41.5" → ~976 u gap), `WallHeight` 150 u tall,
+    running down the lane (+X).
+  - **10 cube pins**, each a `Rigidbody`, in the regulation triangle (12" centres) at the
+    foul-line-to-head-pin distance (60 ft → ~16,940 u down +X). The ball knocks them over.
+  - All real dims are `[Property]` in inches; walls/pins follow the FloorBuilder rule
+    (collider on the uniform root, visual on a non-uniform child).
+
 ## Out of scope for now
 
 Levels/goals, multiplayer, UI/HUD, audio, scoring. Floor + Terry + an agreed input

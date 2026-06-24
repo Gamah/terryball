@@ -18,6 +18,29 @@
       ]
     },
     {
+      "__guid": "b0000007-0000-4000-8000-000000000007",
+      "Name": "Lane",
+      "Position": "0,0,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.LaneBuilder",
+          "__guid": "b0000007-0001-4000-8000-000000000007",
+          "__enabled": true,
+          "BallDiameterInches": 8.5,
+          "LaneWidthInches": 41.5,
+          "LaneLengthInches": 720,
+          "WallHeight": 150,
+          "WallThickness": 40,
+          "WallColor": "0.55,0.40,0.25,1",
+          "PinSpacingInches": 12,
+          "PinWidthInches": 5,
+          "PinHeightInches": 15,
+          "PinColor": "0.95,0.95,0.95,1"
+        }
+      ]
+    },
+    {
       "__guid": "b0000006-0000-4000-8000-000000000006",
       "Name": "Ball",
       "Position": "0,0,100",
