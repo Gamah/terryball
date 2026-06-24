@@ -27,8 +27,10 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Pins" )] public float PinHeightInches { get; set; } = 15f;
 	/// <summary>Mass in kg. A regulation bowling pin is ~1.6 kg (3 lb 8 oz).</summary>
 	[Property, Group( "Pins" )] public float PinMass { get; set; } = 1.6f;
-	/// <summary>Low friction so struck pins slide and scatter instead of gripping the floor.</summary>
-	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.25f;
+	/// <summary>Pin-to-lane kinetic friction. Real pins have a smooth plastic coating
+	/// (nylon/Surlyn/urethane) engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is
+	/// realistic. Low = more slide/scatter on impact.</summary>
+	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 
 	private bool _built;
