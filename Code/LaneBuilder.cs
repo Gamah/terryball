@@ -23,7 +23,7 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Walls" )] public float WallThickness { get; set; } = 40f;
 	[Property, Group( "Walls" )] public Color WallColor { get; set; } = new Color( 0.55f, 0.40f, 0.25f, 1f );
 	[Property, Group( "Pins" )] public float PinSpacingInches { get; set; } = 12f;   // pin centres
-	[Property, Group( "Pins" )] public float PinWidthInches { get; set; } = 5f;
+	[Property, Group( "Pins" )] public float PinWidthInches { get; set; } = 4.766f; // belly (widest) diameter
 	[Property, Group( "Pins" )] public float PinHeightInches { get; set; } = 15f;
 	/// <summary>Mass in kg. A regulation bowling pin is ~1.6 kg (3 lb 8 oz).</summary>
 	[Property, Group( "Pins" )] public float PinMass { get; set; } = 1.6f;
@@ -31,6 +31,11 @@ public sealed class LaneBuilder : Component
 	/// (nylon/Surlyn/urethane) engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is
 	/// realistic. Low = more slide/scatter on impact.</summary>
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
+	/// <summary>Height of the centre of mass as a fraction of pin height. A regulation pin
+	/// is deliberately bottom-heavy — its CoM sits ~36% up from the base, which is what makes
+	/// a struck pin tip, wobble, and deflect into its neighbours ("pin action") instead of
+	/// flying off like a uniform block.</summary>
+	[Property, Group( "Pins" )] public float PinMassCenterFrac { get; set; } = 0.34f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 
 	private bool _built;
@@ -49,8 +54,6 @@ public sealed class LaneBuilder : Component
 		var headPinX = LaneLengthInches * u;
 		var pinSpace = PinSpacingInches * u;
 		var rowDepth = pinSpace * 0.8660254f; // 12" centres, rows step back by 12·cos(30°)
-		var pinW = PinWidthInches * u;
-		var pinH = PinHeightInches * u;
 
 		// Walls: a lane-width gap apart, spanning from behind the ball to past the pins.
 		var wallStartX = -1000f;
@@ -73,8 +76,8 @@ public sealed class LaneBuilder : Component
 			for ( var i = 0; i <= r; i++ )
 			{
 				var py = (i - r * 0.5f) * pinSpace;
-				MakeBox( $"Pin{n}", new Vector3( px, py, pinH * 0.5f ),
-					new Vector3( pinW, pinW, pinH ), PinColor, isDynamic: true );
+				// Pin origin sits on the lane (base at z = 0); the profile builds upward.
+				MakePin( $"Pin{n}", new Vector3( px, py, 0f ), u );
 				n++;
 			}
 		}
@@ -109,5 +112,84 @@ public sealed class LaneBuilder : Component
 
 		var b = mr.Model.Bounds.Size;
 		visual.LocalScale = new Vector3( size.x / b.x, size.y / b.y, size.z / b.z );
+	}
+
+	/// <summary>
+	/// The rounded body of the pin as stacked sphere segments: (height up from base, radius),
+	/// both as fractions — height of <see cref="PinHeightInches"/>, radius of the belly
+	/// half-width (<see cref="PinWidthInches"/>/2). Bulging belly low down, narrow neck, flared
+	/// head — a rounded body that topples and scatters like a real pin rather than a cube. The
+	/// flat foot underneath (see <see cref="MakePin"/>) is what it actually stands on.
+	/// </summary>
+	private static readonly (float h, float r)[] PinProfile =
+	{
+		(0.30f, 1.00f), // belly — widest point
+		(0.52f, 0.56f), // waist
+		(0.70f, 0.44f), // neck — narrowest
+		(0.86f, 0.62f), // head — flared top
+	};
+
+	/// <summary>Flat base diameter as a fraction of belly diameter. A regulation pin's base
+	/// (~2.06") is ~0.43 of the belly (~4.77"); this small flat foot is the support polygon
+	/// the pin stands on and tips about.</summary>
+	private const float PinBaseFrac = 0.43f;
+
+	// A bowling pin: one Rigidbody carrying a flat box foot plus a stack of sphere colliders
+	// shaped like a pin body, with the centre of mass forced low so it stands stably yet crashes
+	// with realistic pin action. Colliders parent to the body; visuals trace the same profile.
+	private void MakePin( string name, Vector3 worldPos, float u )
+	{
+		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		go.WorldPosition = worldPos;
+
+		var pinH = PinHeightInches * u;
+		var halfW = PinWidthInches * u * 0.5f; // belly half-width drives every segment radius
+
+		// Rigidbody first; mass params after the colliders (each added shape rebuilds mass from
+		// volume via BuildMass, which would otherwise clobber the overrides below).
+		var rb = go.Components.GetOrCreate<Rigidbody>();
+
+		// Flat foot: a short box on the floor giving a real support polygon — stable standing,
+		// tips once the (low) centre of mass crosses its edge.
+		var footW = PinWidthInches * u * PinBaseFrac;
+		var footH = pinH * 0.18f; // reaches up to meet the belly sphere
+		var foot = go.Components.Create<BoxCollider>();
+		foot.Center = new Vector3( 0f, 0f, footH * 0.5f );
+		foot.Scale = new Vector3( footW, footW, footH );
+		foot.Friction = PinFriction;
+
+		var boxBounds = Model.Load( "models/dev/box.vmdl" ).Bounds.Size;
+		var footVisual = new GameObject( true, $"{name}Foot" ) { Parent = go };
+		footVisual.LocalPosition = new Vector3( 0f, 0f, footH * 0.5f );
+		var footMr = footVisual.Components.GetOrCreate<ModelRenderer>();
+		footMr.Model = Model.Load( "models/dev/box.vmdl" );
+		footMr.Tint = PinColor;
+		footVisual.LocalScale = new Vector3( footW / boxBounds.x, footW / boxBounds.y, footH / boxBounds.z );
+
+		var sphereBounds = Model.Load( "models/dev/sphere.vmdl" ).Bounds.Size.x; // dev sphere ≈ 64 across
+		foreach ( var (h, r) in PinProfile )
+		{
+			var z = h * pinH;
+			var radius = r * halfW;
+
+			var col = go.Components.Create<SphereCollider>();
+			col.Center = new Vector3( 0f, 0f, z );
+			col.Radius = radius;
+			col.Friction = PinFriction;
+
+			var visual = new GameObject( true, $"{name}Seg" ) { Parent = go };
+			visual.LocalPosition = new Vector3( 0f, 0f, z );
+			var mr = visual.Components.GetOrCreate<ModelRenderer>();
+			mr.Model = Model.Load( "models/dev/sphere.vmdl" );
+			mr.Tint = PinColor;
+			visual.LocalScale = new Vector3( (radius * 2f) / sphereBounds );
+		}
+
+		rb.MassOverride = PinMass;
+		rb.EnhancedCcd = true; // struck at bowling speed — don't let the ball tunnel through
+		// Drop the centre of mass to the realistic bottom-heavy point: this, not the shape alone,
+		// is what gives the tip-wobble-deflect "pin action".
+		rb.OverrideMassCenter = true;
+		rb.MassCenterOverride = new Vector3( 0f, 0f, PinMassCenterFrac * pinH );
 	}
 }
