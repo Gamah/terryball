@@ -83,14 +83,17 @@ public sealed class LaneBuilder : Component
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.WorldPosition = worldPos;
 
+		// Rigidbody before the collider, MassOverride after — adding the collider rebuilds
+		// mass from volume (BuildMass) and would otherwise clobber the override.
+		Rigidbody rb = null;
+		if ( isDynamic )
+			rb = go.Components.GetOrCreate<Rigidbody>();
+
 		var col = go.Components.GetOrCreate<BoxCollider>();
 		col.Scale = size;
 
-		if ( isDynamic )
-		{
-			var rb = go.Components.GetOrCreate<Rigidbody>();
+		if ( rb is not null )
 			rb.MassOverride = PinMass; // light pin vs heavy ball, so the ball plows through
-		}
 
 		var visual = new GameObject( true, name + "Visual" ) { Parent = go };
 		var mr = visual.Components.GetOrCreate<ModelRenderer>();
