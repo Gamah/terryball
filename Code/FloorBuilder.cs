@@ -11,7 +11,7 @@ public sealed class FloorBuilder : Component, Component.ExecuteInEditor
 {
 	[Property] public float Size { get; set; } = 102400f;
 	[Property] public float Thickness { get; set; } = 16f;
-	[Property] public Color FloorColor { get; set; } = new Color( 0.85f, 0.88f, 0.92f, 1f );
+	[Property] public Color FloorColor { get; set; } = Color.White;
 
 	protected override void OnEnabled()
 	{
@@ -35,8 +35,9 @@ public sealed class FloorBuilder : Component, Component.ExecuteInEditor
 		var visual = new GameObject( true, "FloorVisual" ) { Parent = floor };
 		var model = visual.Components.GetOrCreate<ModelRenderer>();
 		model.Model = Model.Load( "models/dev/box.vmdl" );
-		// Tiled grid so the ball's speed/motion is readable as it rolls.
-		model.MaterialOverride = Material.Load( "materials/floorgrid.vmat" );
+		// Built-in dev measure grid (compiled, texture baked in) — tiles per-unit on the
+		// scaled box so the ball's speed/motion is readable as it rolls.
+		model.MaterialOverride = Material.Load( "materials/dev/dev_measuregeneric01.vmat" );
 		model.Tint = FloorColor;
 
 		var bounds = model.Model.Bounds.Size;

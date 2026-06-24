@@ -21,6 +21,8 @@ public sealed class BallController : Component
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
 	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.5f;
+	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
+	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
@@ -53,6 +55,7 @@ public sealed class BallController : Component
 		// Physics: dynamic sphere that grips the floor so it rolls instead of sliding.
 		_body = Components.GetOrCreate<Rigidbody>();
 		_body.AngularDamping = AngularDamping;
+		_body.MassOverride = Mass; // realistic bowling-ball mass vs the pins
 		_body.OverrideMassCenter = true;
 		_body.MassCenterOverride = Vector3.Down * (Radius * MassOffsetFactor);
 
