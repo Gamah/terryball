@@ -1,0 +1,17 @@
+// Tiled grid floor so motion/speed is readable. Same texture as the engine's
+// dev/gray_grid_4 material, but with a high TexCoordScale so the grid repeats many
+// times across the (very large) floor instead of stretching once across it.
+// Tune g_vTexCoordScale if cells look too big/small for the floor size.
+"Layer0"
+{
+	"shader"		"shaders/generic.shader_c"
+	"g_vColorTint"		"[1.000000 1.000000 1.000000 0.000000]"
+	"g_vTexCoordOffset"		"[0.000 0.000]"
+	"g_vTexCoordScale"		"[100.000 100.000]"
+	"TextureColor"		"materials/dev/gray_grid_4_color.tga"
+	"g_vGlossinessRange"		"[0.000 1.000]"
+	"TextureGlossiness"		"materials/default/default_gloss.tga"
+	"g_flBumpStrength"		"1.000000"
+	"g_vNormalTexCoordScale"		"[100.000 100.000]"
+	"TextureNormal"		"materials/default/default_normal.tga"
+}

@@ -13,7 +13,7 @@
           "__enabled": true,
           "Size": 102400,
           "Thickness": 16,
-          "FloorColor": "0.30,0.32,0.36,1"
+          "FloorColor": "0.85,0.88,0.92,1"
         }
       ]
     },
@@ -128,8 +128,8 @@
           "__type": "Terryball.BallCamera",
           "__guid": "b0000004-0002-4000-8000-000000000004",
           "__enabled": true,
-          "Distance": 360,
-          "Height": 40,
+          "Distance": 700,
+          "Height": 60,
           "MinPitch": -25,
           "MaxPitch": 70
         }

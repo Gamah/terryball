@@ -10,8 +10,8 @@ namespace Terryball;
 /// </summary>
 public sealed class BallCamera : Component
 {
-	[Property] public float Distance { get; set; } = 360f;
-	[Property] public float Height { get; set; } = 40f;
+	[Property] public float Distance { get; set; } = 700f;
+	[Property] public float Height { get; set; } = 60f;
 	[Property] public float MinPitch { get; set; } = -25f;
 	[Property] public float MaxPitch { get; set; } = 70f;
 
