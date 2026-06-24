@@ -9,8 +9,9 @@ namespace Terryball;
 /// A large glass ball (Rigidbody + SphereCollider) with Terry (the Citizen) riding the
 /// INSIDE surface. WASD (camera-relative) makes Terry "run" up the inner wall like a
 /// hamster; gravity always pulls him back toward the bottom, so he settles there on his
-/// own. Terry's offset is fed into the ball's mass-center, and real physics rolls the
-/// ball forward as it tries to bring that centre of gravity back under the contact point.
+/// own. Terry's offset from the bottom is turned into the roll torque an off-centre weight
+/// there would produce (NOT by moving the ball's mass-centre — that sank the ball through
+/// the floor); the torque vanishes once he's back at the bottom, so releasing input coasts.
 ///
 /// Terry is purely visual here (no Terry↔ball collision is simulated, by design); his run
 /// animation is driven from how fast he's actually moving through the world. The standalone
@@ -28,10 +29,16 @@ public sealed class BallController : Component
 
 	/// <summary>How hard input drives the occupant up the wall (rad/s²-ish).</summary>
 	[Property, Group( "Drive" )] public float RunAccel { get; set; } = 8f;
-	/// <summary>How hard gravity pulls the occupant back toward the bottom.</summary>
+	/// <summary>How hard gravity pulls the occupant back toward the bottom while driving.</summary>
 	[Property, Group( "Drive" )] public float RestoreAccel { get; set; } = 1f;
-	/// <summary>Damping on the occupant's motion along the surface.</summary>
+	/// <summary>Damping on the occupant's motion along the surface while driving.</summary>
 	[Property, Group( "Drive" )] public float Damping { get; set; } = 3f;
+	/// <summary>When you release the controls, the occupant has to slide back to the bottom
+	/// before the roll torque dies — until then the ball keeps being driven. A strong restore
+	/// with near-critical damping (≈2·√restore) snaps him back fast without overshoot, so
+	/// letting go promptly settles Terry and stops the drive.</summary>
+	[Property, Group( "Drive" )] public float ReleaseRestore { get; set; } = 25f;
+	[Property, Group( "Drive" )] public float ReleaseDamping { get; set; } = 10f;
 	/// <summary>Fraction of Radius the off-centre weight sits at (0..1) — the roll lever.</summary>
 	[Property, Group( "Drive" ), Range( 0f, 1f )] public float MassOffsetFactor { get; set; } = 0.7f;
 	/// <summary>Stylized multiplier on the roll torque. Impact speed scales ~√(this), so
@@ -133,7 +140,13 @@ public sealed class BallController : Component
 		var tGrav = Vector3.Down - Vector3.Down.Dot( _dir ) * _dir;
 		var tInput = wish - wish.Dot( _dir ) * _dir;
 
-		var accel = RestoreAccel * tGrav + RunAccel * tInput - Damping * _vel;
+		// With no input, pull the occupant back to the bottom hard so the roll torque dies
+		// quickly — otherwise he coasts around the wall and the ball keeps driving after release.
+		var hasInput = wish.Length > 0.01f;
+		var restore = hasInput ? RestoreAccel : ReleaseRestore;
+		var damp = hasInput ? Damping : ReleaseDamping;
+
+		var accel = restore * tGrav + RunAccel * tInput - damp * _vel;
 		_vel += accel * dt;
 		_dir = (_dir + _vel * dt).Normal;
 		_vel -= _vel.Dot( _dir ) * _dir; // keep velocity tangent to the sphere
