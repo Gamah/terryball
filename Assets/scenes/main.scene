@@ -37,6 +37,7 @@
           "PinWidthInches": 5,
           "PinHeightInches": 15,
           "PinMass": 1.6,
+          "PinFriction": 0.25,
           "PinColor": "0.95,0.95,0.95,1"
         }
       ]
@@ -53,14 +54,14 @@
           "__enabled": true,
           "Radius": 100,
           "Friction": 1,
-          "AngularDamping": 0.2,
+          "AngularDamping": 0.05,
           "Mass": 6.8,
           "CubeSize": 26,
           "CubeColor": "0.92,0.45,0.20,1",
           "RunAccel": 8,
           "RestoreAccel": 1,
           "Damping": 3,
-          "MassOffsetFactor": 0.5
+          "MassOffsetFactor": 0.7
         }
       ]
     },

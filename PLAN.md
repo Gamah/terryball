@@ -125,6 +125,19 @@ settle. Tune to taste.
   - All real dims are `[Property]` in inches; walls/pins follow the FloorBuilder rule
     (collider on the uniform root, visual on a non-uniform child).
 
+## Note: scale vs. feel (deliberate, stylized)
+
+The ball is **200 units** (sized so Terry fits inside), and we *treat* that as a real 8.5"
+bowling ball for building the lane. But a realistic bowling **speed** (~15–20 mph) at that
+scale works out to **~8,300 u/s** — a 200-unit ball spinning ~40 rev/s, which the gentle
+mass-center-offset drive can't reach and the physics wouldn't simulate stably anyway.
+
+**Decision:** keep the current chaotic, indirect control scheme and treat the simulation
+as **stylized, not literally accurate**. The crash is tuned by *feel* (satisfying scatter),
+not to hit a real mph. The on-screen MPH readout (`BallController.ShowSpeed`, derived from
+`RealBallInches`) is a fun gauge, not a target. Tuning knobs: `AngularDamping`,
+`MassOffsetFactor`, `RunAccel`/`Damping`, ball `Mass` vs pin `PinMass`.
+
 ## Out of scope for now
 
 Levels/goals, multiplayer, UI/HUD, audio, scoring. Floor + Terry + an agreed input

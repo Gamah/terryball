@@ -20,7 +20,7 @@ public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
-	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.2f;
+	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.05f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
 	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
 
@@ -33,7 +33,11 @@ public sealed class BallController : Component
 	/// <summary>Damping on the occupant's motion along the surface.</summary>
 	[Property, Group( "Drive" )] public float Damping { get; set; } = 3f;
 	/// <summary>Fraction of Radius the mass-centre shifts toward the occupant (0..1).</summary>
-	[Property, Group( "Drive" ), Range( 0f, 1f )] public float MassOffsetFactor { get; set; } = 0.5f;
+	[Property, Group( "Drive" ), Range( 0f, 1f )] public float MassOffsetFactor { get; set; } = 0.7f;
+
+	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
+	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
+	[Property, Group( "Debug" )] public float RealBallInches { get; set; } = 8.5f;
 
 	private Rigidbody _body;
 	private GameObject _terry;
@@ -154,6 +158,16 @@ public sealed class BallController : Component
 			_anim.WithVelocity( worldVel );
 		}
 		_terryPrevPos = _terry.WorldPosition;
+
+		if ( ShowSpeed && _body.IsValid() )
+		{
+			// Speed in units, plus a real-world mph treating the ball's diameter as 8.5".
+			var v = _body.Velocity.Length;
+			var inchesPerUnit = RealBallInches / (Radius * 2f);
+			var mph = v * inchesPerUnit / 17.6f; // 1 mph = 17.6 in/s
+			DebugOverlay.Text( WorldPosition + Vector3.Up * (Radius + 90f),
+				$"{mph:F1} mph   ({v:F0} u/s)", 24, TextFlag.Center, Color.White );
+		}
 	}
 
 	private void PlaceTerry()

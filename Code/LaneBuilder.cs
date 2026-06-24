@@ -27,6 +27,8 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Pins" )] public float PinHeightInches { get; set; } = 15f;
 	/// <summary>Mass in kg. A regulation bowling pin is ~1.6 kg (3 lb 8 oz).</summary>
 	[Property, Group( "Pins" )] public float PinMass { get; set; } = 1.6f;
+	/// <summary>Low friction so struck pins slide and scatter instead of gripping the floor.</summary>
+	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.25f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 
 	private bool _built;
@@ -93,7 +95,10 @@ public sealed class LaneBuilder : Component
 		col.Scale = size;
 
 		if ( rb is not null )
-			rb.MassOverride = PinMass; // light pin vs heavy ball, so the ball plows through
+		{
+			rb.MassOverride = PinMass;  // light pin vs heavy ball, so the ball plows through
+			col.Friction = PinFriction; // slide & scatter instead of gripping the floor
+		}
 
 		var visual = new GameObject( true, name + "Visual" ) { Parent = go };
 		var mr = visual.Components.GetOrCreate<ModelRenderer>();
