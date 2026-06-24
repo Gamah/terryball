@@ -61,7 +61,8 @@
           "RunAccel": 8,
           "RestoreAccel": 1,
           "Damping": 3,
-          "MassOffsetFactor": 0.7
+          "MassOffsetFactor": 0.7,
+          "DriveGain": 6.5
         }
       ]
     },

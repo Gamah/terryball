@@ -32,8 +32,11 @@ public sealed class BallController : Component
 	[Property, Group( "Drive" )] public float RestoreAccel { get; set; } = 1f;
 	/// <summary>Damping on the occupant's motion along the surface.</summary>
 	[Property, Group( "Drive" )] public float Damping { get; set; } = 3f;
-	/// <summary>Fraction of Radius the mass-centre shifts toward the occupant (0..1).</summary>
+	/// <summary>Fraction of Radius the off-centre weight sits at (0..1) — the roll lever.</summary>
 	[Property, Group( "Drive" ), Range( 0f, 1f )] public float MassOffsetFactor { get; set; } = 0.7f;
+	/// <summary>Stylized multiplier on the roll torque. Impact speed scales ~√(this), so
+	/// ~6.25× ≈ 2.5× faster. Tune against the MPH readout.</summary>
+	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 6.5f;
 
 	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
@@ -140,7 +143,7 @@ public sealed class BallController : Component
 		// every frame injected spurious motion as Terry settled, sinking the ball through the
 		// floor.) τ = r × (m·g); it's zero when Terry is at the bottom, so the ball settles.
 		var rOffset = _dir * (Radius * MassOffsetFactor);
-		var torque = Vector3.Cross( rOffset, Mass * Scene.PhysicsWorld.Gravity );
+		var torque = Vector3.Cross( rOffset, Mass * Scene.PhysicsWorld.Gravity ) * DriveGain;
 		_body.ApplyTorque( torque );
 
 		// Keep the body awake while input is held or it's still moving.
