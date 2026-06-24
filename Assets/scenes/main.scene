@@ -11,7 +11,7 @@
           "__type": "Terryball.FloorBuilder",
           "__guid": "b0000001-0001-4000-8000-000000000001",
           "__enabled": true,
-          "Size": 1024,
+          "Size": 102400,
           "Thickness": 16,
           "FloorColor": "0.30,0.32,0.36,1"
         }
