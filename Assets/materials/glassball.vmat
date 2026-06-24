@@ -1,0 +1,40 @@
+// Glass material for Terryball's ball — translucent so the cube/Terry inside is visible.
+// Uses the engine's glass shader (from the base addon). Tuned clear with a faint cool tint.
+"Layer0"
+{
+	"shader"		"shaders/glass.shader_c"
+	"F_TRANSLUCENT"		"1"
+
+	"g_flModelTintAmount"		"1.000000"
+	"g_vColorTint"		"[0.800000 0.880000 1.000000 1.000000]"
+	"TextureColor"		"[1.000000 1.000000 1.000000 1.000000]"
+
+	// Mostly transparent body, brighter Fresnel edge so the sphere still reads as glass.
+	"g_flOpacityScale"		"0.120000"
+	"TextureTranslucency"		"materials/default/default_trans.tga"
+
+	"g_flMetalness"		"0.150000"
+	"TextureRoughness"		"[0.050000 0.050000 0.050000 0.000000]"
+	"TextureNormal"		"[0.501961 0.501961 1.000000 0.000000]"
+	"TextureAmbientOcclusion"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_bAvoidDoubleFogging"		"1"
+	"g_flGlassFogExtinctionAmount"		"0.000000"
+	"g_flFadeExponent"		"1.000000"
+	"g_flEdgeColorFalloff"		"3.000000"
+	"g_flEdgeColorMaxOpacity"		"0.450000"
+	"g_flEdgeColorThickness"		"0.120000"
+	"g_vEdgeColor"		"[0.560000 0.640000 0.720000 1.000000]"
+	"GlassTintColor"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_nScaleTexCoordUByModelScaleAxis"		"0"
+	"g_nScaleTexCoordVByModelScaleAxis"		"0"
+	"g_vTexCoordOffset"		"[0.000 0.000]"
+	"g_vTexCoordScale"		"[1.000 1.000]"
+	"g_vTexCoordScrollSpeed"		"[0.000 0.000]"
+
+	"SystemAttributes"
+	{
+		"PhysicsSurfaceProperties"		"glass"
+	}
+}

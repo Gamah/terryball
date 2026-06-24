@@ -82,6 +82,35 @@ Open questions to put to the user before writing any controller code:
 
 ---
 
+## Milestone 2 — Hamster-ball mechanic (implemented)
+
+Mechanic decided with the user and built. Terry is **kept for reuse** (the `Terry`
+GameObject is disabled in `main.scene`; `TerryController.cs` is untouched). He is
+replaced in the active scene by a large **glass ball** with a **primitive cube** riding
+the inside.
+
+- **`Code/BallController.cs`** — the core. Builds, at runtime: a `Rigidbody` +
+  `SphereCollider` ball (dev sphere model + `Assets/materials/glassball.vmat`), and a
+  primitive cube occupant on the inner surface.
+  - **Cube driver**: a spherical-pendulum model. WASD (camera-relative) adds a "run"
+    acceleration up the inner wall; gravity's tangential component always pulls the cube
+    back toward the bottom; damping settles it. Holding W ≈ 1 s climbs ~90° (then the run
+    direction loses leverage near the equator, so it asymptotes there — by design).
+  - **Ball roll**: the cube's offset drives the Rigidbody's `MassCenterOverride`. Real
+    physics rolls the ball forward to bring that CG back under the contact point; releasing
+    input lets the cube fall to the bottom and the ball coast to rest (`AngularDamping`).
+  - No cube↔ball collision is simulated (intentional). Swapping cube → Terry later is just
+    model + run-anim; the driver is model-agnostic. Occupant is oriented "standing on the
+    wall" (up = inward normal) to make that swap natural.
+  - All feel constants are `[Property]` — tune `RunAccel`/`RestoreAccel`/`Damping`/
+    `MassOffsetFactor` in the editor.
+- **`Code/BallCamera.cs`** — third-person follow, **horizon-locked** (never rolls); mouse
+  yaws around the ball and pitches up/down. Movement input is taken relative to this
+  camera's facing.
+
+Goal: press Play, mouse to look, WASD to run the cube up the wall, watch the ball roll and
+settle. Tune to taste.
+
 ## Out of scope for now
 
 Levels/goals, multiplayer, UI/HUD, audio, scoring. Floor + Terry + an agreed input

@@ -18,10 +18,32 @@
       ]
     },
     {
+      "__guid": "b0000006-0000-4000-8000-000000000006",
+      "Name": "Ball",
+      "Position": "0,0,100",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.BallController",
+          "__guid": "b0000006-0001-4000-8000-000000000006",
+          "__enabled": true,
+          "Radius": 100,
+          "Friction": 1,
+          "AngularDamping": 0.5,
+          "CubeSize": 26,
+          "CubeColor": "0.92,0.45,0.20,1",
+          "RunAccel": 8,
+          "RestoreAccel": 1,
+          "Damping": 3,
+          "MassOffsetFactor": 0.5
+        }
+      ]
+    },
+    {
       "__guid": "b0000002-0000-4000-8000-000000000002",
       "Name": "Terry",
       "Position": "0,0,16",
-      "Enabled": true,
+      "Enabled": false,
       "Components": [
         {
           "__type": "Terryball.TerryController",
@@ -101,6 +123,15 @@
           "Priority": 1,
           "ZNear": 10,
           "ZFar": 10000
+        },
+        {
+          "__type": "Terryball.BallCamera",
+          "__guid": "b0000004-0002-4000-8000-000000000004",
+          "__enabled": true,
+          "Distance": 360,
+          "Height": 40,
+          "MinPitch": -25,
+          "MaxPitch": 70
         }
       ]
     }
