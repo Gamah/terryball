@@ -21,7 +21,11 @@ public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
-	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.1f;
+	/// <summary>Rolling resistance: how fast the ball's spin bleeds off when it isn't being
+	/// driven. The drive only ever adds forward torque, so this is the only thing that slows a
+	/// coasting ball — too low and a single tap rolls almost forever. Higher also lowers top
+	/// speed, so re-check the mph HUD / bump <see cref="DriveGain"/> if a hard throw feels weak.</summary>
+	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.6f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
 	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
 
@@ -42,8 +46,9 @@ public sealed class BallController : Component
 	/// <summary>Fraction of Radius the off-centre weight sits at (0..1) — the roll lever.</summary>
 	[Property, Group( "Drive" ), Range( 0f, 1f )] public float MassOffsetFactor { get; set; } = 0.7f;
 	/// <summary>Stylized multiplier on the roll torque. Impact speed scales ~√(this), so
-	/// ~6.25× ≈ 2.5× faster. Tune against the MPH readout.</summary>
-	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 6.5f;
+	/// ~6.25× ≈ 2.5× faster. Tune against the MPH readout. (Raised alongside AngularDamping:
+	/// top speed ∝ DriveGain/AngularDamping, so more rolling resistance needs more drive.)</summary>
+	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 20f;
 
 	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
