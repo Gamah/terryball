@@ -42,9 +42,45 @@
       "Name": "Sun",
       "Position": "0,0,256",
       "Rotation": "-0.27,0.27,0.65,0.65",
+      "Tags": "light_directional,light",
       "Enabled": true,
       "Components": [
-        { "__type": "Sandbox.DirectionalLight", "__guid": "b0000003-0001-4000-8000-000000000003", "__enabled": true }
+        {
+          "__type": "Sandbox.DirectionalLight",
+          "__guid": "b0000003-0001-4000-8000-000000000003",
+          "__enabled": true,
+          "FogMode": "Enabled",
+          "LightColor": "0.94419,0.97767,1,1",
+          "Shadows": true,
+          "SkyColor": "0.2532,0.32006,0.35349,1"
+        }
+      ]
+    },
+    {
+      "__guid": "b0000005-0000-4000-8000-000000000005",
+      "Name": "2D Skybox",
+      "Tags": "skybox",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Sandbox.SkyBox2D",
+          "__guid": "b0000005-0001-4000-8000-000000000005",
+          "__enabled": true,
+          "SkyMaterial": "materials/skybox/skybox_day_01.vmat",
+          "Tint": "1,1,1,1"
+        },
+        {
+          "__type": "Sandbox.EnvmapProbe",
+          "__guid": "b0000005-0002-4000-8000-000000000005",
+          "__enabled": true,
+          "Texture": "textures/cubemaps/default2.vtex",
+          "Bounds": { "Mins": "-512,-512,-512", "Maxs": "512,512,512" },
+          "Projection": "Sphere",
+          "UpdateStrategy": "OnEnabled",
+          "TintColor": "1,1,1,1",
+          "ZNear": 16,
+          "ZFar": 4096
+        }
       ]
     },
     {
@@ -54,7 +90,18 @@
       "Rotation": "0,0.18,0,0.98",
       "Enabled": true,
       "Components": [
-        { "__type": "Sandbox.CameraComponent", "__guid": "b0000004-0001-4000-8000-000000000004", "__enabled": true }
+        {
+          "__type": "Sandbox.CameraComponent",
+          "__guid": "b0000004-0001-4000-8000-000000000004",
+          "__enabled": true,
+          "BackgroundColor": "0.33333,0.46275,0.52157,1",
+          "ClearFlags": "All",
+          "FieldOfView": 70,
+          "IsMainCamera": true,
+          "Priority": 1,
+          "ZNear": 10,
+          "ZFar": 10000
+        }
       ]
     }
   ]
