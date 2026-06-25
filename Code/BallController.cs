@@ -44,10 +44,10 @@ public sealed class BallController : Component
 	[Property, Group( "Drive" )] public float MaxSpeed { get; set; } = 2500f;
 	/// <summary>Proportional gain turning the velocity error (target − current) into roll
 	/// torque while a key is held. Higher = snappier accel/steering. Tune by feel.</summary>
-	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 400f;
+	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 4000f;
 	/// <summary>Proportional gain on the braking torque applied when no key is held; it
 	/// opposes the current roll so the ball coasts to a stop.</summary>
-	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 250f;
+	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 2500f;
 
 	// --- Occupant (Terry) visual climb -------------------------------------------------
 	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
