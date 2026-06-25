@@ -33,7 +33,7 @@
           "PinSpacingInches": 12,
           "PinWidthInches": 5,
           "PinHeightInches": 15,
-          "PinMass": 3.0,
+          "PinMass": 2.5,
           "PinFriction": 0.15,
           "PinColor": "0.95,0.95,0.95,1"
         }
@@ -52,7 +52,7 @@
           "Radius": 100,
           "Friction": 1,
           "AngularDamping": 0.1,
-          "Mass": 4.5,
+          "Mass": 5.3,
           "CubeSize": 26,
           "CubeColor": "0.92,0.45,0.20,1",
           "RunAccel": 8,

@@ -41,7 +41,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// dominant ("meaty") over the pins. Detached down to reduce the ball:pin ratio so it deflects
 	/// more and clears fewer pins. NOTE: the live value is serialized in the scene — change it there,
 	/// the code default only applies to freshly-added components.</summary>
-	[Property, Group( "Ball" )] public float Mass { get; set; } = 4.5f;
+	[Property, Group( "Ball" )] public float Mass { get; set; } = 5.3f;
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
