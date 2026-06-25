@@ -25,12 +25,12 @@ public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
-	/// <summary>Restitution (bounciness) of the ball's surface. Counter-intuitively, LOW is what makes
-	/// the ball load against the pins: a near-elastic (high) contact ejects the pin away almost
-	/// instantly, so little momentum transfers back into the ball and it plows straight through.
-	/// Keeping this fairly inelastic (~0.2–0.4) shares more velocity with the pin, so the ball slows
-	/// and deflects more. (Deflection mostly comes from off-centre pocket hits, not speed loss.)</summary>
-	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.3f;
+	/// <summary>Restitution (bounciness) of the ball's surface. By the collision algebra (M=6.8 vs
+	/// m=1.6), HIGH restitution makes the ball lose MORE speed to the pin (keeps ~63% at e=0.95 vs
+	/// ~81% at e=0) AND makes the pin fly faster — both wanted. Low restitution makes ball and pin
+	/// move together (ball barely slows = plows). So keep this high; the steamroll was a contact/CCD
+	/// problem, not restitution.</summary>
+	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.95f;
 	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
 	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
 	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the

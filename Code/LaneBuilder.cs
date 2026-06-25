@@ -81,11 +81,11 @@ public sealed class LaneBuilder : Component
 	/// <summary>Pin-to-lane kinetic friction. Real pins have a smooth plastic coating
 	/// engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is realistic.</summary>
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
-	/// <summary>Restitution (bounciness) of the pins. NOTE the counter-intuitive coupling: high values
-	/// eject the pin off the ball so fast that little momentum loads back into the ball — that's what
-	/// makes the ball steamroll through. Lower (~0.2–0.4) makes the ball share velocity with the pin
-	/// (deflect/slow) while pins still tumble from the cascade. Tune by feel.</summary>
-	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.3f;
+	/// <summary>Restitution (bounciness) of the pins. By the collision algebra, HIGH restitution both
+	/// flings the pin away faster AND makes the ball lose more speed to it — both wanted. Low values
+	/// make ball+pin move together (ball plows, pin doesn't fly). Keep high; the steamroll was a
+	/// contact/CCD bug, not this. Drives pin-ball and pin-pin liveliness.</summary>
+	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.95f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 	/// <summary>Multiplier on the pins' SCALE-CORRECT gravity. The lane is ~10.7× bigger than world
 	/// gravity expects, so 1 here = a real 1g AT THIS SCALE — real-bowling fall speed and friction.
