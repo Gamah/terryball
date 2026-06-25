@@ -82,11 +82,13 @@ public sealed class LaneBuilder : Component
 	/// drives both pin-ball and pin-pin liveliness. Tune by feel.</summary>
 	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.55f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
-	/// <summary>Per-pin gravity multiplier. 1 = the world's normal gravity at this (enlarged) scale,
-	/// which is what we want: relative masses + restitution drive the pin reaction, and those are
-	/// gravity-independent. The only thing gravity changes here is fall speed and how far pins slide.
-	/// At ~10.7 the lane would run at real-bowling *timescale* (pins fall/slide ~3.3×/10× snappier)
-	/// if the normal-gravity float ever feels too slow — purely a feel knob, pins only.</summary>
+	/// <summary>Multiplier on the pins' SCALE-CORRECT gravity. The lane is ~10.7× bigger than world
+	/// gravity expects, so 1 here = a real 1g AT THIS SCALE — real-bowling fall speed and friction.
+	/// The data forced this: at world-normal gravity even a 0.9 mph ball clears 7 pins, because a
+	/// kicked pin slides the whole deck unchecked (friction ∝ m·g too weak) and floats (slow falls)
+	/// into its neighbours. Knock-down FORCE is gravity-independent (mass+restitution); gravity only
+	/// governs fall speed + slide distance — which is what stops the unchecked chain reaction. Pins
+	/// only; world gravity is untouched, so players/other modes are unaffected.</summary>
 	[Property, Group( "Pins" )] public float PinGravityScale { get; set; } = 1f;
 
 	/// <summary>Gap on the floor between the ball spawn and the foot of the ramp (units).</summary>
@@ -95,6 +97,7 @@ public sealed class LaneBuilder : Component
 	private bool _built;
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private Model _arrowModel; // shared by the seven targeting arrows
+	private float _pinGravityScale = 1f; // resolved per-pin GravityScale (scale-correct × feel knob)
 
 	/// <summary>A pin and the spot it was racked on, for the director's "is it still standing?"
 	/// scoring and for re-racking after a throw.</summary>
@@ -132,6 +135,11 @@ public sealed class LaneBuilder : Component
 		var ballDiameterUnits = ball.IsValid() ? ball.Radius * 2f : 200f;
 		var u = ballDiameterUnits / BallDiameterInches; // units per inch
 		UnitsPerInch = u;
+
+		// Resolve the pins' gravity: scale-correct 1g at this lane size (386 in/s² → units, ÷ world g)
+		// times the feel knob. Stops a kicked pin from sliding/floating across the whole deck.
+		var worldG = Scene.PhysicsWorld.Gravity.Length;
+		_pinGravityScale = worldG > 1f ? (386f * u) / worldG * PinGravityScale : PinGravityScale;
 
 		// --- Vertical: platform top is the play surface; gutters recess below, barriers rise above.
 		var H = PlatformHeightInches * u;
@@ -415,7 +423,7 @@ public sealed class LaneBuilder : Component
 
 		rb.MassOverride = PinMass;
 		rb.EnhancedCcd = true; // struck at bowling speed — don't let the ball tunnel through
-		rb.GravityScale = PinGravityScale; // 1 = world-normal gravity at scale; reaction is gravity-independent
+		rb.GravityScale = _pinGravityScale; // scale-correct 1g at lane size × feel knob (pins only)
 
 		return go;
 	}
