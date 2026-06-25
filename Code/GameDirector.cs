@@ -186,8 +186,32 @@ public sealed class GameDirector : Component
 				$"inertia={pb.InertiaTensor}  massCenter={pb.MassCenter}" );
 	}
 
+	// DEBUG: after the rack has settled (end of watch), dump each pin's final state so we can see the
+	// leave pattern AND why each "down" pin is down — actually fell over (tilt) vs merely shoved off
+	// its spot while still upright (disp). Distinguishes a too-efficient cascade from over-lenient
+	// scoring before we change anything.
+	private void LogLeave()
+	{
+		var cosTilt = MathF.Cos( MathX.DegreeToRadian( TiltThresholdDegrees ) );
+		var standing = new List<int>();
+		foreach ( var p in _lane.Pins )
+		{
+			if ( !p.Object.IsValid() ) continue;
+			var up = p.Object.WorldRotation.Up.Dot( Vector3.Up ).Clamp( -1f, 1f );
+			var tilt = MathX.RadianToDegree( MathF.Acos( up ) );
+			var disp = (p.Object.WorldPosition - p.Home).WithZ( 0f ).Length / _lane.UnitsPerInch;
+			var tilted = up < cosTilt;
+			var shoved = disp > DisplacementThresholdInches;
+			if ( !tilted && !shoved ) standing.Add( p.Number );
+			Log.Info( $"[terryball][leave] Pin{p.Number} {(tilted || shoved ? "DOWN" : "UP  ")} " +
+				$"tilt={tilt:F0}° disp={disp:F1}in  reason={(tilted ? "fell" : shoved ? "shoved-but-upright" : "-")}" );
+		}
+		Log.Info( $"[terryball][leave] standing={string.Join( ",", standing )}  ({standing.Count} left)" );
+	}
+
 	private void Reset()
 	{
+		LogLeave();
 		State = RoundState.Rolling;
 		_ball.ControlsLocked = false;
 		_ball.Absorbed = false;
