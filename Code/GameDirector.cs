@@ -23,9 +23,22 @@ namespace Terryball;
 /// </summary>
 public sealed class GameDirector : Component
 {
-	/// <summary>How long (seconds) to hold the pulled-back watch view before re-racking. Hardcoded
-	/// behaviour for now — see the brief; exposed so it's still tunable in-scene.</summary>
+	/// <summary>Hard CAP (seconds) on the watch view before re-racking. We normally cut it short the
+	/// moment the action settles (see the Settle* knobs); this is just the backstop for the rare case
+	/// where something jitters forever.</summary>
 	[Property] public float WatchSeconds { get; set; } = 5f;
+
+	/// <summary>End the watch early once the ball and every standing pin have been quieter than the
+	/// Settle thresholds for this long (seconds). Short, so a clean rack snaps back near-instantly.</summary>
+	[Property, Group( "Settle" )] public float SettleQuietSeconds { get; set; } = 0.35f;
+	/// <summary>Never settle early before at least this long has passed — cheap insurance against a
+	/// one-frame fluke at the instant the watch arms.</summary>
+	[Property, Group( "Settle" )] public float MinWatchSeconds { get; set; } = 0.3f;
+	/// <summary>A body counts as "still" below this linear speed (u/s). Pins cascade at hundreds–
+	/// thousands of u/s, a settled one is ~0, so there's a wide margin.</summary>
+	[Property, Group( "Settle" )] public float SettleSpeedThreshold { get; set; } = 25f;
+	/// <summary>And below this angular speed (rad/s) — catches a pin still spinning in place.</summary>
+	[Property, Group( "Settle" )] public float SettleAngularThreshold { get; set; } = 1.0f;
 
 	/// <summary>Physics substeps for the world. Re-asserted every frame because the engine replaces
 	/// the PhysicsWorld after OnStart, so setting it once didn't stick (the probe was reading 1).
@@ -57,6 +70,7 @@ public sealed class GameDirector : Component
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
 	private float _watchStart;
+	private float _quietSince;  // when the scene first went still this watch (-1 = currently moving)
 	private bool _probed;      // one-shot physics probe logged?
 	private float _impactSpeed; // ball speed at the throw line, to compare against the deck-exit speed
 	private bool _exitLogged;   // logged the deck-exit speed for this throw?
@@ -151,13 +165,18 @@ public sealed class GameDirector : Component
 				break;
 
 			case RoundState.Watching:
-				// DEBUG: track how violently the pins are actually spinning/flying this throw.
+				// Walk the pins once: track peak motion (debug) AND whether the whole rack is still.
+				var pinsStill = true;
 				foreach ( var p in _lane.Pins )
 				{
-					var prb = p.Object.IsValid() ? p.Object.Components.Get<Rigidbody>() : null;
-					if ( !prb.IsValid() ) continue;
-					_peakPinSpin = MathF.Max( _peakPinSpin, prb.AngularVelocity.Length );
-					_peakPinVel = MathF.Max( _peakPinVel, prb.Velocity.Length );
+					var prb = p.Object.IsValid() && p.Object.Enabled ? p.Object.Components.Get<Rigidbody>() : null;
+					if ( !prb.IsValid() ) continue; // swept/disabled pins don't count
+					var spin = prb.AngularVelocity.Length;
+					var vel = prb.Velocity.Length;
+					_peakPinSpin = MathF.Max( _peakPinSpin, spin );
+					_peakPinVel = MathF.Max( _peakPinVel, vel );
+					if ( vel > SettleSpeedThreshold || spin > SettleAngularThreshold )
+						pinsStill = false;
 				}
 
 				// DEBUG: sample the ball's speed the moment it clears the back of the rack — how much
@@ -173,7 +192,27 @@ public sealed class GameDirector : Component
 						$"retained={retained:F0}% of impact({_impactSpeed:F0})  downSoFar={DownCount}  " +
 						$"peakPinSpin={_peakPinSpin:F1} rad/s  peakPinVel={_peakPinVel:F0} u/s" );
 				}
-				if ( Time.Now - _watchStart >= WatchSeconds )
+				// The ball must also be still — absorbed in the pit, or stopped/deflected to rest. This
+				// is the guard against settling before impact: while the ball is coasting in it's fast,
+				// so the scene is never "quiet" until the throw has actually played out.
+				var ballBody = _ball.Components.Get<Rigidbody>();
+				var ballStill = _ball.Absorbed ||
+					(ballBody.IsValid() && ballBody.Velocity.Length <= SettleSpeedThreshold && ballBody.AngularVelocity.Length <= SettleAngularThreshold);
+
+				if ( pinsStill && ballStill )
+				{
+					if ( _quietSince < 0f ) _quietSince = Time.Now;
+				}
+				else
+				{
+					_quietSince = -1f;
+				}
+
+				var watched = Time.Now - _watchStart;
+				var settledEarly = _quietSince >= 0f && watched >= MinWatchSeconds &&
+					Time.Now - _quietSince >= SettleQuietSeconds;
+
+				if ( settledEarly || watched >= WatchSeconds )
 					ProcessSettledBall();
 				break;
 		}
@@ -183,6 +222,7 @@ public sealed class GameDirector : Component
 	{
 		State = RoundState.Watching;
 		_watchStart = Time.Now;
+		_quietSince = -1f;                  // not yet still (ball is coasting in fast)
 		_ball.ControlsLocked = true;        // ignore input + braking: coast into the pins
 		if ( _camera.IsValid() ) _camera.Watching = true; // back off and up
 		_exitLogged = false;
