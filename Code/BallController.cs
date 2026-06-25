@@ -34,7 +34,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// ~81% at e=0) AND makes the pin fly faster — both wanted. Low restitution makes ball and pin
 	/// move together (ball barely slows = plows). So keep this high; the steamroll was a contact/CCD
 	/// problem, not restitution.</summary>
-	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.5f;
+	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.3f;
 	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
 	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
 	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the
