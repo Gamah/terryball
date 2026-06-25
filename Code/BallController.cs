@@ -11,9 +11,9 @@ namespace Terryball;
 ///
 /// Control: WASD is camera-relative and names a target travel direction. Each tick we steer
 /// the ball's horizontal velocity toward wishDir * <see cref="MaxSpeed"/> with a proportional
-/// roll torque (about up × velocityError). With no key held the target is zero, so the same
-/// controller becomes a brake that opposes the current roll — the ball coasts to a stop and
-/// never accelerates on its own.
+/// force applied at the ball's centre (friction then spins it up to roll). With no key held
+/// the target is zero, so the same controller becomes a brake that opposes the current
+/// velocity — the ball coasts to a stop and never accelerates on its own.
 ///
 /// Terry is purely visual: he "runs" up the inner wall toward the wish direction and gravity
 /// settles him to the bottom, but his motion no longer drives the ball (it used to, via an
@@ -26,7 +26,7 @@ public sealed class BallController : Component
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
 	/// <summary>Passive rolling resistance. Braking is now active (releasing the keys applies a
-	/// <see cref="BrakeGain"/> counter-torque), so keep this low — it just trims the residual
+	/// <see cref="BrakeGain"/> counter-force), so keep this low — it just trims the residual
 	/// spin the brake leaves behind. Higher also lowers top speed under drive.</summary>
 	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.5f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
@@ -36,18 +36,19 @@ public sealed class BallController : Component
 
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
-	// wishDir * MaxSpeed with a proportional drive torque. With no key held the target is
-	// zero, so the same controller brakes — the ball only ever loses speed when nothing is
-	// pressed and never self-accelerates.
+	// wishDir * MaxSpeed with a proportional force at the ball's centre. With no key held the
+	// target is zero, so the same controller brakes — the ball only ever loses speed when
+	// nothing is pressed and never self-accelerates.
 
 	/// <summary>Top travel speed (u/s) a full WASD push steers toward.</summary>
 	[Property, Group( "Drive" )] public float MaxSpeed { get; set; } = 2500f;
-	/// <summary>Proportional gain turning the velocity error (target − current) into roll
-	/// torque while a key is held. Higher = snappier accel/steering. Tune by feel.</summary>
-	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 4000f;
-	/// <summary>Proportional gain on the braking torque applied when no key is held; it
-	/// opposes the current roll so the ball coasts to a stop.</summary>
-	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 2500f;
+	/// <summary>Proportional gain turning the velocity error (target − current) into a centre
+	/// force while a key is held. Force = error · gain, so this is roughly "how many u/s² of
+	/// accel per u/s you're off target." Higher = snappier accel/steering. Tune by feel.</summary>
+	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 10f;
+	/// <summary>Proportional gain on the braking force applied when no key is held; it opposes
+	/// the current velocity so the ball coasts to a stop.</summary>
+	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 10f;
 
 	// --- Occupant (Terry) visual climb -------------------------------------------------
 	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
@@ -154,16 +155,20 @@ public sealed class BallController : Component
 
 		// --- Steer the ball ------------------------------------------------------------
 		// wishDir names where you want to go; steer the ball's horizontal velocity toward
-		// wishDir * MaxSpeed with a proportional roll torque. With no input the target is
-		// zero, so the controller brakes instead — the ball never gains speed on its own.
-		// (Rolling without slip: a torque about up × d rolls the ball toward d, so a torque
-		// about up × velocityError nudges the velocity toward the target.)
+		// wishDir * MaxSpeed. With no input the target is zero, so the controller brakes
+		// instead — the ball never gains speed on its own.
+		//
+		// Drive with a force at the ball's CENTRE, not a roll torque. A ball driven only by
+		// roll torque is friction-limited to ~1 g of forward accel (any extra torque just
+		// spins the contact out), which felt painfully slow. A centre force accelerates the
+		// COM directly and lets ground friction spin the ball up to roll — far stronger,
+		// friction-independent acceleration that still tapers smoothly toward MaxSpeed.
 		var hasInput = wish.Length > 0.01f;
 		var vel = _body.Velocity.WithZ( 0f );
 		var targetVel = hasInput ? wish.Normal * (MaxSpeed * wish.Length.Clamp( 0f, 1f )) : Vector3.Zero;
 		var velError = targetVel - vel;
 		var gain = hasInput ? DriveGain : BrakeGain;
-		_body.ApplyTorque( Vector3.Cross( Vector3.Up, velError ) * gain );
+		_body.ApplyForce( velError * gain );
 
 		// --- Terry's visual climb (no longer drives the ball) --------------------------
 		// Spherical-pendulum on the inner surface: input pushes Terry up-slope toward wishDir,
