@@ -51,8 +51,13 @@ public sealed class BallController : Component
 	/// <summary>Proportional gain on the braking force applied when no key is held; it opposes
 	/// the current velocity so the ball coasts to a stop. The coast's decay rate is
 	/// BrakeGain/Mass per second, so with Mass ≈ 6.8 a gain of 1 barely slows the ball (≈5 s
-	/// time-constant); 8 gives a firm, still-rolling stop in a couple of seconds. Tune by feel.</summary>
-	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 8f;
+	/// time-constant); 20 hauls the ball down hard, stopping it in well under a second. Tune by feel.</summary>
+	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 20f;
+
+	/// <summary>When set, the ball ignores BOTH input and braking and just coasts on its own
+	/// momentum (physics only). The round director flips this on once the ball crosses the throw
+	/// line so the throw is committed to physics and you can watch it hit the pins.</summary>
+	public bool ControlsLocked { get; set; }
 
 	// --- Occupant (Terry) visual climb -------------------------------------------------
 	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
@@ -142,11 +147,12 @@ public sealed class BallController : Component
 		var dt = Time.Delta;
 		if ( dt <= 0f ) return;
 
-		// Camera-relative run direction on the horizontal plane.
-		var move = Input.AnalogMove; // x = forward, y = left
+		// Camera-relative run direction on the horizontal plane. While controls are locked (the
+		// ball has crossed the throw line) we read no input at all — wish stays zero.
+		var move = ControlsLocked ? Vector3.Zero : Input.AnalogMove; // x = forward, y = left
 		var wish = Vector3.Zero;
 		var cam = Scene.Camera;
-		if ( cam.IsValid() )
+		if ( !ControlsLocked && cam.IsValid() )
 		{
 			var rot = cam.WorldRotation;
 			var f = rot.Forward.WithZ( 0f );
@@ -172,7 +178,9 @@ public sealed class BallController : Component
 		var targetVel = hasInput ? wish.Normal * (MaxSpeed * wish.Length.Clamp( 0f, 1f )) : Vector3.Zero;
 		var velError = targetVel - vel;
 		var gain = hasInput ? DriveGain : BrakeGain;
-		_body.ApplyForce( velError * gain );
+		// Locked = neither drive nor brake: the ball coasts on momentum alone into the pins.
+		if ( !ControlsLocked )
+			_body.ApplyForce( velError * gain );
 
 		// --- Terry's visual climb (no longer drives the ball) --------------------------
 		// Spherical-pendulum on the inner surface: input pushes Terry up-slope toward wishDir,

@@ -158,6 +158,40 @@
           "MaxPitch": 15
         }
       ]
+    },
+    {
+      "__guid": "b0000008-0000-4000-8000-000000000008",
+      "Name": "Director",
+      "Position": "0,0,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.GameDirector",
+          "__guid": "b0000008-0001-4000-8000-000000000008",
+          "__enabled": true,
+          "WatchSeconds": 5,
+          "TiltThresholdDegrees": 30,
+          "DisplacementThresholdInches": 4
+        }
+      ]
+    },
+    {
+      "__guid": "b0000009-0000-4000-8000-000000000009",
+      "Name": "HUD",
+      "Position": "0,0,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Sandbox.ScreenPanel",
+          "__guid": "b0000009-0001-4000-8000-000000000009",
+          "__enabled": true
+        },
+        {
+          "__type": "Terryball.PinStatusOverlay",
+          "__guid": "b0000009-0002-4000-8000-000000000009",
+          "__enabled": true
+        }
+      ]
     }
   ]
 }

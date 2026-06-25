@@ -37,6 +37,12 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Lane" )] public Color FoulLineColor { get; set; } = new Color( 0.85f, 0.10f, 0.10f, 1f );
 	[Property, Group( "Lane" )] public Color ArrowColor { get; set; } = new Color( 0.20f, 0.13f, 0.07f, 1f );
 
+	/// <summary>Distance (real inches) the throw line sits in FRONT of the head pin — the gate
+	/// where modern alleys capture ball speed and, here, where control is handed to physics so you
+	/// can watch the hit. 60" = 5 ft, in the 3–7 ft range asked for.</summary>
+	[Property, Group( "Throw Line" )] public float ThrowLineDistanceInches { get; set; } = 60f;
+	[Property, Group( "Throw Line" )] public Color ThrowLineColor { get; set; } = new Color( 0.10f, 0.85f, 0.95f, 1f );
+
 	[Property, Group( "Approach" )] public float ApproachLengthInches { get; set; } = 180f; // 15 ft run-up
 	[Property, Group( "Approach" )] public float PlatformHeightInches { get; set; } = 10f;  // play surface above the floor
 	[Property, Group( "Approach" )] public float RampSlopeDegrees { get; set; } = 8f;        // shallow enough to roll up
@@ -80,6 +86,21 @@ public sealed class LaneBuilder : Component
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private Model _arrowModel; // shared by the seven targeting arrows
 
+	/// <summary>A pin and the spot it was racked on, for the director's "is it still standing?"
+	/// scoring and for re-racking after a throw.</summary>
+	public readonly record struct PinPlacement( int Number, GameObject Object, Vector3 Home );
+
+	private readonly List<PinPlacement> _pins = new();
+	/// <summary>The ten pins with their home spots, exposed for the round director.</summary>
+	public IReadOnlyList<PinPlacement> Pins => _pins;
+
+	/// <summary>Units-per-inch the lane was built at — lets the director express its thresholds in
+	/// real inches and scale them the same way every dimension here is scaled.</summary>
+	public float UnitsPerInch { get; private set; }
+
+	/// <summary>World X of the throw line. The director arms watch-mode when the ball crosses it.</summary>
+	public float ThrowLineWorldX { get; private set; }
+
 	protected override void OnEnabled()
 	{
 		if ( _built ) return;
@@ -89,6 +110,7 @@ public sealed class LaneBuilder : Component
 		var ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
 		var ballDiameterUnits = ball.IsValid() ? ball.Radius * 2f : 200f;
 		var u = ballDiameterUnits / BallDiameterInches; // units per inch
+		UnitsPerInch = u;
 
 		// --- Vertical: platform top is the play surface; gutters recess below, barriers rise above.
 		var H = PlatformHeightInches * u;
@@ -210,6 +232,13 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "FoulLine", new Vector3( foulX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6f ), FoulLineColor );
 
+		// ---- Throw line: the speed-capture gate a short way in front of the pins. Same flush
+		// cross-lane stripe as the foul line but its own colour; the director watches for the ball
+		// to cross ThrowLineWorldX and hands control to physics for the hit.
+		ThrowLineWorldX = headPinX - ThrowLineDistanceInches * u;
+		MakeDecal( "ThrowLine", new Vector3( ThrowLineWorldX, 0f, H ),
+			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
+
 		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
 		// deepest, outers stepping BACK toward the foul line, so the whole formation points
 		// down-lane at the pins (matching each arrow's own heading), as on a real lane. Flat
@@ -235,7 +264,9 @@ public sealed class LaneBuilder : Component
 			for ( var i = 0; i <= r; i++ )
 			{
 				var py = (i - r * 0.5f) * pinSpace;
-				MakePin( $"Pin{n}", new Vector3( px, py, H ) ); // base sits on the platform top
+				var home = new Vector3( px, py, H ); // base sits on the platform top
+				var pin = MakePin( $"Pin{n}", home );
+				_pins.Add( new PinPlacement( n, pin, home ) );
 				n++;
 			}
 		}
@@ -337,7 +368,7 @@ public sealed class LaneBuilder : Component
 	// A pin instance: Rigidbody + ModelRenderer + ModelCollider, all pointing at the one shared
 	// lathed pin Model. The ModelCollider's convex hulls feed the Rigidbody's mass build, so the
 	// inertia tensor and CoM come from the true pin solid.
-	private void MakePin( string name, Vector3 worldPos )
+	private GameObject MakePin( string name, Vector3 worldPos )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.WorldPosition = worldPos;
@@ -356,6 +387,8 @@ public sealed class LaneBuilder : Component
 
 		rb.MassOverride = PinMass;
 		rb.EnhancedCcd = true; // struck at bowling speed — don't let the ball tunnel through
+
+		return go;
 	}
 
 	// Build the shared pin Model by revolving PinSilhouette around the vertical axis: a smooth

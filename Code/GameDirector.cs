@@ -1,0 +1,149 @@
+using Sandbox;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Terryball;
+
+/// <summary>
+/// Runs a single throw's lifecycle and scores the pins, the way a modern alley's pin-detection
+/// camera does: a pin counts as DOWN once it's either tipped past <see cref="TiltThresholdDegrees"/>
+/// from vertical OR shoved off its spot by more than <see cref="DisplacementThresholdInches"/> — a
+/// pin merely nudged but still standing on its spot stays UP.
+///
+/// Flow:
+///   Rolling  — the player drives the ball normally.
+///   (ball centre crosses the lane's throw line, a few feet short of the pins)
+///   Watching — the ball's input AND braking are cut so it coasts on momentum into the pins, and
+///              the camera pulls back/up for an overview of the hit. Held for <see cref="WatchSeconds"/>.
+///   (reset)  — pins are re-racked on their spots, the ball is teleported back to the run-up and
+///              handed back to the player, and we return to Rolling.
+///
+/// <see cref="PinStatuses"/> and <see cref="State"/> are read live by the top-left overlay panel.
+/// </summary>
+public sealed class GameDirector : Component
+{
+	/// <summary>How long (seconds) to hold the pulled-back watch view before re-racking. Hardcoded
+	/// behaviour for now — see the brief; exposed so it's still tunable in-scene.</summary>
+	[Property] public float WatchSeconds { get; set; } = 5f;
+
+	/// <summary>Tip past this many degrees off vertical and the pin reads as knocked down.</summary>
+	[Property] public float TiltThresholdDegrees { get; set; } = 30f;
+	/// <summary>Shoved this many real inches off its spot (horizontally) and the pin reads as down,
+	/// even if it's somehow still upright.</summary>
+	[Property] public float DisplacementThresholdInches { get; set; } = 4f;
+
+	public enum RoundState { Rolling, Watching }
+	public RoundState State { get; private set; } = RoundState.Rolling;
+
+	/// <summary>A pin's number (1–10) and whether it currently reads as knocked down.</summary>
+	public readonly record struct PinStatus( int Number, bool Down );
+
+	private readonly List<PinStatus> _statuses = new();
+	/// <summary>Live per-pin standing/down state, ordered by pin number, for the overlay.</summary>
+	public IReadOnlyList<PinStatus> PinStatuses => _statuses;
+	/// <summary>Count of pins currently down — handy for the overlay header / build hash.</summary>
+	public int DownCount => _statuses.Count( s => s.Down );
+
+	private LaneBuilder _lane;
+	private BallController _ball;
+	private BallCamera _camera;
+
+	private Vector3 _ballHome;
+	private Rotation _ballHomeRot;
+	private float _watchStart;
+
+	protected override void OnStart()
+	{
+		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
+		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
+		_camera = Scene.GetAllComponents<BallCamera>().FirstOrDefault();
+
+		if ( _ball.IsValid() )
+		{
+			_ballHome = _ball.WorldPosition;
+			_ballHomeRot = _ball.WorldRotation;
+		}
+	}
+
+	protected override void OnUpdate()
+	{
+		if ( !_lane.IsValid() || !_ball.IsValid() ) return;
+
+		Score();
+
+		switch ( State )
+		{
+			case RoundState.Rolling:
+				// Arm watch-mode the moment the ball's centre passes the throw line.
+				if ( _ball.WorldPosition.x >= _lane.ThrowLineWorldX )
+					EnterWatch();
+				break;
+
+			case RoundState.Watching:
+				if ( Time.Now - _watchStart >= WatchSeconds )
+					Reset();
+				break;
+		}
+	}
+
+	private void EnterWatch()
+	{
+		State = RoundState.Watching;
+		_watchStart = Time.Now;
+		_ball.ControlsLocked = true;        // ignore input + braking: coast into the pins
+		if ( _camera.IsValid() ) _camera.Watching = true; // back off and up
+	}
+
+	private void Reset()
+	{
+		State = RoundState.Rolling;
+		_ball.ControlsLocked = false;
+		if ( _camera.IsValid() ) _camera.Watching = false;
+
+		// Re-rack: drop every pin back onto its spot, upright and dead still.
+		foreach ( var p in _lane.Pins )
+		{
+			if ( !p.Object.IsValid() ) continue;
+			p.Object.WorldPosition = p.Home;
+			p.Object.WorldRotation = Rotation.Identity;
+			var rb = p.Object.Components.Get<Rigidbody>();
+			if ( rb.IsValid() )
+			{
+				rb.Velocity = Vector3.Zero;
+				rb.AngularVelocity = Vector3.Zero;
+			}
+		}
+
+		// Teleport the ball back to the run-up and hand control back to the player.
+		_ball.WorldPosition = _ballHome;
+		_ball.WorldRotation = _ballHomeRot;
+		var ballBody = _ball.Components.Get<Rigidbody>();
+		if ( ballBody.IsValid() )
+		{
+			ballBody.Velocity = Vector3.Zero;
+			ballBody.AngularVelocity = Vector3.Zero;
+		}
+	}
+
+	// Re-evaluate every pin against the alley's "still on its spot, still upright?" test.
+	private void Score()
+	{
+		var cosTilt = MathF.Cos( MathX.DegreeToRadian( TiltThresholdDegrees ) );
+		var maxOffset = DisplacementThresholdInches * _lane.UnitsPerInch;
+		var maxOffsetSq = maxOffset * maxOffset;
+
+		_statuses.Clear();
+		foreach ( var p in _lane.Pins )
+		{
+			var down = true;
+			if ( p.Object.IsValid() )
+			{
+				var tilted = p.Object.WorldRotation.Up.Dot( Vector3.Up ) < cosTilt;
+				var offsetSq = (p.Object.WorldPosition - p.Home).WithZ( 0f ).LengthSquared;
+				down = tilted || offsetSq > maxOffsetSq;
+			}
+			_statuses.Add( new PinStatus( p.Number, down ) );
+		}
+	}
+}
