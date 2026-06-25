@@ -55,6 +55,8 @@ public sealed class GameDirector : Component
 	private bool _probed;      // one-shot physics probe logged?
 	private float _impactSpeed; // ball speed at the throw line, to compare against the deck-exit speed
 	private bool _exitLogged;   // logged the deck-exit speed for this throw?
+	private float _peakPinSpin; // peak pin angular speed seen this throw (rad/s)
+	private float _peakPinVel;  // peak pin linear speed seen this throw (u/s)
 
 	protected override void OnStart()
 	{
@@ -97,6 +99,15 @@ public sealed class GameDirector : Component
 				break;
 
 			case RoundState.Watching:
+				// DEBUG: track how violently the pins are actually spinning/flying this throw.
+				foreach ( var p in _lane.Pins )
+				{
+					var prb = p.Object.IsValid() ? p.Object.Components.Get<Rigidbody>() : null;
+					if ( !prb.IsValid() ) continue;
+					_peakPinSpin = MathF.Max( _peakPinSpin, prb.AngularVelocity.Length );
+					_peakPinVel = MathF.Max( _peakPinVel, prb.Velocity.Length );
+				}
+
 				// DEBUG: sample the ball's speed the moment it clears the back of the rack — how much
 				// momentum did 10 pins actually take out of it? (God-mode if it keeps most of it.)
 				if ( !_exitLogged && _ball.WorldPosition.x >= _lane.PinDeckEndWorldX )
@@ -106,7 +117,8 @@ public sealed class GameDirector : Component
 					var exit = bb.IsValid() ? bb.Velocity.Length : 0f;
 					var retained = _impactSpeed > 1f ? exit / _impactSpeed * 100f : 0f;
 					Log.Info( $"[terryball][exit] cleared the rack: speed={exit:F0} u/s  " +
-						$"retained={retained:F0}% of impact({_impactSpeed:F0})  downSoFar={DownCount}" );
+						$"retained={retained:F0}% of impact({_impactSpeed:F0})  downSoFar={DownCount}  " +
+						$"peakPinSpin={_peakPinSpin:F1} rad/s  peakPinVel={_peakPinVel:F0} u/s" );
 				}
 				if ( Time.Now - _watchStart >= WatchSeconds )
 					Reset();
@@ -121,6 +133,8 @@ public sealed class GameDirector : Component
 		_ball.ControlsLocked = true;        // ignore input + braking: coast into the pins
 		if ( _camera.IsValid() ) _camera.Watching = true; // back off and up
 		_exitLogged = false;
+		_peakPinSpin = 0f;
+		_peakPinVel = 0f;
 
 		// DEBUG: ball state the instant it crosses the throw line (impact conditions).
 		var bb = _ball.Components.Get<Rigidbody>();

@@ -25,6 +25,10 @@ public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
+	/// <summary>Restitution (bounciness) of the ball's surface. The engine default (~0.25) is dead and
+	/// inelastic, so the ball plows straight through the pins instead of deflecting off the pocket.
+	/// Real ball/pin/maple is hard and springy (~0.5–0.7). Tune by feel.</summary>
+	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.55f;
 	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
 	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
 	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the
@@ -102,6 +106,7 @@ public sealed class BallController : Component
 		var col = Components.GetOrCreate<SphereCollider>();
 		col.Radius = Radius;
 		col.Friction = Friction;
+		col.Elasticity = Elasticity; // springy hit so the ball deflects off the pins instead of plowing
 
 		// Body params go AFTER the collider: adding a collider shape rebuilds mass from
 		// volume (BuildMass), which would otherwise clobber our MassOverride.

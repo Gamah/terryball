@@ -77,13 +77,17 @@ public sealed class LaneBuilder : Component
 	/// <summary>Pin-to-lane kinetic friction. Real pins have a smooth plastic coating
 	/// engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is realistic.</summary>
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
+	/// <summary>Restitution (bounciness) of the pins. The engine default (~0.25) is dead, so pins get
+	/// shoved instead of launching and cartwheeling. Real coated maple is springy (~0.5–0.7); this
+	/// drives both pin-ball and pin-pin liveliness. Tune by feel.</summary>
+	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.55f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
-	/// <summary>Extra feel multiplier on the pins' scale-corrected gravity. The lane is built ~10×
-	/// bigger than the world's gravity expects, so pins are auto-given a GravityScale that restores a
-	/// real 1g AT THIS SCALE — otherwise they tip from nothing and slide like air-hockey pucks (far
-	/// too easy strikes). This knob over/under-drives that (1 = exactly scale-correct). Pins only;
-	/// the world's gravity is untouched, so players/other modes are unaffected.</summary>
-	[Property, Group( "Pins" )] public float PinWeightScale { get; set; } = 1f;
+	/// <summary>Per-pin gravity multiplier. 1 = the world's normal gravity at this (enlarged) scale,
+	/// which is what we want: relative masses + restitution drive the pin reaction, and those are
+	/// gravity-independent. The only thing gravity changes here is fall speed and how far pins slide.
+	/// At ~10.7 the lane would run at real-bowling *timescale* (pins fall/slide ~3.3×/10× snappier)
+	/// if the normal-gravity float ever feels too slow — purely a feel knob, pins only.</summary>
+	[Property, Group( "Pins" )] public float PinGravityScale { get; set; } = 1f;
 
 	/// <summary>Gap on the floor between the ball spawn and the foot of the ramp (units).</summary>
 	[Property, Group( "Layout" )] public float SpawnGapUnits { get; set; } = 150f;
@@ -91,7 +95,6 @@ public sealed class LaneBuilder : Component
 	private bool _built;
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private Model _arrowModel; // shared by the seven targeting arrows
-	private float _pinGravityScale = 1f; // per-pin GravityScale restoring a real 1g at the lane's scale
 
 	/// <summary>A pin and the spot it was racked on, for the director's "is it still standing?"
 	/// scoring and for re-racking after a throw.</summary>
@@ -129,12 +132,6 @@ public sealed class LaneBuilder : Component
 		var ballDiameterUnits = ball.IsValid() ? ball.Radius * 2f : 200f;
 		var u = ballDiameterUnits / BallDiameterInches; // units per inch
 		UnitsPerInch = u;
-
-		// Pins live in a lane scaled ~10× bigger than the world's gravity expects, so left alone they
-		// tip from nothing and slide forever. Give each pin a GravityScale that restores a real 1g at
-		// this scale (386 in/s² → units), times the feel knob. World gravity stays default for all.
-		var worldG = Scene.PhysicsWorld.Gravity.Length;
-		_pinGravityScale = worldG > 1f ? (386f * u) / worldG * PinWeightScale : PinWeightScale;
 
 		// --- Vertical: platform top is the play surface; gutters recess below, barriers rise above.
 		var H = PlatformHeightInches * u;
@@ -414,10 +411,11 @@ public sealed class LaneBuilder : Component
 		var col = go.Components.Create<ModelCollider>();
 		col.Model = _pinModel;
 		col.Friction = PinFriction; // smooth plastic-coated pin slides & scatters
+		col.Elasticity = PinElasticity; // springy maple — pins launch & cartwheel off ball and each other
 
 		rb.MassOverride = PinMass;
 		rb.EnhancedCcd = true; // struck at bowling speed — don't let the ball tunnel through
-		rb.GravityScale = _pinGravityScale; // realistic weight at the lane's scale (pins only)
+		rb.GravityScale = PinGravityScale; // 1 = world-normal gravity at scale; reaction is gravity-independent
 
 		return go;
 	}
