@@ -6,43 +6,79 @@ using System.Linq;
 namespace Terryball;
 
 /// <summary>
-/// Builds a bowling lane at runtime, scaled so the ball reads as a real bowling ball.
+/// Builds a full bowling lane at runtime — not just a lane-width strip with walls, but a
+/// raised lane platform with a roll-up ramp, a regulation 15 ft approach, a foul line, the
+/// 60 ft lane proper marked out in boards and targeting arrows, gutters either side with low
+/// barrier curbs beyond them, a recessed pit behind the pins, and the ten lathed pins.
 ///
-/// The ball's actual size in units is treated as <see cref="BallDiameterInches"/> (8.5"),
-/// which gives a units-per-inch scale used for every real dimension below: two cube walls
-/// a lane-width apart, and 10 lathed bowling pins (each a Rigidbody, all sharing one runtime
-/// pin Model) arranged in the regulation triangle at the foul-line-to-head-pin distance.
+/// Everything is sized in real bowling inches and multiplied by a units-per-inch scale that
+/// is itself derived from the ball: the ball's actual diameter in units is treated as
+/// <see cref="BallDiameterInches"/> (8.5"), so the whole lane stays correctly scaled to the
+/// ball even if the ball's Radius is retuned. (Per the stylised-scale note, the platform
+/// height / ramp / pit are tuned for feel rather than literal millimetres.)
 ///
 /// The pin Model is a surface-of-revolution: a smooth render mesh plus a stack of convex-hull
-/// frustums for collision. The physics engine derives the centre of mass AND the full inertia
-/// tensor from that true solid, so a uniform-density pin naturally lands its CoM low (~0.36 of
-/// its height, like a real pin) and crashes with realistic pin action — no primitive-stack
-/// approximation or hand-tuned mass-centre needed.
+/// frustums for collision, so the physics engine derives a realistic low centre of mass and
+/// inertia tensor straight from the true solid — no hand-tuned mass-centre needed.
 ///
-/// (s&box is 1 unit ≈ 1 inch, but we derive the scale from the ball so it stays correct
-/// even if the ball's Radius is retuned.)
+/// Coordinate scheme (units): the ball spawns at world origin on the floor (top z = 0); the
+/// lane is laid out ahead of it in +x with the ramp bottom resting on the floor, rising to the
+/// platform top at z = <c>H</c>. The foul line is the x datum for every real dimension below.
 /// </summary>
 public sealed class LaneBuilder : Component
 {
 	[Property, Group( "Scale" )] public float BallDiameterInches { get; set; } = 8.5f;
+
 	[Property, Group( "Lane" )] public float LaneWidthInches { get; set; } = 41.5f;
 	[Property, Group( "Lane" )] public float LaneLengthInches { get; set; } = 720f; // foul line → head pin (60 ft)
-	[Property, Group( "Walls" )] public float WallHeight { get; set; } = 150f;       // units, as requested
-	[Property, Group( "Walls" )] public float WallThickness { get; set; } = 40f;
-	[Property, Group( "Walls" )] public Color WallColor { get; set; } = new Color( 0.55f, 0.40f, 0.25f, 1f );
+	[Property, Group( "Lane" )] public int BoardCount { get; set; } = 39;            // a regulation lane is 39 boards wide
+	[Property, Group( "Lane" )] public Color LaneColorA { get; set; } = new Color( 0.80f, 0.62f, 0.38f, 1f );
+	[Property, Group( "Lane" )] public Color LaneColorB { get; set; } = new Color( 0.74f, 0.56f, 0.33f, 1f );
+	[Property, Group( "Lane" )] public Color FoulLineColor { get; set; } = new Color( 0.85f, 0.10f, 0.10f, 1f );
+	[Property, Group( "Lane" )] public Color ArrowColor { get; set; } = new Color( 0.20f, 0.13f, 0.07f, 1f );
+
+	[Property, Group( "Approach" )] public float ApproachLengthInches { get; set; } = 180f; // 15 ft run-up
+	[Property, Group( "Approach" )] public float PlatformHeightInches { get; set; } = 10f;  // play surface above the floor
+	[Property, Group( "Approach" )] public float RampSlopeDegrees { get; set; } = 8f;        // shallow enough to roll up
+	[Property, Group( "Approach" )] public Color ApproachColor { get; set; } = new Color( 0.66f, 0.50f, 0.30f, 1f );
+
+	[Property, Group( "Gutters" )] public float GutterWidthInches { get; set; } = 9.25f;
+	[Property, Group( "Gutters" )] public float GutterDepthInches { get; set; } = 5f;   // recessed below the lane surface
+	[Property, Group( "Gutters" )] public Color GutterColor { get; set; } = new Color( 0.10f, 0.10f, 0.12f, 1f );
+
+	[Property, Group( "Barriers" )] public float BarrierWidthInches { get; set; } = 6f;
+	[Property, Group( "Barriers" )] public float BarrierHeightInches { get; set; } = 8f; // a low curb above the surface, not a wall
+	[Property, Group( "Barriers" )] public float BufferWidthInches { get; set; } = 24f;  // flat margin for future decoration
+	[Property, Group( "Barriers" )] public Color BarrierColor { get; set; } = new Color( 0.35f, 0.37f, 0.42f, 1f );
+	[Property, Group( "Barriers" )] public Color BufferColor { get; set; } = new Color( 0.28f, 0.24f, 0.20f, 1f );
+
+	[Property, Group( "Pit" )] public float PinDeckTailInches { get; set; } = 6f;   // lane surface past the back row
+	[Property, Group( "Pit" )] public float PitLengthInches { get; set; } = 36f;
+	[Property, Group( "Pit" )] public float PitDepthInches { get; set; } = 10f;
+	[Property, Group( "Pit" )] public float BackWallHeightInches { get; set; } = 40f;
+	[Property, Group( "Pit" )] public Color PitColor { get; set; } = new Color( 0.08f, 0.08f, 0.09f, 1f );
+
+	[Property, Group( "Arrows" )] public float ArrowCenterDistanceInches { get; set; } = 144f; // centre arrow ~12 ft out
+	[Property, Group( "Arrows" )] public float ArrowStepInches { get; set; } = 12f;            // each board-pair steps back
+	[Property, Group( "Arrows" )] public float ArrowLengthInches { get; set; } = 6f;
+	[Property, Group( "Arrows" )] public float ArrowWidthInches { get; set; } = 4f;
+
 	[Property, Group( "Pins" )] public float PinSpacingInches { get; set; } = 12f;   // pin centres
 	[Property, Group( "Pins" )] public float PinWidthInches { get; set; } = 4.766f; // belly (widest) diameter
 	[Property, Group( "Pins" )] public float PinHeightInches { get; set; } = 15f;
 	/// <summary>Mass in kg. A regulation bowling pin is ~1.6 kg (3 lb 8 oz).</summary>
 	[Property, Group( "Pins" )] public float PinMass { get; set; } = 1.6f;
 	/// <summary>Pin-to-lane kinetic friction. Real pins have a smooth plastic coating
-	/// (nylon/Surlyn/urethane) engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is
-	/// realistic. Low = more slide/scatter on impact.</summary>
+	/// engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is realistic.</summary>
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 
+	/// <summary>Gap on the floor between the ball spawn and the foot of the ramp (units).</summary>
+	[Property, Group( "Layout" )] public float SpawnGapUnits { get; set; } = 150f;
+
 	private bool _built;
-	private Model _pinModel; // shared by all ten pins; built once at the lane's scale
+	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
+	private Model _arrowModel; // shared by the seven targeting arrows
 
 	protected override void OnEnabled()
 	{
@@ -54,25 +90,124 @@ public sealed class LaneBuilder : Component
 		var ballDiameterUnits = ball.IsValid() ? ball.Radius * 2f : 200f;
 		var u = ballDiameterUnits / BallDiameterInches; // units per inch
 
+		// --- Vertical: platform top is the play surface; gutters recess below, barriers rise above.
+		var H = PlatformHeightInches * u;
+		var gutterD = GutterDepthInches * u;
+		var barrierH = BarrierHeightInches * u;
+		var pitD = PitDepthInches * u;
+		var backWallH = BackWallHeightInches * u;
+
+		// --- Lateral half-widths (units), out from the lane centre line.
 		var laneHalf = LaneWidthInches * u * 0.5f;
-		var headPinX = LaneLengthInches * u;
+		var gutterW = GutterWidthInches * u;
+		var barrierW = BarrierWidthInches * u;
+		var bufferW = BufferWidthInches * u;
+		var gutterOuter = laneHalf + gutterW;               // lane+gutter span (gutter outer edge)
+		var barrierOuter = gutterOuter + barrierW;
+		var platformHalf = barrierOuter + bufferW;          // platform edge
+
+		// --- Longitudinal landmarks (units), foul line = x datum, laid out so the ramp foot
+		// rests on the floor just ahead of the ball spawn at the origin.
+		var approachLen = ApproachLengthInches * u;
+		var slope = MathX.DegreeToRadian( RampSlopeDegrees );
+		var rampRun = H / MathF.Tan( slope );
+		var foulX = SpawnGapUnits + approachLen + rampRun;  // ⇒ ramp foot lands at x = SpawnGapUnits
+		var approachBackX = foulX - approachLen;            // top of ramp meets the approach
+		var rampBottomX = approachBackX - rampRun;
+
+		var laneLen = LaneLengthInches * u;
 		var pinSpace = PinSpacingInches * u;
-		var rowDepth = pinSpace * 0.8660254f; // 12" centres, rows step back by 12·cos(30°)
+		var rowDepth = pinSpace * 0.8660254f;               // 12" centres, rows step back by 12·cos(30°)
+		var headPinX = foulX + laneLen;
+		var backRowX = headPinX + rowDepth * 3f;
+		var pinDeckEndX = backRowX + PinDeckTailInches * u;  // lane surface stops here
+		var pitEndX = pinDeckEndX + PitLengthInches * u;
 
-		// Walls: a lane-width gap apart, spanning from behind the ball to past the pins.
-		var wallStartX = -1000f;
-		var wallEndX = headPinX + rowDepth * 3f + 1500f;
-		var wallLen = wallEndX - wallStartX;
-		var wallCenterX = (wallStartX + wallEndX) * 0.5f;
-		var wallY = laneHalf + WallThickness * 0.5f; // inner face sits at the lane edge
+		// ---- Ramp: one sloped slab, full platform width, floor → platform top.
+		{
+			var rampThk = 6f * u;
+			var len = MathF.Sqrt( rampRun * rampRun + H * H );
+			var cx = (rampBottomX + approachBackX) * 0.5f;
+			MakeBox( "Ramp", new Vector3( cx, 0f, H * 0.5f ),
+				new Vector3( len, platformHalf * 2f, rampThk ), ApproachColor,
+				rot: Rotation.FromPitch( -RampSlopeDegrees ) );
+		}
 
-		MakeBox( "WallLeft", new Vector3( wallCenterX, -wallY, WallHeight * 0.5f ),
-			new Vector3( wallLen, WallThickness, WallHeight ), WallColor, isDynamic: false );
-		MakeBox( "WallRight", new Vector3( wallCenterX, wallY, WallHeight * 0.5f ),
-			new Vector3( wallLen, WallThickness, WallHeight ), WallColor, isDynamic: false );
+		// ---- Approach: solid full-width run-up behind the foul line (no gutters here).
+		MakeBox( "Approach", new Vector3( (approachBackX + foulX) * 0.5f, 0f, H * 0.5f ),
+			new Vector3( approachLen, platformHalf * 2f, H ), ApproachColor );
 
-		// 10 pins in the regulation triangle: head pin nearest the bowler, rows of 1/2/3/4
-		// stepping away down the lane, each row centred across the lane.
+		// ---- Lane bed: the play surface from foul line through the pin deck.
+		var laneCx = (foulX + pinDeckEndX) * 0.5f;
+		var laneLenX = pinDeckEndX - foulX;
+		MakeBox( "LaneBed", new Vector3( laneCx, 0f, H * 0.5f ),
+			new Vector3( laneLenX, laneHalf * 2f, H ), LaneColorA );
+
+		// ---- Gutters: recessed troughs; the lane bed's side is the inner wall, the barrier the outer.
+		var gutterCy = laneHalf + gutterW * 0.5f;
+		var gutterTop = H - gutterD;
+		MakeBox( "GutterLeft", new Vector3( laneCx, -gutterCy, gutterTop * 0.5f ),
+			new Vector3( laneLenX, gutterW, gutterTop ), GutterColor );
+		MakeBox( "GutterRight", new Vector3( laneCx, gutterCy, gutterTop * 0.5f ),
+			new Vector3( laneLenX, gutterW, gutterTop ), GutterColor );
+
+		// ---- Barrier curbs + buffer margins: low rails just outboard of each gutter, then a flat
+		// margin for future decoration. Barriers run the length of the lane and the pit.
+		var barrierCx = (foulX + pitEndX) * 0.5f;
+		var barrierLenX = pitEndX - foulX;
+		var barrierCy = gutterOuter + barrierW * 0.5f;
+		MakeBox( "BarrierLeft", new Vector3( barrierCx, -barrierCy, (H + barrierH) * 0.5f ),
+			new Vector3( barrierLenX, barrierW, H + barrierH ), BarrierColor );
+		MakeBox( "BarrierRight", new Vector3( barrierCx, barrierCy, (H + barrierH) * 0.5f ),
+			new Vector3( barrierLenX, barrierW, H + barrierH ), BarrierColor );
+
+		var bufferCx = (approachBackX + pitEndX) * 0.5f;
+		var bufferLenX = pitEndX - approachBackX;
+		var bufferCy = barrierOuter + bufferW * 0.5f;
+		MakeBox( "BufferLeft", new Vector3( bufferCx, -bufferCy, H * 0.5f ),
+			new Vector3( bufferLenX, bufferW, H ), BufferColor );
+		MakeBox( "BufferRight", new Vector3( bufferCx, bufferCy, H * 0.5f ),
+			new Vector3( bufferLenX, bufferW, H ), BufferColor );
+
+		// ---- Pit: a recessed floor behind the pins so there's no instant falloff, then a back wall.
+		var pitTop = H - pitD;
+		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitTop * 0.5f ),
+			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitTop ), PitColor );
+		var backThk = 12f * u;
+		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (H + backWallH) * 0.5f ),
+			new Vector3( backThk, platformHalf * 2f, H + backWallH ), BarrierColor );
+
+		// ---- Boards: 39 alternating-tint planks across the lane, laid just proud of the bed so the
+		// seams read. (Bowlers aim by board number, so they're more than decoration.)
+		var boardW = (laneHalf * 2f) / BoardCount;
+		var boardZ = H + 1.5f * u;
+		for ( var b = 0; b < BoardCount; b++ )
+		{
+			var by = laneHalf - (b + 0.5f) * boardW;
+			MakeDecal( $"Board{b + 1}", new Vector3( laneCx, by, boardZ ),
+				new Vector3( laneLenX, boardW * 0.92f, 0.4f * u ),
+				(b % 2 == 0) ? LaneColorA : LaneColorB );
+		}
+
+		// ---- Foul line: a bright line across the lane and both gutters at the lane's start.
+		MakeDecal( "FoulLine", new Vector3( foulX, 0f, H + 2.0f * u ),
+			new Vector3( 2f * u, gutterOuter * 2f, 0.5f * u ), FoulLineColor );
+
+		// ---- Arrows: the seven targeting arrows in their dovetail "V" — centre arrow nearest the
+		// foul line, outers stepping back — apex pointing back toward the bowler.
+		_arrowModel = BuildArrowModel( u );
+		int[] arrowBoards = { 5, 10, 15, 20, 25, 30, 35 };
+		var arrowZ = H + 2.5f * u;
+		foreach ( var board in arrowBoards )
+		{
+			var ay = laneHalf - (board - 0.5f) * boardW;
+			var steps = MathF.Abs( board - 20 ) / 5f; // 0 at centre board, up to 3 at the outers
+			var ax = foulX + (ArrowCenterDistanceInches + steps * ArrowStepInches) * u;
+			MakeArrow( $"Arrow{board}", new Vector3( ax, ay, arrowZ ) );
+		}
+
+		// ---- Pins: regulation triangle on the platform top — head pin nearest the bowler, rows of
+		// 1/2/3/4 stepping away, each centred across the lane.
 		_pinModel = BuildPinModel( u );
 		var n = 1;
 		for ( var r = 0; r < 4; r++ )
@@ -81,34 +216,23 @@ public sealed class LaneBuilder : Component
 			for ( var i = 0; i <= r; i++ )
 			{
 				var py = (i - r * 0.5f) * pinSpace;
-				// Pin origin sits on the lane (base at z = 0); the lathed model builds upward.
-				MakePin( $"Pin{n}", new Vector3( px, py, 0f ) );
+				MakePin( $"Pin{n}", new Vector3( px, py, H ) ); // base sits on the platform top
 				n++;
 			}
 		}
 	}
 
-	// Collider on the uniformly-scaled root (s&box freezes physics if a BoxCollider rides a
-	// non-uniform scale); visual on a non-uniformly-scaled child driven by model bounds.
-	private void MakeBox( string name, Vector3 worldPos, Vector3 size, Color tint, bool isDynamic )
+	// Static box with collider on the (uniformly-scaled) root and the visual on a non-uniformly
+	// scaled child (s&box freezes physics if a BoxCollider rides a non-uniform transform scale).
+	// A rotation, if given, is applied to the root so the collider tilts with the visual (ramp).
+	private void MakeBox( string name, Vector3 worldPos, Vector3 size, Color tint, Rotation? rot = null )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.WorldPosition = worldPos;
-
-		// Rigidbody before the collider, MassOverride after — adding the collider rebuilds
-		// mass from volume (BuildMass) and would otherwise clobber the override.
-		Rigidbody rb = null;
-		if ( isDynamic )
-			rb = go.Components.GetOrCreate<Rigidbody>();
+		if ( rot.HasValue ) go.WorldRotation = rot.Value;
 
 		var col = go.Components.GetOrCreate<BoxCollider>();
 		col.Scale = size;
-
-		if ( rb is not null )
-		{
-			rb.MassOverride = PinMass;  // light pin vs heavy ball, so the ball plows through
-			col.Friction = PinFriction; // slide & scatter instead of gripping the floor
-		}
 
 		var visual = new GameObject( true, name + "Visual" ) { Parent = go };
 		var mr = visual.Components.GetOrCreate<ModelRenderer>();
@@ -119,12 +243,59 @@ public sealed class LaneBuilder : Component
 		visual.LocalScale = new Vector3( size.x / b.x, size.y / b.y, size.z / b.z );
 	}
 
+	// Visual-only thin slab (no collider) laid on a surface — boards, foul line, etc.
+	private void MakeDecal( string name, Vector3 worldPos, Vector3 size, Color tint )
+	{
+		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		go.WorldPosition = worldPos;
+
+		var mr = go.Components.GetOrCreate<ModelRenderer>();
+		mr.Model = Model.Load( "models/dev/box.vmdl" );
+		mr.Tint = tint;
+
+		var b = mr.Model.Bounds.Size;
+		go.WorldScale = new Vector3( size.x / b.x, size.y / b.y, size.z / b.z );
+	}
+
+	// One of the seven targeting arrows: a flat triangle decal pointing back at the bowler.
+	private void MakeArrow( string name, Vector3 worldPos )
+	{
+		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		go.WorldPosition = worldPos;
+		var mr = go.Components.GetOrCreate<ModelRenderer>();
+		mr.Model = _arrowModel;
+		mr.Tint = ArrowColor;
+	}
+
+	// A flat isosceles triangle in the XY plane with its apex toward -x (the bowler), faces up.
+	private Model BuildArrowModel( float u )
+	{
+		var len = ArrowLengthInches * u;
+		var wid = ArrowWidthInches * u;
+
+		var vb = new VertexBuffer();
+		vb.Init( true );
+		var apex = new Vector3( -len, 0f, 0f );
+		var baseL = new Vector3( 0f, -wid * 0.5f, 0f );
+		var baseR = new Vector3( 0f, wid * 0.5f, 0f );
+		vb.Add( new Vertex( apex, Vector3.Up, Vector3.Zero, new Vector4( 0f, 0.5f, 0f, 0f ) ) );
+		vb.Add( new Vertex( baseL, Vector3.Up, Vector3.Zero, new Vector4( 1f, 0f, 0f, 0f ) ) );
+		vb.Add( new Vertex( baseR, Vector3.Up, Vector3.Zero, new Vector4( 1f, 1f, 0f, 0f ) ) );
+		vb.AddRawIndex( 0 ); vb.AddRawIndex( 1 ); vb.AddRawIndex( 2 ); // up-facing
+		vb.AddRawIndex( 0 ); vb.AddRawIndex( 2 ); vb.AddRawIndex( 1 ); // and back so it's never culled
+
+		var mesh = new Mesh( Material.Load( "materials/default/white.vmat" ) );
+		mesh.CreateBuffers( vb );
+		var mb = new ModelBuilder();
+		mb.AddMesh( mesh );
+		return mb.Create();
+	}
+
 	/// <summary>
 	/// Regulation pin silhouette as (height fraction up from the base, diameter as a fraction
-	/// of the belly diameter). Revolving this profile gives the classic bowling-pin shape:
-	/// narrow base, bulging belly (the widest point, = 1.0), pinched neck, flared head, domed
-	/// top. Because the solid is built straight from this curve, the belly's volume sits low and
-	/// the mass distribution is realistic without any manual centre-of-mass tweak.
+	/// of the belly diameter). Revolving this profile gives the classic bowling-pin shape, and
+	/// because the solid is built straight from this curve the belly's volume sits low and the
+	/// mass distribution is realistic without any manual centre-of-mass tweak.
 	/// </summary>
 	private static readonly (float t, float dia)[] PinSilhouette =
 	{
