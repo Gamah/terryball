@@ -63,6 +63,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// time-constant); 20 hauls the ball down hard, stopping it in well under a second. Tune by feel.</summary>
 	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 20f;
 
+	/// <summary>Split knob, independent of Mass/energy: the max UPWARD speed (u/s) the ball may have
+	/// while coasting through the pins. The ball contacts the pins' bellies just above its own centre,
+	/// so each hit kicks it skyward — this caps that pop so it rolls through the rack instead of
+	/// launching up, WITHOUT touching its horizontal momentum (the energy). Downward (gravity) is
+	/// untouched. 0 = pinned flat to the lane; raise for more air. Tune separately from Mass.</summary>
+	[Property, Group( "Drive" )] public float MaxCoastRise { get; set; } = 150f;
+
 	/// <summary>When set, the ball ignores BOTH input and braking and just coasts on its own
 	/// momentum (physics only). The round director flips this on once the ball crosses the throw
 	/// line so the throw is committed to physics and you can watch it hit the pins.</summary>
@@ -172,6 +179,19 @@ public sealed class BallController : Component, Component.ICollisionListener
 				_body.AngularVelocity = Vector3.Zero;
 			}
 			return;
+		}
+
+		// Split knob (independent of mass/energy): cap how fast the ball can pop UPWARD while coasting
+		// through the pins, so it rolls through the rack instead of deflecting skyward off the bellies.
+		// Horizontal momentum (the energy) and gravity (downward vz) are left alone.
+		if ( ControlsLocked && _body.IsValid() )
+		{
+			var v = _body.Velocity;
+			if ( v.z > MaxCoastRise )
+			{
+				v.z = MaxCoastRise;
+				_body.Velocity = v;
+			}
 		}
 
 		// Camera-relative run direction on the horizontal plane. While controls are locked (the
