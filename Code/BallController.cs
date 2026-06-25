@@ -41,14 +41,14 @@ public sealed class BallController : Component
 	// nothing is pressed and never self-accelerates.
 
 	/// <summary>Top travel speed (u/s) a full WASD push steers toward.</summary>
-	[Property, Group( "Drive" )] public float MaxSpeed { get; set; } = 2500f;
+	[Property, Group( "Drive" )] public float MaxSpeed { get; set; } = 7500f;
 	/// <summary>Proportional gain turning the velocity error (target − current) into a centre
 	/// force while a key is held. Force = error · gain, so this is roughly "how many u/s² of
 	/// accel per u/s you're off target." Higher = snappier accel/steering. Tune by feel.</summary>
-	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 10f;
+	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 15f;
 	/// <summary>Proportional gain on the braking force applied when no key is held; it opposes
 	/// the current velocity so the ball coasts to a stop.</summary>
-	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 10f;
+	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 1f;
 
 	// --- Occupant (Terry) visual climb -------------------------------------------------
 	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
