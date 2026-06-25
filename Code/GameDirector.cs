@@ -52,6 +52,7 @@ public sealed class GameDirector : Component
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
 	private float _watchStart;
+	private bool _probed; // one-shot physics probe logged?
 
 	protected override void OnStart()
 	{
@@ -77,6 +78,7 @@ public sealed class GameDirector : Component
 	{
 		if ( !_lane.IsValid() || !_ball.IsValid() ) return;
 
+		Probe();
 		Score();
 
 		switch ( State )
@@ -100,6 +102,46 @@ public sealed class GameDirector : Component
 		_watchStart = Time.Now;
 		_ball.ControlsLocked = true;        // ignore input + braking: coast into the pins
 		if ( _camera.IsValid() ) _camera.Watching = true; // back off and up
+
+		// DEBUG: ball state the instant it crosses the throw line (impact conditions).
+		var bb = _ball.Components.Get<Rigidbody>();
+		if ( bb.IsValid() )
+		{
+			var v = bb.Velocity.Length;
+			var mph = v * (_ball.RealBallInches / (_ball.Radius * 2f)) / 17.6f;
+			Log.Info( $"[terryball][impact] throw-line cross: speed={v:F0} u/s (~{mph:F1} mph)  " +
+				$"angVel={bb.AngularVelocity.Length:F1}  vel={bb.Velocity}" );
+		}
+	}
+
+	// DEBUG (one-shot): dump mass / inertia / gravity so we can see whether MassOverride rescaled
+	// the inertia tensor and how the lane's scale compares to world gravity. Logged once.
+	private void Probe()
+	{
+		if ( _probed ) return;
+		if ( _lane.Pins.Count == 0 ) return;
+		_probed = true;
+
+		var g = Scene.PhysicsWorld.Gravity;
+		var scaleCorrectG = 386f * _lane.UnitsPerInch; // real 1g in this lane's units
+		Log.Info( $"[terryball][probe] world.Gravity={g} (|g|={g.Length:F0} u/s²)  " +
+			$"scale-correct≈{scaleCorrectG:F0} u/s²  ratio={scaleCorrectG / MathF.Max( 1f, g.Length ):F1}x  " +
+			$"unitsPerInch={_lane.UnitsPerInch:F2}" );
+
+		var bb = _ball.Components.Get<Rigidbody>();
+		if ( bb.IsValid() )
+		{
+			var r = _ball.Radius;
+			var expect = 0.4f * bb.Mass * r * r; // solid sphere ⅖mr²
+			Log.Info( $"[terryball][probe] BALL mass={bb.Mass:F2}kg gravScale={bb.GravityScale:F2}  " +
+				$"inertia={bb.InertiaTensor}  expect(⅖mr²)≈{expect:F0}  massCenter={bb.MassCenter}" );
+		}
+
+		var pin = _lane.Pins[0].Object;
+		var pb = pin.IsValid() ? pin.Components.Get<Rigidbody>() : null;
+		if ( pb.IsValid() )
+			Log.Info( $"[terryball][probe] PIN1 mass={pb.Mass:F2}kg gravScale={pb.GravityScale:F2}  " +
+				$"inertia={pb.InertiaTensor}  massCenter={pb.MassCenter}" );
 	}
 
 	private void Reset()
