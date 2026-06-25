@@ -37,8 +37,11 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// coast and overrides the brake. It mainly exists to bleed off lone vertical (yaw) spin the
 	/// brake can't see. Higher also lowers top speed under drive.</summary>
 	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.05f;
-	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
-	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
+	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb), but that makes the ball too
+	/// dominant ("meaty") over the pins. Detached down to reduce the ball:pin ratio so it deflects
+	/// more and clears fewer pins. NOTE: the live value is serialized in the scene — change it there,
+	/// the code default only applies to freshly-added components.</summary>
+	[Property, Group( "Ball" )] public float Mass { get; set; } = 4.5f;
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
