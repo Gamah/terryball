@@ -72,11 +72,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// line so the throw is committed to physics and you can watch it hit the pins.</summary>
 	public bool ControlsLocked { get; set; }
 
-	/// <summary>Set once the ball has cleared the back of the pin deck: it's pinned in place so it
-	/// can't rebound off the back wall or get launched by a depenetration kick in the pit corner
-	/// (the "ball flies off long after the hit" artifact). The pit "swallows" it. Cleared on reset.</summary>
-	public bool Absorbed { get; set; }
-
 	// --- Occupant (Terry) visual climb -------------------------------------------------
 	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
 	// "runs" up-slope toward wishDir and gravity settles him back to the bottom.
@@ -165,18 +160,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 	{
 		var dt = Time.Delta;
 		if ( dt <= 0f ) return;
-
-		// Cleared the rack: freeze the ball so it can't slam the back wall or get ejected by a
-		// depenetration kick in the pit corner. Held dead still until the next throw resets it.
-		if ( Absorbed )
-		{
-			if ( _body.IsValid() )
-			{
-				_body.Velocity = Vector3.Zero;
-				_body.AngularVelocity = Vector3.Zero;
-			}
-			return;
-		}
 
 		// Camera-relative run direction on the horizontal plane. While controls are locked (the
 		// ball has crossed the throw line) we read no input at all — wish stays zero.

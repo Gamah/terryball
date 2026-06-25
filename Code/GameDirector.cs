@@ -184,7 +184,6 @@ public sealed class GameDirector : Component
 				if ( !_exitLogged && _ball.WorldPosition.x >= _lane.PinDeckEndWorldX )
 				{
 					_exitLogged = true;
-					_ball.Absorbed = true; // pit swallows it: no back-wall rebound, no depenetration launch
 					var bb = _ball.Components.Get<Rigidbody>();
 					var exit = bb.IsValid() ? bb.Velocity.Length : 0f;
 					var retained = _impactSpeed > 1f ? exit / _impactSpeed * 100f : 0f;
@@ -192,12 +191,12 @@ public sealed class GameDirector : Component
 						$"retained={retained:F0}% of impact({_impactSpeed:F0})  downSoFar={DownCount}  " +
 						$"peakPinSpin={_peakPinSpin:F1} rad/s  peakPinVel={_peakPinVel:F0} u/s" );
 				}
-				// The ball must also be still — absorbed in the pit, or stopped/deflected to rest. This
-				// is the guard against settling before impact: while the ball is coasting in it's fast,
-				// so the scene is never "quiet" until the throw has actually played out.
+				// The ball must also be still — rolled to rest in the pit, or stopped/deflected on the
+				// lane. This is the guard against settling before impact: while the ball is coasting in
+				// it's fast, so the scene is never "quiet" until the throw has actually played out.
 				var ballBody = _ball.Components.Get<Rigidbody>();
-				var ballStill = _ball.Absorbed ||
-					(ballBody.IsValid() && ballBody.Velocity.Length <= SettleSpeedThreshold && ballBody.AngularVelocity.Length <= SettleAngularThreshold);
+				var ballStill = ballBody.IsValid() &&
+					ballBody.Velocity.Length <= SettleSpeedThreshold && ballBody.AngularVelocity.Length <= SettleAngularThreshold;
 
 				if ( pinsStill && ballStill )
 				{
@@ -400,7 +399,6 @@ public sealed class GameDirector : Component
 		_gameOver = true;
 		State = RoundState.Rolling;
 		if ( _camera.IsValid() ) _camera.Watching = false;
-		_ball.Absorbed = false;
 		_ball.ControlsLocked = true; // park the ball; no more throws until P starts a new game
 		PlaceBallHome();
 
@@ -415,7 +413,6 @@ public sealed class GameDirector : Component
 	{
 		State = RoundState.Rolling;
 		_ball.ControlsLocked = false;
-		_ball.Absorbed = false;
 		if ( _camera.IsValid() ) _camera.Watching = false;
 		PlaceBallHome();
 	}
