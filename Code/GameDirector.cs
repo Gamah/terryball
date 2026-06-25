@@ -117,6 +117,7 @@ public sealed class GameDirector : Component
 				if ( !_exitLogged && _ball.WorldPosition.x >= _lane.PinDeckEndWorldX )
 				{
 					_exitLogged = true;
+					_ball.Absorbed = true; // pit swallows it: no back-wall rebound, no depenetration launch
 					var bb = _ball.Components.Get<Rigidbody>();
 					var exit = bb.IsValid() ? bb.Velocity.Length : 0f;
 					var retained = _impactSpeed > 1f ? exit / _impactSpeed * 100f : 0f;
@@ -189,6 +190,7 @@ public sealed class GameDirector : Component
 	{
 		State = RoundState.Rolling;
 		_ball.ControlsLocked = false;
+		_ball.Absorbed = false;
 		if ( _camera.IsValid() ) _camera.Watching = false;
 
 		// Re-rack: drop every pin back onto its spot, upright and dead still.
