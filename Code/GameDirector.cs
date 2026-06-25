@@ -27,6 +27,11 @@ public sealed class GameDirector : Component
 	/// behaviour for now — see the brief; exposed so it's still tunable in-scene.</summary>
 	[Property] public float WatchSeconds { get; set; } = 5f;
 
+	/// <summary>Physics substeps for the world. Re-asserted every frame because the engine replaces
+	/// the PhysicsWorld after OnStart, so setting it once didn't stick (the probe was reading 1).
+	/// Resolves the fast 10-pin cascade instead of smearing the ball through it in coarse steps.</summary>
+	[Property] public int PhysicsSubSteps { get; set; } = 8;
+
 	/// <summary>Tip past this many degrees off vertical and the pin reads as knocked down.</summary>
 	[Property] public float TiltThresholdDegrees { get; set; } = 30f;
 	/// <summary>Shoved this many real inches off its spot (horizontally) and the pin reads as down,
@@ -64,11 +69,6 @@ public sealed class GameDirector : Component
 		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
 		_camera = Scene.GetAllComponents<BallCamera>().FirstOrDefault();
 
-		// DEBUG/feel: raise physics substeps so the fast 10-pin cascade is actually resolved instead
-		// of the ball plowing through it in one coarse step. This is world-global but only buys
-		// accuracy (costs CPU) — it doesn't change behaviour for players/other modes like gravity would.
-		Scene.PhysicsWorld.SubSteps = 8;
-
 		if ( _ball.IsValid() )
 		{
 			// Rack the ball in the run-up area on the lane platform (sitting on the surface), not at
@@ -86,6 +86,10 @@ public sealed class GameDirector : Component
 	protected override void OnUpdate()
 	{
 		if ( !_lane.IsValid() || !_ball.IsValid() ) return;
+
+		// Re-assert every frame: the engine swaps the PhysicsWorld after OnStart, so a one-time set
+		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
+		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
 
 		Probe();
 		Score();
