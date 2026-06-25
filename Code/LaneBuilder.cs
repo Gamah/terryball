@@ -84,7 +84,7 @@ public sealed class LaneBuilder : Component
 	/// <summary>Restitution (bounciness) of the pins. The engine default (~0.25) is dead, so pins get
 	/// shoved instead of launching and cartwheeling. Real coated maple is springy (~0.5–0.7); this
 	/// drives both pin-ball and pin-pin liveliness. Tune by feel.</summary>
-	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 1.0f;
+	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.95f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 	/// <summary>Multiplier on the pins' SCALE-CORRECT gravity. The lane is ~10.7× bigger than world
 	/// gravity expects, so 1 here = a real 1g AT THIS SCALE — real-bowling fall speed and friction.
