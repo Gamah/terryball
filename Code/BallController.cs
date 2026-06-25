@@ -25,10 +25,12 @@ public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
-	/// <summary>Restitution (bounciness) of the ball's surface. The engine default (~0.25) is dead and
-	/// inelastic, so the ball plows straight through the pins instead of deflecting off the pocket.
-	/// Real ball/pin/maple is hard and springy (~0.5–0.7). Tune by feel.</summary>
-	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.95f;
+	/// <summary>Restitution (bounciness) of the ball's surface. Counter-intuitively, LOW is what makes
+	/// the ball load against the pins: a near-elastic (high) contact ejects the pin away almost
+	/// instantly, so little momentum transfers back into the ball and it plows straight through.
+	/// Keeping this fairly inelastic (~0.2–0.4) shares more velocity with the pin, so the ball slows
+	/// and deflects more. (Deflection mostly comes from off-centre pocket hits, not speed loss.)</summary>
+	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.3f;
 	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
 	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
 	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the

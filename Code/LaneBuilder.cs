@@ -36,10 +36,10 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Lane" )] public Color LaneColorB { get; set; } = new Color( 0.74f, 0.56f, 0.33f, 1f );
 	[Property, Group( "Lane" )] public Color FoulLineColor { get; set; } = new Color( 0.85f, 0.10f, 0.10f, 1f );
 	[Property, Group( "Lane" )] public Color ArrowColor { get; set; } = new Color( 0.20f, 0.13f, 0.07f, 1f );
-	/// <summary>Restitution of the lane structures (bed, gutters, pit, back wall). Cranked up so struck
-	/// pins ricochet off the deck and walls for chaotic pin action. NOTE: this is on the surface the
-	/// ball rolls too, so very high values can make the ball itself bounce — intentional overshoot.</summary>
-	[Property, Group( "Lane" )] public float LaneElasticity { get; set; } = 0.9f;
+	/// <summary>Restitution of the lane structures (bed, gutters, pit, back wall). Modest — enough that
+	/// struck pins ricochet off the deck/walls a little, but not so high the rolling ball hops on the
+	/// bed. (Was cranked to 0.9 as an overshoot; walked back with the rest of the restitution pass.)</summary>
+	[Property, Group( "Lane" )] public float LaneElasticity { get; set; } = 0.3f;
 
 	/// <summary>Distance (real inches) the throw line sits in FRONT of the head pin — the gate
 	/// where modern alleys capture ball speed and, here, where control is handed to physics so you
@@ -81,10 +81,11 @@ public sealed class LaneBuilder : Component
 	/// <summary>Pin-to-lane kinetic friction. Real pins have a smooth plastic coating
 	/// engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is realistic.</summary>
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
-	/// <summary>Restitution (bounciness) of the pins. The engine default (~0.25) is dead, so pins get
-	/// shoved instead of launching and cartwheeling. Real coated maple is springy (~0.5–0.7); this
-	/// drives both pin-ball and pin-pin liveliness. Tune by feel.</summary>
-	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.95f;
+	/// <summary>Restitution (bounciness) of the pins. NOTE the counter-intuitive coupling: high values
+	/// eject the pin off the ball so fast that little momentum loads back into the ball — that's what
+	/// makes the ball steamroll through. Lower (~0.2–0.4) makes the ball share velocity with the pin
+	/// (deflect/slow) while pins still tumble from the cascade. Tune by feel.</summary>
+	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.3f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 	/// <summary>Multiplier on the pins' SCALE-CORRECT gravity. The lane is ~10.7× bigger than world
 	/// gravity expects, so 1 here = a real 1g AT THIS SCALE — real-bowling fall speed and friction.
@@ -427,7 +428,10 @@ public sealed class LaneBuilder : Component
 		col.Elasticity = PinElasticity; // springy maple — pins launch & cartwheel off ball and each other
 
 		rb.MassOverride = PinMass;
-		rb.EnhancedCcd = true; // struck at bowling speed — don't let the ball tunnel through
+		// CCD stays OFF on pins: the engine skips CCD between two bodies that BOTH have EnhancedCcd
+		// (Rigidbody.cs doc), so enabling it here actually DISABLED ball↔pin CCD and let the fast ball
+		// sweep through. The ball keeps EnhancedCcd; with pins discrete, ball-vs-pin CCD runs again.
+		rb.EnhancedCcd = false;
 		rb.GravityScale = _pinGravityScale; // scale-correct 1g at lane size × feel knob (pins only)
 
 		return go;
