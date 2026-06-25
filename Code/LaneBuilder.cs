@@ -227,8 +227,10 @@ public sealed class LaneBuilder : Component
 		}
 
 		// Bottom and top caps (fans to a centre vertex) so the pin reads as a closed solid.
-		AddCap( vb, ringPos[0], z[0], radial, faceDown: true );
-		AddCap( vb, ringPos[rings - 1], z[rings - 1], radial, faceDown: false );
+		// (VertexBuffer's vertex list is internal, so track the running count ourselves.)
+		var vertCount = rings * radial;
+		vertCount += AddCap( vb, ringPos[0], z[0], radial, vertCount, faceDown: true );
+		AddCap( vb, ringPos[rings - 1], z[rings - 1], radial, vertCount, faceDown: false );
 
 		var mesh = new Mesh( Material.Load( "materials/default/white.vmat" ) );
 		mesh.CreateBuffers( vb );
@@ -248,13 +250,15 @@ public sealed class LaneBuilder : Component
 		return builder.Create();
 	}
 
-	private static void AddCap( VertexBuffer vb, List<Vector3> ring, float zc, int radial, bool faceDown )
+	// Adds a fan cap over <paramref name="ring"/> centred on the axis, with its first vertex at
+	// absolute index <paramref name="firstIndex"/>; returns how many vertices it added.
+	private static int AddCap( VertexBuffer vb, List<Vector3> ring, float zc, int radial, int firstIndex, bool faceDown )
 	{
 		var normal = faceDown ? Vector3.Down : Vector3.Up;
-		var centerIdx = vb.Vertex.Count;
+		var centerIdx = firstIndex;
 		vb.Add( new Vertex( new Vector3( 0f, 0f, zc ), normal, Vector3.Zero, new Vector4( 0.5f, 0.5f, 0f, 0f ) ) );
 
-		var ringStart = vb.Vertex.Count;
+		var ringStart = firstIndex + 1;
 		for ( var j = 0; j < radial; j++ )
 			vb.Add( new Vertex( ring[j], normal, Vector3.Zero, new Vector4( j / (float)radial, 0f, 0f, 0f ) ) );
 
@@ -266,5 +270,7 @@ public sealed class LaneBuilder : Component
 			if ( faceDown ) { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( a ); vb.AddRawIndex( b ); }
 			else { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( b ); vb.AddRawIndex( a ); }
 		}
+
+		return 1 + radial;
 	}
 }
