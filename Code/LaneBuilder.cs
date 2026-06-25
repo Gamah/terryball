@@ -85,7 +85,7 @@ public sealed class LaneBuilder : Component
 	/// flings the pin away faster AND makes the ball lose more speed to it — both wanted. Low values
 	/// make ball+pin move together (ball plows, pin doesn't fly). Keep high; the steamroll was a
 	/// contact/CCD bug, not this. Drives pin-ball and pin-pin liveliness.</summary>
-	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.95f;
+	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.5f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 	/// <summary>Multiplier on the pins' SCALE-CORRECT gravity. The lane is ~10.7× bigger than world
 	/// gravity expects, so 1 here = a real 1g AT THIS SCALE — real-bowling fall speed and friction.

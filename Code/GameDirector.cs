@@ -159,7 +159,11 @@ public sealed class GameDirector : Component
 		var scaleCorrectG = 386f * _lane.UnitsPerInch; // real 1g in this lane's units
 		Log.Info( $"[terryball][probe] world.Gravity={g} (|g|={g.Length:F0} u/s²)  " +
 			$"scale-correct≈{scaleCorrectG:F0} u/s²  ratio={scaleCorrectG / MathF.Max( 1f, g.Length ):F1}x  " +
-			$"unitsPerInch={_lane.UnitsPerInch:F2}" );
+			$"unitsPerInch={_lane.UnitsPerInch:F2}  subSteps={Scene.PhysicsWorld.SubSteps}" );
+		// Landmarks so the [coast] x-trace can be read against where the pins actually sit.
+		Log.Info( $"[terryball][probe] x-landmarks: throwLine={_lane.ThrowLineWorldX:F0}  " +
+			$"deckCenter={_lane.PinDeckWorldCenter.x:F0}  deckEnd={_lane.PinDeckEndWorldX:F0}  " +
+			$"ballRadius={_ball.Radius:F0}" );
 
 		var bb = _ball.Components.Get<Rigidbody>();
 		if ( bb.IsValid() )

@@ -21,7 +21,7 @@ namespace Terryball;
 /// through the world, and no Terry↔ball collision is simulated (by design). The standalone
 /// <see cref="TerryController"/> stub is kept in the repo for other reuse.
 /// </summary>
-public sealed class BallController : Component
+public sealed class BallController : Component, Component.ICollisionListener
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
@@ -30,7 +30,7 @@ public sealed class BallController : Component
 	/// ~81% at e=0) AND makes the pin fly faster — both wanted. Low restitution makes ball and pin
 	/// move together (ball barely slows = plows). So keep this high; the steamroll was a contact/CCD
 	/// problem, not restitution.</summary>
-	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.95f;
+	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.5f;
 	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
 	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
 	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the
@@ -205,6 +205,15 @@ public sealed class BallController : Component
 		// Keep the body awake while input is held or it's still moving.
 		if ( hasInput || _body.Velocity.LengthSquared > 1f )
 			_body.Sleeping = false;
+
+		// DEBUG: trace the coast through the rack every physics step — speed vs position, so we can see
+		// whether the ball steps down at each pin contact or sails through unaffected.
+		if ( ControlsLocked && _body.IsValid() )
+		{
+			var v = _body.Velocity;
+			Log.Info( $"[terryball][coast] x={WorldPosition.x:F0} y={WorldPosition.y:F0} spd={v.Length:F0} " +
+				$"vx={v.x:F0} vy={v.y:F0} vz={v.z:F0} angVel={_body.AngularVelocity.Length:F1} mass={_body.Mass:F2}" );
+		}
 	}
 
 	protected override void OnUpdate()
@@ -251,5 +260,25 @@ public sealed class BallController : Component
 		var fwd = _faceDir - _faceDir.Dot( up ) * up;
 		fwd = fwd.Length > 0.001f ? fwd.Normal : Vector3.Forward;
 		_terry.WorldRotation = Rotation.LookAt( fwd, up );
+	}
+
+	// DEBUG: log every ball↔pin contact and its impulse. This is the crux diagnostic — if the ball
+	// "isn't affected" by the pins, either no contacts fire (contact generation failing) or they fire
+	// with near-zero Impulse. Both are visible here. NormalSpeed = closing speed along the contact
+	// normal; Impulse = the actual momentum exchanged at the contact.
+	public void OnCollisionStart( Collision c ) => LogPinContact( "START", c );
+	public void OnCollisionUpdate( Collision c ) => LogPinContact( "UPDATE", c );
+
+	private void LogPinContact( string phase, Collision c )
+	{
+		var other = c.Other.GameObject;
+		if ( !other.IsValid() || !other.Name.StartsWith( "Pin" ) ) return;
+
+		var pinBody = c.Other.Body;
+		var con = c.Contact;
+		Log.Info( $"[terryball][contact:{phase}] {other.Name} impulse={con.Impulse:F1} normalSpd={con.NormalSpeed:F0} " +
+			$"ballSpd={(_body.IsValid() ? _body.Velocity.Length : 0):F0} ballMass={(_body.IsValid() ? _body.Mass : 0):F2} " +
+			$"pinSpd={(pinBody.IsValid() ? pinBody.Velocity.Length : 0):F0} pinMass={(pinBody.IsValid() ? pinBody.Mass : 0):F2} " +
+			$"normal={con.Normal} pt={con.Point}" );
 	}
 }
