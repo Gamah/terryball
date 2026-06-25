@@ -1,4 +1,6 @@
 using Sandbox;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Terryball;
@@ -8,8 +10,14 @@ namespace Terryball;
 ///
 /// The ball's actual size in units is treated as <see cref="BallDiameterInches"/> (8.5"),
 /// which gives a units-per-inch scale used for every real dimension below: two cube walls
-/// a lane-width apart, and 10 cube "pins" (each a Rigidbody) arranged in the regulation
-/// triangle at the foul-line-to-head-pin distance — for the ball to crash into.
+/// a lane-width apart, and 10 lathed bowling pins (each a Rigidbody, all sharing one runtime
+/// pin Model) arranged in the regulation triangle at the foul-line-to-head-pin distance.
+///
+/// The pin Model is a surface-of-revolution: a smooth render mesh plus a stack of convex-hull
+/// frustums for collision. The physics engine derives the centre of mass AND the full inertia
+/// tensor from that true solid, so a uniform-density pin naturally lands its CoM low (~0.36 of
+/// its height, like a real pin) and crashes with realistic pin action — no primitive-stack
+/// approximation or hand-tuned mass-centre needed.
 ///
 /// (s&box is 1 unit ≈ 1 inch, but we derive the scale from the ball so it stays correct
 /// even if the ball's Radius is retuned.)
@@ -31,14 +39,10 @@ public sealed class LaneBuilder : Component
 	/// (nylon/Surlyn/urethane) engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is
 	/// realistic. Low = more slide/scatter on impact.</summary>
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
-	/// <summary>Height of the centre of mass as a fraction of pin height. A regulation pin
-	/// is deliberately bottom-heavy — its CoM sits ~36% up from the base, which is what makes
-	/// a struck pin tip, wobble, and deflect into its neighbours ("pin action") instead of
-	/// flying off like a uniform block.</summary>
-	[Property, Group( "Pins" )] public float PinMassCenterFrac { get; set; } = 0.34f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
 
 	private bool _built;
+	private Model _pinModel; // shared by all ten pins; built once at the lane's scale
 
 	protected override void OnEnabled()
 	{
@@ -69,6 +73,7 @@ public sealed class LaneBuilder : Component
 
 		// 10 pins in the regulation triangle: head pin nearest the bowler, rows of 1/2/3/4
 		// stepping away down the lane, each row centred across the lane.
+		_pinModel = BuildPinModel( u );
 		var n = 1;
 		for ( var r = 0; r < 4; r++ )
 		{
@@ -76,8 +81,8 @@ public sealed class LaneBuilder : Component
 			for ( var i = 0; i <= r; i++ )
 			{
 				var py = (i - r * 0.5f) * pinSpace;
-				// Pin origin sits on the lane (base at z = 0); the profile builds upward.
-				MakePin( $"Pin{n}", new Vector3( px, py, 0f ), u );
+				// Pin origin sits on the lane (base at z = 0); the lathed model builds upward.
+				MakePin( $"Pin{n}", new Vector3( px, py, 0f ) );
 				n++;
 			}
 		}
@@ -115,81 +120,151 @@ public sealed class LaneBuilder : Component
 	}
 
 	/// <summary>
-	/// The rounded body of the pin as stacked sphere segments: (height up from base, radius),
-	/// both as fractions — height of <see cref="PinHeightInches"/>, radius of the belly
-	/// half-width (<see cref="PinWidthInches"/>/2). Bulging belly low down, narrow neck, flared
-	/// head — a rounded body that topples and scatters like a real pin rather than a cube. The
-	/// flat foot underneath (see <see cref="MakePin"/>) is what it actually stands on.
+	/// Regulation pin silhouette as (height fraction up from the base, diameter as a fraction
+	/// of the belly diameter). Revolving this profile gives the classic bowling-pin shape:
+	/// narrow base, bulging belly (the widest point, = 1.0), pinched neck, flared head, domed
+	/// top. Because the solid is built straight from this curve, the belly's volume sits low and
+	/// the mass distribution is realistic without any manual centre-of-mass tweak.
 	/// </summary>
-	private static readonly (float h, float r)[] PinProfile =
+	private static readonly (float t, float dia)[] PinSilhouette =
 	{
-		(0.30f, 1.00f), // belly — widest point
-		(0.52f, 0.56f), // waist
-		(0.70f, 0.44f), // neck — narrowest
-		(0.86f, 0.62f), // head — flared top
+		(0.00f, 0.432f), // base
+		(0.05f, 0.472f),
+		(0.10f, 0.617f),
+		(0.20f, 0.881f),
+		(0.30f, 1.000f), // belly — widest
+		(0.40f, 0.923f),
+		(0.50f, 0.713f),
+		(0.60f, 0.483f),
+		(0.667f, 0.377f), // neck — narrowest
+		(0.75f, 0.483f),
+		(0.85f, 0.611f), // head — flared
+		(0.93f, 0.483f),
+		(1.00f, 0.252f), // domed top (kept >0 so the cap isn't degenerate)
 	};
 
-	/// <summary>Flat base diameter as a fraction of belly diameter. A regulation pin's base
-	/// (~2.06") is ~0.43 of the belly (~4.77"); this small flat foot is the support polygon
-	/// the pin stands on and tips about.</summary>
-	private const float PinBaseFrac = 0.43f;
-
-	// A bowling pin: one Rigidbody carrying a flat box foot plus a stack of sphere colliders
-	// shaped like a pin body, with the centre of mass forced low so it stands stably yet crashes
-	// with realistic pin action. Colliders parent to the body; visuals trace the same profile.
-	private void MakePin( string name, Vector3 worldPos, float u )
+	// A pin instance: Rigidbody + ModelRenderer + ModelCollider, all pointing at the one shared
+	// lathed pin Model. The ModelCollider's convex hulls feed the Rigidbody's mass build, so the
+	// inertia tensor and CoM come from the true pin solid.
+	private void MakePin( string name, Vector3 worldPos )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.WorldPosition = worldPos;
 
-		var pinH = PinHeightInches * u;
-		var halfW = PinWidthInches * u * 0.5f; // belly half-width drives every segment radius
-
-		// Rigidbody first; mass params after the colliders (each added shape rebuilds mass from
-		// volume via BuildMass, which would otherwise clobber the overrides below).
+		// Rigidbody first; MassOverride after the collider (adding the shape rebuilds mass from
+		// volume via BuildMass, which would otherwise clobber the override).
 		var rb = go.Components.GetOrCreate<Rigidbody>();
 
-		// Flat foot: a short box on the floor giving a real support polygon — stable standing,
-		// tips once the (low) centre of mass crosses its edge.
-		var footW = PinWidthInches * u * PinBaseFrac;
-		var footH = pinH * 0.18f; // reaches up to meet the belly sphere
-		var foot = go.Components.Create<BoxCollider>();
-		foot.Center = new Vector3( 0f, 0f, footH * 0.5f );
-		foot.Scale = new Vector3( footW, footW, footH );
-		foot.Friction = PinFriction;
+		var mr = go.Components.Create<ModelRenderer>();
+		mr.Model = _pinModel;
+		mr.Tint = PinColor;
 
-		var boxBounds = Model.Load( "models/dev/box.vmdl" ).Bounds.Size;
-		var footVisual = new GameObject( true, $"{name}Foot" ) { Parent = go };
-		footVisual.LocalPosition = new Vector3( 0f, 0f, footH * 0.5f );
-		var footMr = footVisual.Components.GetOrCreate<ModelRenderer>();
-		footMr.Model = Model.Load( "models/dev/box.vmdl" );
-		footMr.Tint = PinColor;
-		footVisual.LocalScale = new Vector3( footW / boxBounds.x, footW / boxBounds.y, footH / boxBounds.z );
-
-		var sphereBounds = Model.Load( "models/dev/sphere.vmdl" ).Bounds.Size.x; // dev sphere ≈ 64 across
-		foreach ( var (h, r) in PinProfile )
-		{
-			var z = h * pinH;
-			var radius = r * halfW;
-
-			var col = go.Components.Create<SphereCollider>();
-			col.Center = new Vector3( 0f, 0f, z );
-			col.Radius = radius;
-			col.Friction = PinFriction;
-
-			var visual = new GameObject( true, $"{name}Seg" ) { Parent = go };
-			visual.LocalPosition = new Vector3( 0f, 0f, z );
-			var mr = visual.Components.GetOrCreate<ModelRenderer>();
-			mr.Model = Model.Load( "models/dev/sphere.vmdl" );
-			mr.Tint = PinColor;
-			visual.LocalScale = new Vector3( (radius * 2f) / sphereBounds );
-		}
+		var col = go.Components.Create<ModelCollider>();
+		col.Model = _pinModel;
+		col.Friction = PinFriction; // smooth plastic-coated pin slides & scatters
 
 		rb.MassOverride = PinMass;
 		rb.EnhancedCcd = true; // struck at bowling speed — don't let the ball tunnel through
-		// Drop the centre of mass to the realistic bottom-heavy point: this, not the shape alone,
-		// is what gives the tip-wobble-deflect "pin action".
-		rb.OverrideMassCenter = true;
-		rb.MassCenterOverride = new Vector3( 0f, 0f, PinMassCenterFrac * pinH );
+	}
+
+	// Build the shared pin Model by revolving PinSilhouette around the vertical axis: a smooth
+	// render mesh, plus one convex-hull frustum per profile slab for simulatable collision (a
+	// single hull can't capture the concave neck, but a stack of convex slabs can).
+	private Model BuildPinModel( float u )
+	{
+		var height = PinHeightInches * u;
+		var bellyRadius = PinWidthInches * u * 0.5f; // belly diameter is the profile's "1.0"
+		const int radial = 24;                       // segments around the circumference
+
+		var rings = PinSilhouette.Length;
+		var z = new float[rings];
+		var r = new float[rings];
+		for ( var i = 0; i < rings; i++ )
+		{
+			z[i] = PinSilhouette[i].t * height;
+			r[i] = PinSilhouette[i].dia * bellyRadius;
+		}
+
+		var vb = new VertexBuffer();
+		vb.Init( true );
+
+		// Side surface: one vertex ring per profile sample, normals from the profile slope.
+		var ringPos = new List<Vector3>[rings];
+		for ( var i = 0; i < rings; i++ )
+		{
+			// Outward normal in the (radius, z) plane = profile tangent rotated -90°.
+			var dz = (i < rings - 1 ? z[i + 1] : z[i]) - (i > 0 ? z[i - 1] : z[i]);
+			var dr = (i < rings - 1 ? r[i + 1] : r[i]) - (i > 0 ? r[i - 1] : r[i]);
+			var nPlane = new Vector2( dz, -dr ).Normal; // (radial, axial)
+
+			ringPos[i] = new List<Vector3>( radial );
+			for ( var j = 0; j < radial; j++ )
+			{
+				var a = j / (float)radial * MathF.PI * 2f;
+				var c = MathF.Cos( a );
+				var s = MathF.Sin( a );
+				var pos = new Vector3( r[i] * c, r[i] * s, z[i] );
+				var normal = new Vector3( nPlane.x * c, nPlane.x * s, nPlane.y ).Normal;
+				vb.Add( new Vertex( pos, normal, Vector3.Zero, new Vector4( j / (float)radial, PinSilhouette[i].t, 0f, 0f ) ) );
+				ringPos[i].Add( pos );
+			}
+		}
+
+		// Side triangles between consecutive rings. (If pins ever render inside-out, swap the
+		// winding here — the lighting uses the explicit normals above, so only culling cares.)
+		for ( var i = 0; i < rings - 1; i++ )
+		{
+			for ( var j = 0; j < radial; j++ )
+			{
+				var jn = (j + 1) % radial;
+				var a = i * radial + j;
+				var b = i * radial + jn;
+				var cc = (i + 1) * radial + j;
+				var d = (i + 1) * radial + jn;
+				vb.AddRawIndex( a ); vb.AddRawIndex( cc ); vb.AddRawIndex( b );
+				vb.AddRawIndex( b ); vb.AddRawIndex( cc ); vb.AddRawIndex( d );
+			}
+		}
+
+		// Bottom and top caps (fans to a centre vertex) so the pin reads as a closed solid.
+		AddCap( vb, ringPos[0], z[0], radial, faceDown: true );
+		AddCap( vb, ringPos[rings - 1], z[rings - 1], radial, faceDown: false );
+
+		var mesh = new Mesh( Material.Load( "materials/default/white.vmat" ) );
+		mesh.CreateBuffers( vb );
+
+		// Collision: a convex hull per slab (both rings of positions). Convex per slab handles
+		// the concave neck a single hull would fill in; the stack closes the whole solid.
+		var builder = new ModelBuilder();
+		builder.AddMesh( mesh );
+		for ( var i = 0; i < rings - 1; i++ )
+		{
+			var hull = new List<Vector3>( radial * 2 );
+			hull.AddRange( ringPos[i] );
+			hull.AddRange( ringPos[i + 1] );
+			builder.AddCollisionHull( hull );
+		}
+		builder.WithMass( PinMass );
+		return builder.Create();
+	}
+
+	private static void AddCap( VertexBuffer vb, List<Vector3> ring, float zc, int radial, bool faceDown )
+	{
+		var normal = faceDown ? Vector3.Down : Vector3.Up;
+		var centerIdx = vb.Vertex.Count;
+		vb.Add( new Vertex( new Vector3( 0f, 0f, zc ), normal, Vector3.Zero, new Vector4( 0.5f, 0.5f, 0f, 0f ) ) );
+
+		var ringStart = vb.Vertex.Count;
+		for ( var j = 0; j < radial; j++ )
+			vb.Add( new Vertex( ring[j], normal, Vector3.Zero, new Vector4( j / (float)radial, 0f, 0f, 0f ) ) );
+
+		for ( var j = 0; j < radial; j++ )
+		{
+			var a = ringStart + j;
+			var b = ringStart + (j + 1) % radial;
+			// Wind so the visible face points the way the normal does.
+			if ( faceDown ) { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( a ); vb.AddRawIndex( b ); }
+			else { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( b ); vb.AddRawIndex( a ); }
+		}
 	}
 }
