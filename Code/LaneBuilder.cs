@@ -123,51 +123,66 @@ public sealed class LaneBuilder : Component
 		var pinDeckEndX = backRowX + PinDeckTailInches * u;  // lane surface stops here
 		var pitEndX = pinDeckEndX + PitLengthInches * u;
 
-		// ---- Ramp: one sloped slab, full platform width, floor → platform top.
-		{
-			var rampThk = 6f * u;
-			var len = MathF.Sqrt( rampRun * rampRun + H * H );
-			var cx = (rampBottomX + approachBackX) * 0.5f;
-			MakeBox( "Ramp", new Vector3( cx, 0f, H * 0.5f ),
-				new Vector3( len, platformHalf * 2f, rampThk ), ApproachColor,
-				rot: Rotation.FromPitch( -RampSlopeDegrees ) );
-		}
+		// ---- Ramp: one sloped slab whose TOP surface runs from the floor (z = 0) up to the
+		// platform top (z = H), so you roll straight on with no lip to bump over. The slab body is
+		// pushed down along its own normal by half its thickness, so it dips below the floor (they
+		// intersect — that's fine) and only the flush top is in play.
+		var rampA = MathX.DegreeToRadian( RampSlopeDegrees );
+		var rampThk = 6f * u;
+		var rampLen = MathF.Sqrt( rampRun * rampRun + H * H );
+		var rampMidX = (rampBottomX + approachBackX) * 0.5f;
+		MakeBox( "Ramp",
+			new Vector3( rampMidX + MathF.Sin( rampA ) * rampThk * 0.5f, 0f, H * 0.5f - MathF.Cos( rampA ) * rampThk * 0.5f ),
+			new Vector3( rampLen, platformHalf * 2f, rampThk ), ApproachColor,
+			rot: Rotation.FromPitch( -RampSlopeDegrees ) );
 
-		// ---- Approach: solid full-width run-up behind the foul line (no gutters here).
-		MakeBox( "Approach", new Vector3( (approachBackX + foulX) * 0.5f, 0f, H * 0.5f ),
-			new Vector3( approachLen, platformHalf * 2f, H ), ApproachColor );
-
-		// ---- Lane bed: the play surface from foul line through the pin deck.
-		var laneCx = (foulX + pinDeckEndX) * 0.5f;
-		var laneLenX = pinDeckEndX - foulX;
+		// ---- Lane bed: ONE continuous collider for the entire rolling path, approach through pin
+		// deck, top at z = H. A single box means there's no cross-lane seam at the foul line for the
+		// ball to catch on and pop into the air — the surface it travels is unbroken, so it also
+		// coasts and brakes cleanly instead of skipping.
+		var laneCx = (approachBackX + pinDeckEndX) * 0.5f;
+		var laneLenX = pinDeckEndX - approachBackX;
 		MakeBox( "LaneBed", new Vector3( laneCx, 0f, H * 0.5f ),
 			new Vector3( laneLenX, laneHalf * 2f, H ), LaneColorA );
 
-		// ---- Gutters: recessed troughs; the lane bed's side is the inner wall, the barrier the outer.
+		// ---- Approach shoulders: fill the run-up out to full platform width either side of the bed
+		// (the gutters haven't started yet here). Flush top at z = H.
+		var shoulderW = platformHalf - laneHalf;
+		var shoulderCx = (approachBackX + foulX) * 0.5f;
+		var shoulderLenX = foulX - approachBackX;
+		var shoulderCy = (laneHalf + platformHalf) * 0.5f;
+		MakeBox( "ApproachShoulderLeft", new Vector3( shoulderCx, -shoulderCy, H * 0.5f ),
+			new Vector3( shoulderLenX, shoulderW, H ), ApproachColor );
+		MakeBox( "ApproachShoulderRight", new Vector3( shoulderCx, shoulderCy, H * 0.5f ),
+			new Vector3( shoulderLenX, shoulderW, H ), ApproachColor );
+
+		// ---- Gutters: recessed troughs from the foul line down; the bed's side is the inner wall,
+		// the barrier the outer.
+		var laneRegionCx = (foulX + pinDeckEndX) * 0.5f;
+		var laneRegionLenX = pinDeckEndX - foulX;
 		var gutterCy = laneHalf + gutterW * 0.5f;
 		var gutterTop = H - gutterD;
-		MakeBox( "GutterLeft", new Vector3( laneCx, -gutterCy, gutterTop * 0.5f ),
-			new Vector3( laneLenX, gutterW, gutterTop ), GutterColor );
-		MakeBox( "GutterRight", new Vector3( laneCx, gutterCy, gutterTop * 0.5f ),
-			new Vector3( laneLenX, gutterW, gutterTop ), GutterColor );
+		MakeBox( "GutterLeft", new Vector3( laneRegionCx, -gutterCy, gutterTop * 0.5f ),
+			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor );
+		MakeBox( "GutterRight", new Vector3( laneRegionCx, gutterCy, gutterTop * 0.5f ),
+			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor );
 
-		// ---- Barrier curbs + buffer margins: low rails just outboard of each gutter, then a flat
-		// margin for future decoration. Barriers run the length of the lane and the pit.
-		var barrierCx = (foulX + pitEndX) * 0.5f;
-		var barrierLenX = pitEndX - foulX;
+		// ---- Barrier curbs + buffer margins, foul line through the pit. Barriers are low rails just
+		// outboard of each gutter; buffers are flat margin for future decoration. Both start at the
+		// foul line so they never overlap the approach shoulders (overlap would z-fight/flicker).
+		var sideCx = (foulX + pitEndX) * 0.5f;
+		var sideLenX = pitEndX - foulX;
 		var barrierCy = gutterOuter + barrierW * 0.5f;
-		MakeBox( "BarrierLeft", new Vector3( barrierCx, -barrierCy, (H + barrierH) * 0.5f ),
-			new Vector3( barrierLenX, barrierW, H + barrierH ), BarrierColor );
-		MakeBox( "BarrierRight", new Vector3( barrierCx, barrierCy, (H + barrierH) * 0.5f ),
-			new Vector3( barrierLenX, barrierW, H + barrierH ), BarrierColor );
+		MakeBox( "BarrierLeft", new Vector3( sideCx, -barrierCy, (H + barrierH) * 0.5f ),
+			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor );
+		MakeBox( "BarrierRight", new Vector3( sideCx, barrierCy, (H + barrierH) * 0.5f ),
+			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor );
 
-		var bufferCx = (approachBackX + pitEndX) * 0.5f;
-		var bufferLenX = pitEndX - approachBackX;
 		var bufferCy = barrierOuter + bufferW * 0.5f;
-		MakeBox( "BufferLeft", new Vector3( bufferCx, -bufferCy, H * 0.5f ),
-			new Vector3( bufferLenX, bufferW, H ), BufferColor );
-		MakeBox( "BufferRight", new Vector3( bufferCx, bufferCy, H * 0.5f ),
-			new Vector3( bufferLenX, bufferW, H ), BufferColor );
+		MakeBox( "BufferLeft", new Vector3( sideCx, -bufferCy, H * 0.5f ),
+			new Vector3( sideLenX, bufferW, H ), BufferColor );
+		MakeBox( "BufferRight", new Vector3( sideCx, bufferCy, H * 0.5f ),
+			new Vector3( sideLenX, bufferW, H ), BufferColor );
 
 		// ---- Pit: a recessed floor behind the pins so there's no instant falloff, then a back wall.
 		var pitTop = H - pitD;
@@ -177,27 +192,30 @@ public sealed class LaneBuilder : Component
 		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (H + backWallH) * 0.5f ),
 			new Vector3( backThk, platformHalf * 2f, H + backWallH ), BarrierColor );
 
-		// ---- Boards: 39 alternating-tint planks across the lane, laid just proud of the bed so the
-		// seams read. (Bowlers aim by board number, so they're more than decoration.)
+		// ---- Boards: 39 alternating-tint planks across the lane, straddling z = H so they read as
+		// the surface itself (not floating above it) with the seams showing through. Visual-only —
+		// no collider — so the ball never catches them. Bowlers aim by board number, so they're
+		// functional, not just decoration.
 		var boardW = (laneHalf * 2f) / BoardCount;
-		var boardZ = H + 1.5f * u;
 		for ( var b = 0; b < BoardCount; b++ )
 		{
 			var by = laneHalf - (b + 0.5f) * boardW;
-			MakeDecal( $"Board{b + 1}", new Vector3( laneCx, by, boardZ ),
-				new Vector3( laneLenX, boardW * 0.92f, 0.4f * u ),
+			MakeDecal( $"Board{b + 1}", new Vector3( laneRegionCx, by, H ),
+				new Vector3( laneRegionLenX, boardW * 0.92f, 4f ),
 				(b % 2 == 0) ? LaneColorA : LaneColorB );
 		}
 
-		// ---- Foul line: a bright line across the lane and both gutters at the lane's start.
-		MakeDecal( "FoulLine", new Vector3( foulX, 0f, H + 2.0f * u ),
-			new Vector3( 2f * u, gutterOuter * 2f, 0.5f * u ), FoulLineColor );
+		// ---- Foul line: a bright line across the lane and both gutters at the lane's start, flush
+		// on the surface and a hair thicker than the boards so it reads over them.
+		MakeDecal( "FoulLine", new Vector3( foulX, 0f, H ),
+			new Vector3( 2f * u, gutterOuter * 2f, 6f ), FoulLineColor );
 
 		// ---- Arrows: the seven targeting arrows in their dovetail "V" — centre arrow nearest the
-		// foul line, outers stepping back — apex pointing back toward the bowler.
+		// foul line, outers stepping back — each pointing DOWN-LANE toward the pins, as on a real
+		// lane. Flat visual-only decals sitting just above the boards.
 		_arrowModel = BuildArrowModel( u );
 		int[] arrowBoards = { 5, 10, 15, 20, 25, 30, 35 };
-		var arrowZ = H + 2.5f * u;
+		var arrowZ = H + 4f;
 		foreach ( var board in arrowBoards )
 		{
 			var ay = laneHalf - (board - 0.5f) * boardW;
@@ -267,7 +285,8 @@ public sealed class LaneBuilder : Component
 		mr.Tint = ArrowColor;
 	}
 
-	// A flat isosceles triangle in the XY plane with its apex toward -x (the bowler), faces up.
+	// A flat isosceles triangle in the XY plane with its apex toward +x (down-lane, toward the
+	// pins, as on a real lane), faces up. Both windings are emitted so it's never culled.
 	private Model BuildArrowModel( float u )
 	{
 		var len = ArrowLengthInches * u;
@@ -275,7 +294,7 @@ public sealed class LaneBuilder : Component
 
 		var vb = new VertexBuffer();
 		vb.Init( true );
-		var apex = new Vector3( -len, 0f, 0f );
+		var apex = new Vector3( len, 0f, 0f );
 		var baseL = new Vector3( 0f, -wid * 0.5f, 0f );
 		var baseR = new Vector3( 0f, wid * 0.5f, 0f );
 		vb.Add( new Vertex( apex, Vector3.Up, Vector3.Zero, new Vector4( 0f, 0.5f, 0f, 0f ) ) );
