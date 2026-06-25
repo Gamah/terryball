@@ -5,82 +5,88 @@ using System.Linq;
 namespace Terryball;
 
 /// <summary>
-/// Fixed alley camera. It sits behind the run-up (just back of the throw position) up at eye
-/// height and watches the pins down the lane — it does NOT chase the ball. The ball rolls away
-/// from the camera toward the pins and the view stays put, the way you'd watch a real throw.
+/// Bowling camera. During the roll it RIDES WITH THE BALL — a third-person follow cam behind it,
+/// horizon-locked (never rolls with the ball's spin), so "forward" is always down-lane and the
+/// camera-relative steering in <see cref="BallController"/> stays predictable. The mouse yaws
+/// around the ball and pitches to look up/down.
 ///
-/// The mouse can still nudge the aim within a small cone (clamped yaw/pitch offsets around the
-/// look-at-pins direction) so you can glance around, but it always recentres on the pins.
-/// Horizon-locked: roll stays 0, so "forward" projected flat is reliably down-lane and the
-/// camera-relative steering in <see cref="BallController"/> stays predictable.
+/// The camera only LEAVES the ball once the throw crosses the throw line: the director sets
+/// <see cref="Watching"/>, and the camera eases off to a vantage just behind and above the pin
+/// deck to watch the hit (look input frozen). On reset the director clears Watching and the camera
+/// eases straight back onto the ball at the run-up — so it's never detached from the player except
+/// during the watched hit.
 /// </summary>
 public sealed class BallCamera : Component
 {
-	/// <summary>How far BEHIND the run-up the camera sits (down-lane is +x, so behind is −x).</summary>
-	[Property] public float BackDistance { get; set; } = 550f;
-	/// <summary>Camera height above the platform surface.</summary>
-	[Property] public float Height { get; set; } = 360f;
-	/// <summary>How far (degrees) the mouse can swing the aim left/right off the pins.</summary>
-	[Property, Range( 0f, 80f, 1f )] public float LookYawRange { get; set; } = 35f;
-	/// <summary>How far (degrees) the mouse can tilt the aim up/down off the pins.</summary>
-	[Property, Range( 0f, 60f, 1f )] public float LookPitchRange { get; set; } = 22f;
+	[Property] public float Distance { get; set; } = 700f;
+	[Property] public float Height { get; set; } = 60f;
+	/// <summary>Lowest the camera can pitch (look down), in degrees.</summary>
+	[Property, Range( -89f, 89f, 1f )] public float MinPitch { get; set; } = -5f;
+	/// <summary>Highest the camera can pitch (look up), in degrees.</summary>
+	[Property, Range( -89f, 89f, 1f )] public float MaxPitch { get; set; } = 15f;
 
 	// --- Watch mode -------------------------------------------------------------------------
-	// While the director is watching the hit, the camera eases DOWN-LANE to a vantage just behind
-	// and above the pin deck for a close overview of the strike — the lane is long, so the play
-	// camera back at the run-up sees the pins only distantly. Look input is frozen so the shot stays
-	// steady, and we ease between the play and watch positions instead of snapping.
-	[Property, Group( "Watch" )] public float WatchBack { get; set; } = 1400f;  // how far behind the deck
+	// Once the ball crosses the throw line the camera blends OFF the ball to a vantage behind and
+	// above the pin deck for a close overview of the strike. We blend a 0→1 weight so play tracks
+	// the ball tightly (no lag) and only the entry/exit to watch eases.
+	[Property, Group( "Watch" )] public float WatchBack { get; set; } = 1400f;  // behind the deck
 	[Property, Group( "Watch" )] public float WatchHeight { get; set; } = 700f; // and up, for the overview
-	[Property, Group( "Watch" )] public float WatchLerp { get; set; } = 4f;      // ease rate (per second)
+	[Property, Group( "Watch" )] public float WatchLerp { get; set; } = 4f;      // blend rate (per second)
 
-	/// <summary>Driven by the round director: ease to the pin-deck overview and stop reading look.</summary>
+	/// <summary>Driven by the round director: blend off the ball to the pin-deck overview and stop
+	/// reading look. Cleared on reset, so the camera blends back onto the ball.</summary>
 	public bool Watching { get; set; }
 
+	private BallController _ball;
 	private LaneBuilder _lane;
-	private float _yawOffset;
-	private float _pitchOffset;
-	private Vector3 _pos;     // eased camera position
-	private bool _posInit;
+	private float _yaw;
+	private float _pitch = 15f;
+	private float _blend; // 0 = on the ball, 1 = pin-deck watch vantage
 
 	protected override void OnEnabled()
 	{
+		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
 		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
 	}
 
 	protected override void OnUpdate()
 	{
-		if ( !_lane.IsValid() )
+		if ( !_ball.IsValid() )
 		{
-			_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
-			if ( !_lane.IsValid() ) return;
+			_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
+			if ( !_ball.IsValid() ) return;
 		}
+		if ( !_lane.IsValid() )
+			_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
 
-		// Freeze look input while watching; otherwise the mouse nudges the aim within its cone.
+		// Freeze look input while watching; otherwise yaw/pitch follow the mouse as normal.
 		if ( !Watching )
 		{
 			var look = Input.AnalogLook; // sign + sensitivity already applied
-			_yawOffset = (_yawOffset + look.yaw).Clamp( -LookYawRange, LookYawRange );
-			_pitchOffset = (_pitchOffset - look.pitch).Clamp( -LookPitchRange, LookPitchRange );
+			_yaw += look.yaw;
+			_pitch = ( _pitch - look.pitch ).Clamp( MinPitch, MaxPitch );
 		}
 
-		// Play vantage: behind the run-up, raised. Watch vantage: behind + above the pin deck.
-		var runUp = _lane.RunUpWorldPosition;
-		var deck = _lane.PinDeckWorldCenter;
-		var playPos = new Vector3( runUp.x - BackDistance, runUp.y, runUp.z + Height );
-		var watchPos = new Vector3( deck.x - WatchBack, deck.y, deck.z + WatchHeight );
-		var target = Watching ? watchPos : playPos;
+		// --- Play framing: third-person follow behind the ball, horizon-locked. ----------------
+		var playRot = Rotation.From( _pitch, _yaw, 0f );
+		var playPos = _ball.WorldPosition + Vector3.Up * Height - playRot.Forward * Distance;
 
-		// Ease between the two vantages so entering/leaving watch glides.
-		if ( !_posInit ) { _pos = target; _posInit = true; }
-		_pos = Vector3.Lerp( _pos, target, MathF.Min( 1f, WatchLerp * Time.Delta ) );
+		// --- Watch framing: behind + above the pin deck, looking at it. -------------------------
+		var watchPos = playPos;
+		var watchRot = playRot;
+		if ( _lane.IsValid() )
+		{
+			var deck = _lane.PinDeckWorldCenter;
+			watchPos = new Vector3( deck.x - WatchBack, deck.y, deck.z + WatchHeight );
+			var aim = Rotation.LookAt( (deck - watchPos).Normal, Vector3.Up ).Angles();
+			watchRot = Rotation.From( aim.pitch, aim.yaw, 0f ); // horizon-locked
+		}
 
-		// Aim at the pin deck, then add the clamped mouse offsets. Horizon-locked (roll 0).
-		var toPins = deck - _pos;
-		var aim = Rotation.LookAt( toPins.Normal, Vector3.Up ).Angles();
-		var rot = Rotation.From( (aim.pitch + _pitchOffset).Clamp( -89f, 89f ), aim.yaw + _yawOffset, 0f );
+		// Blend toward/away from the watch vantage. At blend 0 the camera tracks the ball tightly;
+		// only the transition into/out of watch eases.
+		_blend = MathX.Lerp( _blend, Watching ? 1f : 0f, MathF.Min( 1f, WatchLerp * Time.Delta ) );
 
-		WorldPosition = _pos;
-		WorldRotation = rot;
+		WorldPosition = Vector3.Lerp( playPos, watchPos, _blend );
+		WorldRotation = Rotation.Slerp( playRot, watchRot, _blend );
 	}
 }

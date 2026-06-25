@@ -24,7 +24,7 @@
 		@(watching ? "WATCHING" : "PINS")
 	</div>
 	<div style="font-size: 14px; color: rgba(255,255,255,0.7); margin-bottom: 12px;">
-		@down down / @(10 - down) up
+		@(10 - down) up / @down down
 	</div>
 
 	@foreach ( var row in Rows )
@@ -46,14 +46,15 @@
 
 @code
 {
-	// Rack triangle: head pin (1) nearest the bowler at the top, the back row (7–10) at the bottom,
-	// matching how LaneBuilder racks them.
+	// Rack triangle as the bowler sees it down-lane: head pin (1) nearest, so at the BOTTOM, the
+	// back row (7–10) farthest at the top — and mirrored left-right (10 on the left) to match the
+	// view from behind the lane. (A straight 180° rotation of the physical rack.)
 	private static readonly int[][] Rows =
 	{
+		new[] { 10, 9, 8, 7 },
+		new[] { 6, 5, 4 },
+		new[] { 3, 2 },
 		new[] { 1 },
-		new[] { 2, 3 },
-		new[] { 4, 5, 6 },
-		new[] { 7, 8, 9, 10 },
 	};
 
 	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
