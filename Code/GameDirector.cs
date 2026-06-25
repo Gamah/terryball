@@ -52,13 +52,20 @@ public sealed class GameDirector : Component
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
 	private float _watchStart;
-	private bool _probed; // one-shot physics probe logged?
+	private bool _probed;      // one-shot physics probe logged?
+	private float _impactSpeed; // ball speed at the throw line, to compare against the deck-exit speed
+	private bool _exitLogged;   // logged the deck-exit speed for this throw?
 
 	protected override void OnStart()
 	{
 		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
 		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
 		_camera = Scene.GetAllComponents<BallCamera>().FirstOrDefault();
+
+		// DEBUG/feel: raise physics substeps so the fast 10-pin cascade is actually resolved instead
+		// of the ball plowing through it in one coarse step. This is world-global but only buys
+		// accuracy (costs CPU) — it doesn't change behaviour for players/other modes like gravity would.
+		Scene.PhysicsWorld.SubSteps = 8;
 
 		if ( _ball.IsValid() )
 		{
@@ -90,6 +97,17 @@ public sealed class GameDirector : Component
 				break;
 
 			case RoundState.Watching:
+				// DEBUG: sample the ball's speed the moment it clears the back of the rack — how much
+				// momentum did 10 pins actually take out of it? (God-mode if it keeps most of it.)
+				if ( !_exitLogged && _ball.WorldPosition.x >= _lane.PinDeckEndWorldX )
+				{
+					_exitLogged = true;
+					var bb = _ball.Components.Get<Rigidbody>();
+					var exit = bb.IsValid() ? bb.Velocity.Length : 0f;
+					var retained = _impactSpeed > 1f ? exit / _impactSpeed * 100f : 0f;
+					Log.Info( $"[terryball][exit] cleared the rack: speed={exit:F0} u/s  " +
+						$"retained={retained:F0}% of impact({_impactSpeed:F0})  downSoFar={DownCount}" );
+				}
 				if ( Time.Now - _watchStart >= WatchSeconds )
 					Reset();
 				break;
@@ -102,14 +120,15 @@ public sealed class GameDirector : Component
 		_watchStart = Time.Now;
 		_ball.ControlsLocked = true;        // ignore input + braking: coast into the pins
 		if ( _camera.IsValid() ) _camera.Watching = true; // back off and up
+		_exitLogged = false;
 
 		// DEBUG: ball state the instant it crosses the throw line (impact conditions).
 		var bb = _ball.Components.Get<Rigidbody>();
 		if ( bb.IsValid() )
 		{
-			var v = bb.Velocity.Length;
-			var mph = v * (_ball.RealBallInches / (_ball.Radius * 2f)) / 17.6f;
-			Log.Info( $"[terryball][impact] throw-line cross: speed={v:F0} u/s (~{mph:F1} mph)  " +
+			_impactSpeed = bb.Velocity.Length;
+			var mph = _impactSpeed * (_ball.RealBallInches / (_ball.Radius * 2f)) / 17.6f;
+			Log.Info( $"[terryball][impact] throw-line cross: speed={_impactSpeed:F0} u/s (~{mph:F1} mph)  " +
 				$"angVel={bb.AngularVelocity.Length:F1}  vel={bb.Velocity}" );
 		}
 	}

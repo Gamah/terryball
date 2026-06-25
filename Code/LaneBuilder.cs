@@ -108,6 +108,10 @@ public sealed class LaneBuilder : Component
 	/// <summary>Centre of the pin triangle on the platform top — what the camera frames.</summary>
 	public Vector3 PinDeckWorldCenter { get; private set; }
 
+	/// <summary>World X just past the back row of pins — used to sample the ball's speed once it has
+	/// cleared the whole rack (how much momentum it lost to the pins).</summary>
+	public float PinDeckEndWorldX { get; private set; }
+
 	protected override void OnEnabled()
 	{
 		if ( _built ) return;
@@ -155,6 +159,7 @@ public sealed class LaneBuilder : Component
 		// centred across the lane, on the platform top. And the pin-triangle centre, for the camera.
 		RunUpWorldPosition = new Vector3( approachBackX + approachLen * 0.25f, 0f, H );
 		PinDeckWorldCenter = new Vector3( (headPinX + backRowX) * 0.5f, 0f, H );
+		PinDeckEndWorldX = pinDeckEndX;
 		var pitEndX = pinDeckEndX + PitLengthInches * u;
 
 		// ---- Ramp: one sloped slab whose TOP surface runs from the floor (z = 0) up to the
