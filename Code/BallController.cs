@@ -7,48 +7,62 @@ namespace Terryball;
 /// The hamster-ball mechanic.
 ///
 /// A large glass ball (Rigidbody + SphereCollider) with Terry (the Citizen) riding the
-/// INSIDE surface. WASD (camera-relative) makes Terry "run" up the inner wall like a
-/// hamster; gravity always pulls him back toward the bottom, so he settles there on his
-/// own. Terry's offset from the bottom is turned into the roll torque an off-centre weight
-/// there would produce (NOT by moving the ball's mass-centre — that sank the ball through
-/// the floor); the torque vanishes once he's back at the bottom, so releasing input coasts.
+/// INSIDE surface.
 ///
-/// Terry is purely visual here (no Terry↔ball collision is simulated, by design); his run
-/// animation is driven from how fast he's actually moving through the world. The standalone
+/// Control: WASD is camera-relative and names a target travel direction. Each tick we steer
+/// the ball's horizontal velocity toward wishDir * <see cref="MaxSpeed"/> with a proportional
+/// roll torque (about up × velocityError). With no key held the target is zero, so the same
+/// controller becomes a brake that opposes the current roll — the ball coasts to a stop and
+/// never accelerates on its own.
+///
+/// Terry is purely visual: he "runs" up the inner wall toward the wish direction and gravity
+/// settles him to the bottom, but his motion no longer drives the ball (it used to, via an
+/// off-centre-weight torque). His run animation is driven from how fast he's actually moving
+/// through the world, and no Terry↔ball collision is simulated (by design). The standalone
 /// <see cref="TerryController"/> stub is kept in the repo for other reuse.
 /// </summary>
 public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
-	/// <summary>Rolling resistance: how fast the ball's spin bleeds off when it isn't being
-	/// driven. The drive only ever adds forward torque, so this is the only thing that slows a
-	/// coasting ball — too low and a single tap rolls almost forever. Higher also lowers top
-	/// speed, so re-check the mph HUD / bump <see cref="DriveGain"/> if a hard throw feels weak.</summary>
-	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 3.0f;
+	/// <summary>Passive rolling resistance. Braking is now active (releasing the keys applies a
+	/// <see cref="BrakeGain"/> counter-torque), so keep this low — it just trims the residual
+	/// spin the brake leaves behind. Higher also lowers top speed under drive.</summary>
+	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.5f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
 	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
-	/// <summary>How hard input drives the occupant up the wall (rad/s²-ish).</summary>
-	[Property, Group( "Drive" )] public float RunAccel { get; set; } = 8f;
-	/// <summary>How hard gravity pulls the occupant back toward the bottom while driving.</summary>
-	[Property, Group( "Drive" )] public float RestoreAccel { get; set; } = 1f;
-	/// <summary>Damping on the occupant's motion along the surface while driving.</summary>
-	[Property, Group( "Drive" )] public float Damping { get; set; } = 3f;
-	/// <summary>When you release the controls, the occupant has to slide back to the bottom
-	/// before the roll torque dies — until then the ball keeps being driven. A strong restore
-	/// with near-critical damping (≈2·√restore) snaps him back fast without overshoot, so
-	/// letting go promptly settles Terry and stops the drive.</summary>
-	[Property, Group( "Drive" )] public float ReleaseRestore { get; set; } = 25f;
-	[Property, Group( "Drive" )] public float ReleaseDamping { get; set; } = 10f;
-	/// <summary>Fraction of Radius the off-centre weight sits at (0..1) — the roll lever.</summary>
-	[Property, Group( "Drive" ), Range( 0f, 1f )] public float MassOffsetFactor { get; set; } = 0.7f;
-	/// <summary>Stylized multiplier on the roll torque. Impact speed scales ~√(this), so
-	/// ~6.25× ≈ 2.5× faster. Tune against the MPH readout. (Raised alongside AngularDamping:
-	/// top speed ∝ DriveGain/AngularDamping, so more rolling resistance needs more drive.)</summary>
-	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 20f;
+	// --- Ball steering (the control scheme) --------------------------------------------
+	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
+	// wishDir * MaxSpeed with a proportional drive torque. With no key held the target is
+	// zero, so the same controller brakes — the ball only ever loses speed when nothing is
+	// pressed and never self-accelerates.
+
+	/// <summary>Top travel speed (u/s) a full WASD push steers toward.</summary>
+	[Property, Group( "Drive" )] public float MaxSpeed { get; set; } = 2500f;
+	/// <summary>Proportional gain turning the velocity error (target − current) into roll
+	/// torque while a key is held. Higher = snappier accel/steering. Tune by feel.</summary>
+	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 400f;
+	/// <summary>Proportional gain on the braking torque applied when no key is held; it
+	/// opposes the current roll so the ball coasts to a stop.</summary>
+	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 250f;
+
+	// --- Occupant (Terry) visual climb -------------------------------------------------
+	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
+	// "runs" up-slope toward wishDir and gravity settles him back to the bottom.
+
+	/// <summary>How hard input drives Terry up the wall (visual only).</summary>
+	[Property, Group( "Occupant" )] public float RunAccel { get; set; } = 8f;
+	/// <summary>Gravity pull settling Terry toward the bottom while driving (visual only).</summary>
+	[Property, Group( "Occupant" )] public float RestoreAccel { get; set; } = 1f;
+	/// <summary>Damping on Terry's motion along the surface while driving (visual only).</summary>
+	[Property, Group( "Occupant" )] public float Damping { get; set; } = 3f;
+	/// <summary>On release, Terry is pulled back to the bottom hard with near-critical damping
+	/// (≈2·√restore) so he drops back down promptly without overshoot (visual only).</summary>
+	[Property, Group( "Occupant" )] public float ReleaseRestore { get; set; } = 25f;
+	[Property, Group( "Occupant" )] public float ReleaseDamping { get; set; } = 10f;
 
 	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
@@ -138,34 +152,34 @@ public sealed class BallController : Component
 		}
 		if ( wish.Length > 1f ) wish = wish.Normal;
 
-		// Spherical-pendulum dynamics on the inner surface.
-		// Gravity's tangential component pulls the occupant downhill (toward the bottom);
-		// input pushes it up-slope in the wish direction. Both are projected onto the
-		// sphere's tangent plane at the current position.
+		// --- Steer the ball ------------------------------------------------------------
+		// wishDir names where you want to go; steer the ball's horizontal velocity toward
+		// wishDir * MaxSpeed with a proportional roll torque. With no input the target is
+		// zero, so the controller brakes instead — the ball never gains speed on its own.
+		// (Rolling without slip: a torque about up × d rolls the ball toward d, so a torque
+		// about up × velocityError nudges the velocity toward the target.)
+		var hasInput = wish.Length > 0.01f;
+		var vel = _body.Velocity.WithZ( 0f );
+		var targetVel = hasInput ? wish.Normal * (MaxSpeed * wish.Length.Clamp( 0f, 1f )) : Vector3.Zero;
+		var velError = targetVel - vel;
+		var gain = hasInput ? DriveGain : BrakeGain;
+		_body.ApplyTorque( Vector3.Cross( Vector3.Up, velError ) * gain );
+
+		// --- Terry's visual climb (no longer drives the ball) --------------------------
+		// Spherical-pendulum on the inner surface: input pushes Terry up-slope toward wishDir,
+		// gravity's tangential component pulls him to the bottom, damping settles him. A
+		// snappier restore on release drops him back down promptly.
 		var tGrav = Vector3.Down - Vector3.Down.Dot( _dir ) * _dir;
 		var tInput = wish - wish.Dot( _dir ) * _dir;
-
-		// With no input, pull the occupant back to the bottom hard so the roll torque dies
-		// quickly — otherwise he coasts around the wall and the ball keeps driving after release.
-		var hasInput = wish.Length > 0.01f;
 		var restore = hasInput ? RestoreAccel : ReleaseRestore;
 		var damp = hasInput ? Damping : ReleaseDamping;
-
 		var accel = restore * tGrav + RunAccel * tInput - damp * _vel;
 		_vel += accel * dt;
 		_dir = (_dir + _vel * dt).Normal;
 		_vel -= _vel.Dot( _dir ) * _dir; // keep velocity tangent to the sphere
 
-		// Roll the ball with the gravitational torque an off-centre weight at Terry's
-		// position would create — WITHOUT moving the mass centre. (Updating MassCenterOverride
-		// every frame injected spurious motion as Terry settled, sinking the ball through the
-		// floor.) τ = r × (m·g); it's zero when Terry is at the bottom, so the ball settles.
-		var rOffset = _dir * (Radius * MassOffsetFactor);
-		var torque = Vector3.Cross( rOffset, Mass * Scene.PhysicsWorld.Gravity ) * DriveGain;
-		_body.ApplyTorque( torque );
-
 		// Keep the body awake while input is held or it's still moving.
-		if ( wish.Length > 0.01f || _body.Velocity.LengthSquared > 1f )
+		if ( hasInput || _body.Velocity.LengthSquared > 1f )
 			_body.Sleeping = false;
 	}
 
