@@ -25,10 +25,12 @@ public sealed class BallController : Component
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
-	/// <summary>Passive rolling resistance. Braking is now active (releasing the keys applies a
-	/// <see cref="BrakeGain"/> counter-force), so keep this low — it just trims the residual
-	/// spin the brake leaves behind. Higher also lowers top speed under drive.</summary>
-	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.5f;
+	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
+	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
+	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the
+	/// coast and overrides the brake. It mainly exists to bleed off lone vertical (yaw) spin the
+	/// brake can't see. Higher also lowers top speed under drive.</summary>
+	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.05f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
 	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
 
