@@ -76,8 +76,12 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Pins" )] public float PinSpacingInches { get; set; } = 12f;   // pin centres
 	[Property, Group( "Pins" )] public float PinWidthInches { get; set; } = 4.766f; // belly (widest) diameter
 	[Property, Group( "Pins" )] public float PinHeightInches { get; set; } = 15f;
-	/// <summary>Mass in kg. A regulation bowling pin is ~1.6 kg (3 lb 8 oz).</summary>
-	[Property, Group( "Pins" )] public float PinMass { get; set; } = 1.6f;
+	/// <summary>Mass in kg. A regulation bowling pin is ~1.6 kg (3 lb 8 oz) — but at that mass the
+	/// cascade is realistically efficient and a flush hit wrecks the rack (correct, but too-easy
+	/// strikes by feel). This is now a DIFFICULTY DIAL, deliberately detached from reality: heavier
+	/// pins fly slower off the ball and a cascade-struck pin can't always topple its neighbour, so
+	/// the back corners survive more often → fewer strikes, more spares. Tune by feel.</summary>
+	[Property, Group( "Pins" )] public float PinMass { get; set; } = 3.0f;
 	/// <summary>Pin-to-lane kinetic friction. Real pins have a smooth plastic coating
 	/// engineered to slide; lane CoF is ~0.18, so ~0.1–0.18 is realistic.</summary>
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
