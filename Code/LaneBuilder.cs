@@ -101,6 +101,13 @@ public sealed class LaneBuilder : Component
 	/// <summary>World X of the throw line. The director arms watch-mode when the ball crosses it.</summary>
 	public float ThrowLineWorldX { get; private set; }
 
+	/// <summary>Centre of the run-up area on the platform TOP surface (z = play surface), where the
+	/// ball is spawned/re-racked. Add the ball's radius to sit it on the surface.</summary>
+	public Vector3 RunUpWorldPosition { get; private set; }
+
+	/// <summary>Centre of the pin triangle on the platform top — what the camera frames.</summary>
+	public Vector3 PinDeckWorldCenter { get; private set; }
+
 	protected override void OnEnabled()
 	{
 		if ( _built ) return;
@@ -143,6 +150,11 @@ public sealed class LaneBuilder : Component
 		var headPinX = foulX + laneLen;
 		var backRowX = headPinX + rowDepth * 3f;
 		var pinDeckEndX = backRowX + PinDeckTailInches * u;  // lane surface stops here
+
+		// Where the ball is racked for a throw: a quarter into the approach from its back edge,
+		// centred across the lane, on the platform top. And the pin-triangle centre, for the camera.
+		RunUpWorldPosition = new Vector3( approachBackX + approachLen * 0.25f, 0f, H );
+		PinDeckWorldCenter = new Vector3( (headPinX + backRowX) * 0.5f, 0f, H );
 		var pitEndX = pinDeckEndX + PitLengthInches * u;
 
 		// ---- Ramp: one sloped slab whose TOP surface runs from the floor (z = 0) up to the

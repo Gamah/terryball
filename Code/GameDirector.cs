@@ -61,8 +61,15 @@ public sealed class GameDirector : Component
 
 		if ( _ball.IsValid() )
 		{
-			_ballHome = _ball.WorldPosition;
+			// Rack the ball in the run-up area on the lane platform (sitting on the surface), not at
+			// the world origin. Fall back to wherever it was placed if the lane isn't up yet.
+			_ballHome = _lane.IsValid()
+				? _lane.RunUpWorldPosition + Vector3.Up * _ball.Radius
+				: _ball.WorldPosition;
 			_ballHomeRot = _ball.WorldRotation;
+
+			// Put it there now, too, so the first throw starts from the run-up under the camera.
+			PlaceBallHome();
 		}
 	}
 
@@ -116,6 +123,12 @@ public sealed class GameDirector : Component
 		}
 
 		// Teleport the ball back to the run-up and hand control back to the player.
+		PlaceBallHome();
+	}
+
+	// Drop the ball on its run-up spot, upright and dead still.
+	private void PlaceBallHome()
+	{
 		_ball.WorldPosition = _ballHome;
 		_ball.WorldRotation = _ballHomeRot;
 		var ballBody = _ball.Components.Get<Rigidbody>();
