@@ -25,7 +25,7 @@ public sealed class BallController : Component
 	/// driven. The drive only ever adds forward torque, so this is the only thing that slows a
 	/// coasting ball — too low and a single tap rolls almost forever. Higher also lowers top
 	/// speed, so re-check the mph HUD / bump <see cref="DriveGain"/> if a hard throw feels weak.</summary>
-	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.6f;
+	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 3.0f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb).</summary>
 	[Property, Group( "Ball" )] public float Mass { get; set; } = 6.8f;
 
