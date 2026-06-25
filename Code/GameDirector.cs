@@ -63,6 +63,35 @@ public sealed class GameDirector : Component
 	private float _peakPinSpin; // peak pin angular speed seen this throw (rad/s)
 	private float _peakPinVel;  // peak pin linear speed seen this throw (u/s)
 
+	// --- Game / frame state -------------------------------------------------------------
+	// A bowling game is 10 frames of 1–2 balls (the 10th gets a 3rd on a strike/spare). We
+	// track one PlayerScore per player — a list, so adding players later is a data change, not
+	// a rewrite — but seed exactly one for now. The active player rolls _frame; with a single
+	// player AdvanceFrame just steps the frame, with several it'd rotate players first.
+
+	/// <summary>One player's scratch: the pin counts knocked on each ball, grouped by frame.</summary>
+	public sealed class PlayerScore
+	{
+		public string Name { get; set; }
+		/// <summary>Ten frames; each holds the pins felled per ball (1–2 balls, or 3 in the 10th).</summary>
+		public readonly List<List<int>> Frames = new();
+		public PlayerScore( string name )
+		{
+			Name = name;
+			for ( var i = 0; i < 10; i++ ) Frames.Add( new List<int>() );
+		}
+	}
+
+	private readonly List<PlayerScore> _players = new();
+	private int _current;            // whose turn (index into _players)
+	private int _frame;              // current frame 0..9 for the active player
+	private int _ballStartDown;      // pins already down entering the current ball (swept from earlier balls this frame)
+	private readonly HashSet<int> _sweptPins = new(); // pins cleared off the deck this frame (down on an earlier ball)
+	private bool _gameOver;
+
+	/// <summary>True once the 10th frame is complete — the overlay shows GAME OVER / press P.</summary>
+	public bool GameOver => _gameOver;
+
 	protected override void OnStart()
 	{
 		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
@@ -81,6 +110,17 @@ public sealed class GameDirector : Component
 			// Put it there now, too, so the first throw starts from the run-up under the camera.
 			PlaceBallHome();
 		}
+
+		// One player for now; the list + active-player index are here so multiplayer is a data
+		// change later, not a rewrite. The pins were just racked by the LaneBuilder, so a fresh
+		// game starts on frame 1 with a full deck.
+		_players.Clear();
+		_players.Add( new PlayerScore( "Player 1" ) );
+		_current = 0;
+		_frame = 0;
+		_ballStartDown = 0;
+		_sweptPins.Clear();
+		_gameOver = false;
 	}
 
 	protected override void OnUpdate()
@@ -91,14 +131,22 @@ public sealed class GameDirector : Component
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
 		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
 
+		// Press P at any time to start a brand-new game: frame 1, full rack, ball in hand.
+		if ( Input.Keyboard.Pressed( "P" ) )
+		{
+			NewGame();
+			return;
+		}
+
 		Probe();
 		Score();
 
 		switch ( State )
 		{
 			case RoundState.Rolling:
-				// Arm watch-mode the moment the ball's centre passes the throw line.
-				if ( _ball.WorldPosition.x >= _lane.ThrowLineWorldX )
+				// Arm watch-mode the moment the ball's centre passes the throw line (unless the
+				// game's already over and the ball is parked).
+				if ( !_gameOver && _ball.WorldPosition.x >= _lane.ThrowLineWorldX )
 					EnterWatch();
 				break;
 
@@ -126,7 +174,7 @@ public sealed class GameDirector : Component
 						$"peakPinSpin={_peakPinSpin:F1} rad/s  peakPinVel={_peakPinVel:F0} u/s" );
 				}
 				if ( Time.Now - _watchStart >= WatchSeconds )
-					Reset();
+					ProcessSettledBall();
 				break;
 		}
 	}
@@ -209,30 +257,185 @@ public sealed class GameDirector : Component
 		Log.Info( $"[terryball][leave] standing={string.Join( ",", standing )}  ({standing.Count} left)" );
 	}
 
-	private void Reset()
+	// The watch has ended and the pins have settled: book this ball's pinfall onto the active
+	// player's frame, then decide what comes next — another ball this frame (respot the pins
+	// still standing), a fresh frame (full re-rack), or the end of the game.
+	private void ProcessSettledBall()
 	{
 		LogLeave();
+
+		// Pins down now (Score() already marks both physics-down pins AND ones swept on an
+		// earlier ball this frame), minus the ones that were already down entering this ball,
+		// is exactly what THIS ball knocked over.
+		var downNow = _statuses.Count( s => s.Down );
+		var knocked = Math.Clamp( downNow - _ballStartDown, 0, 10 );
+
+		var player = _players[_current];
+		var frame = player.Frames[_frame];
+		frame.Add( knocked );
+
+		DecideNextBall( frame );
+	}
+
+	// Bowling's flow control. Frames 1–9: a first-ball strike ends the frame, otherwise you get
+	// a second ball at the pins you left. The 10th frame is the special case — a strike or spare
+	// buys a third ball, and a cleared deck (double-strike, or the spare ball) re-racks fresh.
+	private void DecideNextBall( List<int> frame )
+	{
+		var tenth = _frame == 9;
+		var ball = frame.Count; // balls thrown so far this frame (1, 2 or 3)
+
+		if ( !tenth )
+		{
+			var strike = frame[0] == 10;
+			if ( strike || ball >= 2 )
+				AdvanceFrame();                 // strike (1 ball) or open/spare (2 balls): frame done
+			else
+				ContinueFrame( fresh: false );  // second ball at the standing pins
+			return;
+		}
+
+		// --- 10th frame ---
+		if ( ball == 1 )
+		{
+			// A strike clears the deck, so the bonus ball is on a fresh rack; otherwise it's the
+			// ordinary second ball at what's left.
+			ContinueFrame( fresh: frame[0] == 10 );
+		}
+		else if ( ball == 2 )
+		{
+			var earnedThird = frame[0] == 10 || frame[0] + frame[1] >= 10; // strike or spare
+			if ( !earnedThird )
+			{
+				EndGame();
+			}
+			else
+			{
+				// Third ball on a fresh rack only if the deck was just cleared: a second strike
+				// after an opening strike, or the spare ball (which by definition cleared it).
+				var fresh = frame[0] == 10 ? frame[1] == 10 : true;
+				ContinueFrame( fresh );
+			}
+		}
+		else // third ball thrown — the game is done
+		{
+			EndGame();
+		}
+	}
+
+	// Advance the active player to their next frame and rack a fresh deck. (With multiple
+	// players this is where you'd rotate to the next player before stepping the frame.)
+	private void AdvanceFrame()
+	{
+		_frame++;
+		if ( _frame >= 10 )
+		{
+			EndGame();
+			return;
+		}
+		FullRack();
+		_ballStartDown = 0;
+		BeginRolling();
+	}
+
+	// Stay in the same frame for another ball. fresh=true racks a clean deck (10th-frame bonus
+	// after a cleared rack); fresh=false sweeps the pins this ball downed and respots the rest.
+	private void ContinueFrame( bool fresh )
+	{
+		if ( fresh )
+		{
+			FullRack();
+			_ballStartDown = 0;
+		}
+		else
+		{
+			SweepAndRespot();
+			_ballStartDown = _sweptPins.Count; // everything still down is now swept off the deck
+		}
+		BeginRolling();
+	}
+
+	private void EndGame()
+	{
+		_gameOver = true;
+		State = RoundState.Rolling;
+		if ( _camera.IsValid() ) _camera.Watching = false;
+		_ball.Absorbed = false;
+		_ball.ControlsLocked = true; // park the ball; no more throws until P starts a new game
+		PlaceBallHome();
+
+		var cum = ScoreThrough( _players[_current], out var have );
+		var final = 0;
+		for ( var f = 0; f < 10; f++ ) if ( have[f] ) final = cum[f];
+		Log.Info( $"[terryball][game] complete — final score {final}" );
+	}
+
+	// Hand control back and roll the next ball from the run-up.
+	private void BeginRolling()
+	{
 		State = RoundState.Rolling;
 		_ball.ControlsLocked = false;
 		_ball.Absorbed = false;
 		if ( _camera.IsValid() ) _camera.Watching = false;
+		PlaceBallHome();
+	}
 
-		// Re-rack: drop every pin back onto its spot, upright and dead still.
+	// Press-P new game: clear every player's card, full rack, back to frame 1 ball 1.
+	private void NewGame()
+	{
+		foreach ( var p in _players )
+			foreach ( var f in p.Frames )
+				f.Clear();
+		_current = 0;
+		_frame = 0;
+		_gameOver = false;
+		FullRack();
+		_ballStartDown = 0;
+		BeginRolling();
+		Log.Info( "[terryball][game] new game — racked, frame 1" );
+	}
+
+	// Drop every pin back onto its spot, enabled, upright and dead still — a clean rack.
+	private void FullRack()
+	{
+		_sweptPins.Clear();
 		foreach ( var p in _lane.Pins )
+			RespotPin( p );
+	}
+
+	// Sweep the pins this ball knocked down (disable them so they're off the deck and can't foul
+	// the next ball) and respot the ones still standing back onto their exact spots.
+	private void SweepAndRespot()
+	{
+		foreach ( var s in _statuses )
 		{
+			var p = _lane.Pins.FirstOrDefault( pp => pp.Number == s.Number );
 			if ( !p.Object.IsValid() ) continue;
-			p.Object.WorldPosition = p.Home;
-			p.Object.WorldRotation = Rotation.Identity;
-			var rb = p.Object.Components.Get<Rigidbody>();
-			if ( rb.IsValid() )
+			if ( s.Down )
 			{
-				rb.Velocity = Vector3.Zero;
-				rb.AngularVelocity = Vector3.Zero;
+				_sweptPins.Add( p.Number );
+				p.Object.Enabled = false; // off the deck
+			}
+			else
+			{
+				RespotPin( p ); // nudged-but-standing pin returns to its home spot
 			}
 		}
+	}
 
-		// Teleport the ball back to the run-up and hand control back to the player.
-		PlaceBallHome();
+	// Place one pin on its home spot, enabled, upright and motionless.
+	private void RespotPin( LaneBuilder.PinPlacement p )
+	{
+		if ( !p.Object.IsValid() ) return;
+		p.Object.Enabled = true;
+		p.Object.WorldPosition = p.Home;
+		p.Object.WorldRotation = Rotation.Identity;
+		var rb = p.Object.Components.Get<Rigidbody>();
+		if ( rb.IsValid() )
+		{
+			rb.Velocity = Vector3.Zero;
+			rb.AngularVelocity = Vector3.Zero;
+		}
 	}
 
 	// Drop the ball on its run-up spot, upright and dead still.
@@ -259,7 +462,13 @@ public sealed class GameDirector : Component
 		foreach ( var p in _lane.Pins )
 		{
 			var down = true;
-			if ( p.Object.IsValid() )
+			// A pin swept off the deck earlier this frame stays down for the rest of the frame,
+			// regardless of where its (disabled) body is sitting.
+			if ( _sweptPins.Contains( p.Number ) )
+			{
+				down = true;
+			}
+			else if ( p.Object.IsValid() )
 			{
 				var tilted = p.Object.WorldRotation.Up.Dot( Vector3.Up ) < cosTilt;
 				var offsetSq = (p.Object.WorldPosition - p.Home).WithZ( 0f ).LengthSquared;
@@ -267,5 +476,148 @@ public sealed class GameDirector : Component
 			}
 			_statuses.Add( new PinStatus( p.Number, down ) );
 		}
+	}
+
+	// --- Score view for the overlay -----------------------------------------------------
+	// Read-only snapshots the razor scoreboard renders; computed here so the panel stays a dumb
+	// view. One FrameView per frame (its ball marks + running total once scorable), one
+	// PlayerView per player.
+
+	/// <summary>One frame's display: the per-ball mark strings (X, /, -, digits) and the running
+	/// cumulative total, which is null until the frame can actually be scored (its bonus is in).</summary>
+	public sealed class FrameView
+	{
+		public List<string> Balls { get; init; } = new();
+		public int? Score { get; init; }
+		public bool Active { get; init; }
+	}
+
+	/// <summary>One player's row: name, ten frames, grand total and whether it's their turn.</summary>
+	public sealed class PlayerView
+	{
+		public string Name { get; init; } = "";
+		public List<FrameView> Frames { get; init; } = new();
+		public int Total { get; init; }
+		public bool Active { get; init; }
+	}
+
+	/// <summary>Build the scoreboard model for every player. Cheap; called on the panel's rebuild.</summary>
+	public List<PlayerView> BuildScoreView()
+	{
+		var views = new List<PlayerView>();
+		for ( var pi = 0; pi < _players.Count; pi++ )
+		{
+			var player = _players[pi];
+			var cum = ScoreThrough( player, out var have );
+			var frames = new List<FrameView>( 10 );
+			var total = 0;
+			for ( var fr = 0; fr < 10; fr++ )
+			{
+				if ( have[fr] ) total = cum[fr];
+				frames.Add( new FrameView
+				{
+					Balls = BallMarks( player.Frames[fr], fr == 9 ),
+					Score = have[fr] ? cum[fr] : null,
+					Active = pi == _current && fr == _frame && !_gameOver,
+				} );
+			}
+			views.Add( new PlayerView
+			{
+				Name = player.Name,
+				Frames = frames,
+				Total = total,
+				Active = pi == _current,
+			} );
+		}
+		return views;
+	}
+
+	/// <summary>Standard 10-pin cumulative scoring. Returns the running total per frame; the
+	/// matching <paramref name="have"/> flag is false for any frame not yet fully scorable (e.g.
+	/// a strike whose two bonus balls haven't been thrown).</summary>
+	private static int[] ScoreThrough( PlayerScore player, out bool[] have )
+	{
+		// Flatten to a roll sequence (a frames-1–9 strike is the single value 10), which the
+		// classic strike/spare look-ahead walks cleanly — including the 10th frame's bonus balls.
+		var rolls = new List<int>();
+		foreach ( var f in player.Frames )
+			foreach ( var b in f )
+				rolls.Add( b );
+
+		var cum = new int[10];
+		have = new bool[10];
+		var running = 0;
+		var i = 0;
+		for ( var fr = 0; fr < 10 && i < rolls.Count; fr++ )
+		{
+			if ( fr == 9 )
+			{
+				// Last frame is just the sum of its balls, but only "have" it once it's complete:
+				// 3 balls if the first ball is a strike or the first two make a spare, else 2.
+				var need = rolls[i] == 10 || (i + 1 < rolls.Count && rolls[i] + rolls[i + 1] == 10) ? 3 : 2;
+				if ( rolls.Count - i >= need )
+				{
+					for ( var k = i; k < rolls.Count; k++ ) running += rolls[k];
+					cum[fr] = running;
+					have[fr] = true;
+				}
+				break;
+			}
+
+			if ( rolls[i] == 10 ) // strike: 10 + next two balls
+			{
+				if ( i + 2 < rolls.Count ) { running += 10 + rolls[i + 1] + rolls[i + 2]; cum[fr] = running; have[fr] = true; i += 1; }
+				else break;
+			}
+			else if ( i + 1 < rolls.Count && rolls[i] + rolls[i + 1] == 10 ) // spare: 10 + next ball
+			{
+				if ( i + 2 < rolls.Count ) { running += 10 + rolls[i + 2]; cum[fr] = running; have[fr] = true; i += 2; }
+				else break;
+			}
+			else if ( i + 1 < rolls.Count ) // open frame, both balls thrown
+			{
+				running += rolls[i] + rolls[i + 1]; cum[fr] = running; have[fr] = true; i += 2;
+			}
+			else break; // only the first ball of an open frame so far
+		}
+		return cum;
+	}
+
+	private static string Sym( int n ) => n == 0 ? "-" : n.ToString();
+
+	// The 1–3 mark strings shown in a frame's little boxes: X for a strike, / for a spare, - for
+	// a miss, digits otherwise. The 10th frame has three boxes and its own strike/spare rules
+	// per ball (a cleared deck re-racks, so a later ball can be a strike or spare in its own right).
+	private static List<string> BallMarks( List<int> f, bool tenth )
+	{
+		if ( !tenth )
+		{
+			var b = new List<string> { "", "" };
+			if ( f.Count >= 1 )
+			{
+				if ( f[0] == 10 ) { b[1] = "X"; }          // strike sits in the right box
+				else
+				{
+					b[0] = Sym( f[0] );
+					if ( f.Count >= 2 ) b[1] = f[0] + f[1] == 10 ? "/" : Sym( f[1] );
+				}
+			}
+			return b;
+		}
+
+		var t = new List<string> { "", "", "" };
+		if ( f.Count >= 1 ) t[0] = f[0] == 10 ? "X" : Sym( f[0] );
+		if ( f.Count >= 2 )
+			t[1] = f[0] == 10 ? (f[1] == 10 ? "X" : Sym( f[1] ))   // fresh rack after the strike
+				: (f[0] + f[1] == 10 ? "/" : Sym( f[1] ));         // spare/open on the first rack
+		if ( f.Count >= 3 )
+		{
+			// The third ball is on a fresh rack after a double-strike or a spare; otherwise it
+			// continues the second ball's rack and can itself be a spare.
+			var fresh = f[0] == 10 ? f[1] == 10 : true;
+			t[2] = fresh ? (f[2] == 10 ? "X" : Sym( f[2] ))
+				: (f[1] + f[2] == 10 ? "/" : Sym( f[2] ));
+		}
+		return t;
 	}
 }

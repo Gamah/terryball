@@ -1,0 +1,110 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using System.Linq;
+@using System.Collections.Generic;
+@using Terryball;
+@inherits PanelComponent
+
+@*
+	Top-right ten-frame scoreboard, the way an alley monitor shows it: a row per player (one for
+	now) with each frame's ball marks (X strike, / spare, - miss) in little boxes above its running
+	cumulative total, the 10th frame carrying three boxes for its bonus ball. All the scoring lives
+	in GameDirector.BuildScoreView(); this panel just lays it out. Press P (handled by the director)
+	to start a fresh game.
+*@
+
+<root style="position: absolute; top: 24px; right: 24px; flex-direction: column;
+             padding: 14px 16px; background-color: rgba(0,0,0,0.62); border-radius: 10px;
+             font-family: Poppins, sans-serif; color: white;">
+	@{
+		var director = Director;
+		var players = director?.BuildScoreView() ?? new List<GameDirector.PlayerView>();
+		var over = director?.GameOver ?? false;
+	}
+
+	<div style="flex-direction: row; align-items: center; margin-bottom: 8px;">
+		<div style="font-size: 18px; font-weight: 700; flex-grow: 1;">SCOREBOARD</div>
+		<div style="font-size: 11px; color: @(over ? "#f1c40f" : "rgba(255,255,255,0.5)");
+		            font-weight: 600;">@(over ? "GAME OVER — press P" : "press P to reset")</div>
+	</div>
+
+	@foreach ( var player in players )
+	{
+		<div style="flex-direction: row; align-items: stretch; margin-bottom: 4px;
+		            @(player.Active ? "" : "opacity: 0.85;")">
+
+			@* Player name *@
+			<div style="width: 78px; justify-content: center; padding-right: 8px; font-size: 13px;
+			            font-weight: 600;">@player.Name</div>
+
+			@* Ten frame cells *@
+			@for ( var fr = 0; fr < player.Frames.Count; fr++ )
+			{
+				var frame = player.Frames[fr];
+				var tenth = fr == 9;
+				<div style="flex-direction: column; width: @(tenth ? "72px" : "46px");
+				            border-left-width: 1px; border-color: rgba(255,255,255,0.18);
+				            background-color: @(frame.Active ? "rgba(241,196,15,0.18)" : "transparent");">
+
+					@* Frame number *@
+					<div style="font-size: 9px; color: rgba(255,255,255,0.4); align-items: center;
+					            justify-content: center; padding-top: 2px;">@(fr + 1)</div>
+
+					@* Ball-mark boxes *@
+					<div style="flex-direction: row; justify-content: flex-end; padding: 0px 3px;">
+						@foreach ( var mark in frame.Balls )
+						{
+							<div style="width: 20px; height: 20px; margin-left: 1px;
+							            align-items: center; justify-content: center; font-size: 13px;
+							            font-weight: 700; color: white;
+							            border-width: 1px; border-color: rgba(255,255,255,0.14);">
+								@mark
+							</div>
+						}
+					</div>
+
+					@* Running cumulative total *@
+					<div style="height: 22px; align-items: center; justify-content: center;
+					            font-size: 14px; font-weight: 700;">
+						@(frame.Score.HasValue ? frame.Score.Value.ToString() : "")
+					</div>
+				</div>
+			}
+
+			@* Grand total *@
+			<div style="flex-direction: column; width: 52px; justify-content: center;
+			            align-items: center; padding-left: 8px;">
+				<div style="font-size: 9px; color: rgba(255,255,255,0.4);">TOTAL</div>
+				<div style="font-size: 20px; font-weight: 800;">@player.Total</div>
+			</div>
+		</div>
+	}
+</root>
+
+@code
+{
+	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+
+	// Rebuild whenever the marks, totals, current frame or game-over state could have changed.
+	protected override int BuildHash()
+	{
+		var director = Director;
+		if ( director is null ) return 0;
+
+		var hash = new System.HashCode();
+		hash.Add( director.GameOver );
+		foreach ( var player in director.BuildScoreView() )
+		{
+			hash.Add( player.Active );
+			hash.Add( player.Total );
+			foreach ( var frame in player.Frames )
+			{
+				hash.Add( frame.Active );
+				hash.Add( frame.Score );
+				foreach ( var mark in frame.Balls )
+					hash.Add( mark );
+			}
+		}
+		return hash.ToHashCode();
+	}
+}

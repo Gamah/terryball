@@ -190,6 +190,11 @@
           "__type": "Terryball.PinStatusOverlay",
           "__guid": "b0000009-0002-4000-8000-000000000009",
           "__enabled": true
+        },
+        {
+          "__type": "Terryball.ScoreBoard",
+          "__guid": "b0000009-0003-4000-8000-000000000009",
+          "__enabled": true
         }
       ]
     }
