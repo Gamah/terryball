@@ -49,8 +49,10 @@ public sealed class BallController : Component
 	/// accel per u/s you're off target." Higher = snappier accel/steering. Tune by feel.</summary>
 	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 15f;
 	/// <summary>Proportional gain on the braking force applied when no key is held; it opposes
-	/// the current velocity so the ball coasts to a stop.</summary>
-	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 1f;
+	/// the current velocity so the ball coasts to a stop. The coast's decay rate is
+	/// BrakeGain/Mass per second, so with Mass ≈ 6.8 a gain of 1 barely slows the ball (≈5 s
+	/// time-constant); 8 gives a firm, still-rolling stop in a couple of seconds. Tune by feel.</summary>
+	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 8f;
 
 	// --- Occupant (Terry) visual climb -------------------------------------------------
 	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He

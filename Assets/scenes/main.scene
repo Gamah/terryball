@@ -154,8 +154,8 @@
           "__enabled": true,
           "Distance": 700,
           "Height": 60,
-          "MinPitch": -15,
-          "MaxPitch": 35
+          "MinPitch": -5,
+          "MaxPitch": 15
         }
       ]
     }

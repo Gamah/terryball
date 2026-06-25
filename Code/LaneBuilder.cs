@@ -58,7 +58,7 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Pit" )] public float BackWallHeightInches { get; set; } = 40f;
 	[Property, Group( "Pit" )] public Color PitColor { get; set; } = new Color( 0.08f, 0.08f, 0.09f, 1f );
 
-	[Property, Group( "Arrows" )] public float ArrowCenterDistanceInches { get; set; } = 144f; // centre arrow ~12 ft out
+	[Property, Group( "Arrows" )] public float ArrowCenterDistanceInches { get; set; } = 180f; // centre (apex) arrow ~15 ft out
 	[Property, Group( "Arrows" )] public float ArrowStepInches { get; set; } = 12f;            // each board-pair steps back
 	[Property, Group( "Arrows" )] public float ArrowLengthInches { get; set; } = 6f;
 	[Property, Group( "Arrows" )] public float ArrowWidthInches { get; set; } = 4f;
@@ -210,9 +210,10 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "FoulLine", new Vector3( foulX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6f ), FoulLineColor );
 
-		// ---- Arrows: the seven targeting arrows in their dovetail "V" — centre arrow nearest the
-		// foul line, outers stepping back — each pointing DOWN-LANE toward the pins, as on a real
-		// lane. Flat visual-only decals sitting just above the boards.
+		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
+		// deepest, outers stepping BACK toward the foul line, so the whole formation points
+		// down-lane at the pins (matching each arrow's own heading), as on a real lane. Flat
+		// visual-only decals sitting just above the boards.
 		_arrowModel = BuildArrowModel( u );
 		int[] arrowBoards = { 5, 10, 15, 20, 25, 30, 35 };
 		var arrowZ = H + 4f;
@@ -220,7 +221,7 @@ public sealed class LaneBuilder : Component
 		{
 			var ay = laneHalf - (board - 0.5f) * boardW;
 			var steps = MathF.Abs( board - 20 ) / 5f; // 0 at centre board, up to 3 at the outers
-			var ax = foulX + (ArrowCenterDistanceInches + steps * ArrowStepInches) * u;
+			var ax = foulX + (ArrowCenterDistanceInches - steps * ArrowStepInches) * u;
 			MakeArrow( $"Arrow{board}", new Vector3( ax, ay, arrowZ ) );
 		}
 

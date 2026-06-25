@@ -13,9 +13,9 @@ public sealed class BallCamera : Component
 	[Property] public float Distance { get; set; } = 700f;
 	[Property] public float Height { get; set; } = 60f;
 	/// <summary>Lowest the camera can pitch (look down), in degrees. Slider so it's tunable in-scene.</summary>
-	[Property, Range( -89f, 89f, 1f )] public float MinPitch { get; set; } = -15f;
+	[Property, Range( -89f, 89f, 1f )] public float MinPitch { get; set; } = -5f;
 	/// <summary>Highest the camera can pitch (look up), in degrees. Slider so it's tunable in-scene.</summary>
-	[Property, Range( -89f, 89f, 1f )] public float MaxPitch { get; set; } = 35f;
+	[Property, Range( -89f, 89f, 1f )] public float MaxPitch { get; set; } = 15f;
 
 	private GameObject _target;
 	private float _yaw;
