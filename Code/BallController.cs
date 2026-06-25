@@ -24,7 +24,11 @@ namespace Terryball;
 public sealed class BallController : Component, Component.ICollisionListener
 {
 	[Property, Group( "Ball" )] public float Radius { get; set; } = 100f;
-	[Property, Group( "Ball" )] public float Friction { get; set; } = 1.0f;
+	/// <summary>Surface friction of the ball. Kept LOW because a real lane/pin is slick (oiled): with
+	/// high friction the ball's topspin GRIPS the pins and walks UP them (it climbs like a topspin ball
+	/// on a wall — the upward kick comes from tangential friction, not the collision). Low friction lets
+	/// it drive through low. The ball is force-driven, so it doesn't need grip to move.</summary>
+	[Property, Group( "Ball" )] public float Friction { get; set; } = 0.3f;
 	/// <summary>Restitution (bounciness) of the ball's surface. By the collision algebra (M=6.8 vs
 	/// m=1.6), HIGH restitution makes the ball lose MORE speed to the pin (keeps ~63% at e=0.95 vs
 	/// ~81% at e=0) AND makes the pin fly faster — both wanted. Low restitution makes ball and pin
@@ -52,7 +56,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// nothing is pressed and never self-accelerates.
 
 	/// <summary>Top travel speed (u/s) a full WASD push steers toward.</summary>
-	[Property, Group( "Drive" )] public float MaxSpeed { get; set; } = 7500f;
+	[Property, Group( "Drive" )] public float MaxSpeed { get; set; } = 5625f;
 	/// <summary>Proportional gain turning the velocity error (target − current) into a centre
 	/// force while a key is held. Force = error · gain, so this is roughly "how many u/s² of
 	/// accel per u/s you're off target." Higher = snappier accel/steering. Tune by feel.</summary>
@@ -62,13 +66,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// BrakeGain/Mass per second, so with Mass ≈ 6.8 a gain of 1 barely slows the ball (≈5 s
 	/// time-constant); 20 hauls the ball down hard, stopping it in well under a second. Tune by feel.</summary>
 	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 20f;
-
-	/// <summary>Split knob, independent of Mass/energy: the max UPWARD speed (u/s) the ball may have
-	/// while coasting through the pins. The ball contacts the pins' bellies just above its own centre,
-	/// so each hit kicks it skyward — this caps that pop so it rolls through the rack instead of
-	/// launching up, WITHOUT touching its horizontal momentum (the energy). Downward (gravity) is
-	/// untouched. 0 = pinned flat to the lane; raise for more air. Tune separately from Mass.</summary>
-	[Property, Group( "Drive" )] public float MaxCoastRise { get; set; } = 150f;
 
 	/// <summary>When set, the ball ignores BOTH input and braking and just coasts on its own
 	/// momentum (physics only). The round director flips this on once the ball crosses the throw
@@ -179,19 +176,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 				_body.AngularVelocity = Vector3.Zero;
 			}
 			return;
-		}
-
-		// Split knob (independent of mass/energy): cap how fast the ball can pop UPWARD while coasting
-		// through the pins, so it rolls through the rack instead of deflecting skyward off the bellies.
-		// Horizontal momentum (the energy) and gravity (downward vz) are left alone.
-		if ( ControlsLocked && _body.IsValid() )
-		{
-			var v = _body.Velocity;
-			if ( v.z > MaxCoastRise )
-			{
-				v.z = MaxCoastRise;
-				_body.Velocity = v;
-			}
 		}
 
 		// Camera-relative run direction on the horizontal plane. While controls are locked (the

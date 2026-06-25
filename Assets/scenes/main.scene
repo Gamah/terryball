@@ -50,7 +50,7 @@
           "__guid": "b0000006-0001-4000-8000-000000000006",
           "__enabled": true,
           "Radius": 100,
-          "Friction": 1,
+          "Friction": 0.3,
           "AngularDamping": 0.1,
           "Mass": 5.3,
           "CubeSize": 26,
