@@ -19,6 +19,9 @@ public sealed class LaneMonitorCamera : Component
 	[Property] public float Back { get; set; } = 700f;  // how far behind the ball the cam sits (units)
 	[Property] public float Up { get; set; } = 260f;    // and how far above
 	[Property] public float Fov { get; set; } = 70f;
+	/// <summary>Far clip for the feed camera. The default CameraComponent ZFar (~10000) cut off the
+	/// back of the lane on the settee screen; match the main camera's reach so the whole lane renders.</summary>
+	[Property] public float ZFar { get; set; } = 60000f;
 
 	/// <summary>The live render target the settee feed screen displays.</summary>
 	public Texture Feed { get; private set; }
@@ -36,6 +39,7 @@ public sealed class LaneMonitorCamera : Component
 		_cam.IsMainCamera = false;          // render to our texture only; never take over the screen
 		_cam.RenderTarget = Feed;
 		_cam.FieldOfView = Fov;
+		_cam.ZFar = ZFar;
 		_cam.BackgroundColor = Color.Black;
 
 		var lane = Lane.Of( this );

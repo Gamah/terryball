@@ -133,6 +133,9 @@ public sealed class TerryAvatar : Component
 		if ( !builder.IsValid() ) return;
 
 		var half = builder.SetteeHalfWidthUnits;
+		// SetteeHalfWidthUnits is 0 until the lane has actually built its geometry; teleporting then would
+		// drop us at the world origin (under the floor → endless fall/respawn, which reads as a hang).
+		if ( half <= 0f ) return;
 		var spread = (Math.Abs( (Network.Owner?.Id.GetHashCode() ?? 0) ) % 1000) / 1000f; // 0..1, stable
 		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, spread );
 		GameObject.WorldPosition = builder.SetteeFloorCenter + new Vector3( 0f, y, 0f );
@@ -240,7 +243,14 @@ public sealed class TerryAvatar : Component
 	public void StreamThrow( string data, int downMask )
 	{
 		// Only apply on clients who AREN'T the bowler — the bowler has the real physics.
-		if ( IsProxy )
-			Director?.ApplyStreamedThrow( data, downMask );
+		if ( !IsProxy ) return;
+
+		// And ONLY if this stream is from the player who's actually up. The outgoing bowler's last
+		// (unreliable) packets can land just after the next bowler has racked a fresh deck — without this
+		// they'd stomp those reset pins back to the previous leave, so the new turn starts mid-rack.
+		var dir = Director;
+		if ( !dir.IsValid() || GameObject.Network.Owner?.Id != dir.ActiveBowlerId ) return;
+
+		dir.ApplyStreamedThrow( data, downMask );
 	}
 }

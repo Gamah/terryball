@@ -1,39 +1,19 @@
 @using System;
-@using System.Collections.Generic;
 @using Sandbox;
 @using Sandbox.UI;
 @using Sandbox.Platform;
 @using Terryball;
 @inherits PanelComponent
-@implements IChatEvent
 
 @*
-	Lobby/alley text chat on the platform chat system (messages route + filter through the host).
-	Ported from rotaliate-client's ChatPanel, trimmed to terryball:
-	- Feed bottom-left: the last few messages, fading out after a few seconds.
-	- T opens the input box (while not bowling / not at the lane controls). Enter sends, Escape cancels.
+	Chat INPUT only. The engine's built-in chat overlay already draws the message feed, so we don't
+	render our own (that was a second, duplicate output) — we just provide the typing box:
+	- T opens the input (while not bowling / not at the lane controls). Enter sends, Escape cancels.
 	- We DON'T disable the player controller while typing — a focused TextEntry already swallows the
 	  WASD keystrokes, so the avatar stays put on its own.
 *@
 
 <root>
-	@{
-		int visible = VisibleLineCount();
-	}
-	@if ( visible > 0 )
-	{
-		<div class="chat-feed">
-			@for ( int i = _feed.Count - visible; i < _feed.Count; i++ )
-			{
-				@* One div per physical line: an auto-height div doesn't grow for wrapped text in
-				   s&box (the next line overlaps), so we pre-wrap. *@
-				foreach ( var line in WrapLines( _feed[i].Text ) )
-				{
-					<div class="chat-line">@line</div>
-				}
-			}
-		</div>
-	}
 	@if ( IsOpen )
 	{
 		<div class="chat-input-row">
@@ -59,33 +39,8 @@
 		z-index: 90;
 	}
 
-	/* ~21px per "line". Feed bottom edge sits 8 lines up (2 lines above the input's top edge at 6
-	   lines), up to 30 lines tall, growing upward. flex-end keeps the newest line just above the gap;
-	   overflow: hidden clips older lines off the top. */
-	.chat-feed {
-		position: absolute;
-		left: 16px;
-		bottom: 158px;   /* 8 lines */
-		max-width: 520px;
-		max-height: 630px;   /* 30 lines */
-		flex-direction: column;
-		justify-content: flex-end;
-		gap: 3px;
-		overflow: hidden;
-		pointer-events: none;
-	}
-
-	.chat-line {
-		color: rgba(255, 255, 255, 0.9);
-		font-size: 15px;
-		text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.9);
-		white-space: nowrap;
-		overflow: hidden;
-	}
-
 	/* Fixed-height (6 lines) container pinned to the screen bottom, so the input's TOP edge is locked
-	   6 lines above the bottom regardless of content. The multiline field sits at the top and grows
-	   downward into the reserved space. */
+	   6 lines above the bottom regardless of content. */
 	.chat-input-row {
 		position: absolute;
 		left: 16px;
@@ -134,49 +89,6 @@
 	/// <summary>True while the chat input box is open.</summary>
 	public static bool IsOpen { get; private set; }
 
-	class FeedLine
-	{
-		public string Text;
-		public TimeSince Age;
-	}
-
-	// Word-aware wrap to fixed-width lines. Char-based (not pixel) because s&box auto-height divs don't
-	// grow for wrapped text — each line is its own div. 44 chars at 15px fits the 520px stack with a
-	// margin, so chat-line can be nowrap and never overflow.
-	const int WrapChars = 44;
-
-	static List<string> WrapLines( string text )
-	{
-		var lines = new List<string>();
-		if ( string.IsNullOrEmpty( text ) ) return lines;
-
-		var cur = "";
-		foreach ( var word in text.Split( ' ' ) )
-		{
-			var w = word;
-			// Hard-split words longer than a full line.
-			while ( w.Length > WrapChars )
-			{
-				if ( cur.Length > 0 ) { lines.Add( cur ); cur = ""; }
-				lines.Add( w.Substring( 0, WrapChars ) );
-				w = w.Substring( WrapChars );
-			}
-			if ( w.Length == 0 ) continue;
-
-			if ( cur.Length == 0 ) cur = w;
-			else if ( cur.Length + 1 + w.Length <= WrapChars ) cur += " " + w;
-			else { lines.Add( cur ); cur = w; }
-		}
-		if ( cur.Length > 0 ) lines.Add( cur );
-		return lines;
-	}
-
-	// History cap (messages). The feed window is clipped to ~30 lines of height via CSS; keep enough
-	// messages to fill it (wrapped messages span multiple lines).
-	const int   MaxLines     = 30;
-	const float LineLifetime = 10f;
-
-	readonly List<FeedLine> _feed = new();
 	TextEntry _entry;
 	bool _focused;
 
@@ -193,20 +105,6 @@
 	protected override void OnDestroy()
 	{
 		IsOpen = false;
-	}
-
-	public void OnChatMessage( ChatMessageEvent e )
-	{
-		var name = e.Sender?.DisplayName;
-		var text = name == null ? e.Message : $"{name}: {e.Message}";
-
-		// The event fires host-side pre-broadcast and again on delivery — the host would double-log its
-		// own feed without this guard.
-		if ( _feed.Count > 0 && _feed[^1].Text == text && _feed[^1].Age < 1f ) return;
-
-		_feed.Add( new FeedLine { Text = text, Age = 0 } );
-		if ( _feed.Count > MaxLines ) _feed.RemoveAt( 0 );
-		StateHasChanged();
 	}
 
 	protected override void OnUpdate()
@@ -259,15 +157,6 @@
 		StateHasChanged();
 	}
 
-	int VisibleLineCount()
-	{
-		if ( IsOpen ) return _feed.Count;
-		int n = 0;
-		foreach ( var line in _feed )
-			if ( line.Age < LineLifetime ) n++;
-		return n;
-	}
-
 	protected override int BuildHash() =>
-		System.HashCode.Combine( IsOpen, CanOpen, _feed.Count, VisibleLineCount() );
+		System.HashCode.Combine( IsOpen, CanOpen );
 }
