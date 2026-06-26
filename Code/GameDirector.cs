@@ -50,6 +50,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// Resolves the fast 10-pin cascade instead of smearing the ball through it in coarse steps.</summary>
 	[Property] public int PhysicsSubSteps { get; set; } = 8;
 
+	/// <summary>Spew the per-throw pin-crash diagnostics to the console (impact/exit speeds, the physics
+	/// probe, and the per-pin leave breakdown). Off by default — flip it on in the inspector when tuning
+	/// the crash.</summary>
+	[Property, Group( "Debug" )] public bool LogPinCrash { get; set; } = false;
+
 	/// <summary>Tip past this many degrees off vertical and the pin reads as knocked down.</summary>
 	[Property] public float TiltThresholdDegrees { get; set; } = 30f;
 	/// <summary>Shoved this many real inches off its spot (horizontally) and the pin reads as down,
@@ -256,6 +261,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_hud.Components.Create<PinStatusOverlay>();
 		_hud.Components.Create<ScoreBoard>();
 		_hud.Components.Create<LaneControls>();
+		_hud.Components.Create<ChatPanel>();
 	}
 
 	// --- Network roster ----------------------------------------------------------------
@@ -433,12 +439,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
 		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
 
-		// Host keyboard P is a quick START/STOP toggle for solo testing without reaching for the panel.
-		if ( Networking.IsHost && Input.Keyboard.Pressed( "P" ) )
-		{
-			if ( Phase == GamePhase.Playing ) StopGame(); else StartGame();
-			return;
-		}
+		// Host keyboard P was a quick START/STOP toggle for solo testing. Commented out for now.
+		// if ( Networking.IsHost && Input.Keyboard.Pressed( "P" ) )
+		// {
+		// 	if ( Phase == GamePhase.Playing ) StopGame(); else StartGame();
+		// 	return;
+		// }
 
 		if ( Phase != GamePhase.Playing )
 			return;
@@ -491,7 +497,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 				// DEBUG: sample the ball's speed the moment it clears the back of the rack — how much
 				// momentum did 10 pins actually take out of it? (God-mode if it keeps most of it.)
-				if ( !_exitLogged && _ball.WorldPosition.x >= _lane.PinDeckEndWorldX )
+				if ( LogPinCrash && !_exitLogged && _ball.WorldPosition.x >= _lane.PinDeckEndWorldX )
 				{
 					_exitLogged = true;
 					var bb = _ball.Components.Get<Rigidbody>();
@@ -543,9 +549,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		if ( bb.IsValid() )
 		{
 			_impactSpeed = bb.Velocity.Length;
-			var mph = _impactSpeed * (_ball.RealBallInches / (_ball.Radius * 2f)) / 17.6f;
-			Log.Info( $"[terryball][impact] throw-line cross: speed={_impactSpeed:F0} u/s (~{mph:F1} mph)  " +
-				$"angVel={bb.AngularVelocity.Length:F1}  vel={bb.Velocity}" );
+			if ( LogPinCrash )
+			{
+				var mph = _impactSpeed * (_ball.RealBallInches / (_ball.Radius * 2f)) / 17.6f;
+				Log.Info( $"[terryball][impact] throw-line cross: speed={_impactSpeed:F0} u/s (~{mph:F1} mph)  " +
+					$"angVel={bb.AngularVelocity.Length:F1}  vel={bb.Velocity}" );
+			}
 		}
 	}
 
@@ -553,6 +562,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	// the inertia tensor and how the lane's scale compares to world gravity. Logged once.
 	private void Probe()
 	{
+		if ( !LogPinCrash ) return;
 		if ( _probed ) return;
 		if ( _lane.Pins.Count == 0 ) return;
 		_probed = true;
@@ -589,6 +599,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	// scoring before we change anything.
 	private void LogLeave()
 	{
+		if ( !LogPinCrash ) return;
 		var cosTilt = MathF.Cos( MathX.DegreeToRadian( TiltThresholdDegrees ) );
 		var standing = new List<int>();
 		foreach ( var p in _lane.Pins )
