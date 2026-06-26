@@ -197,14 +197,26 @@ players. Built blind against the engine source — **not yet compiled/run in the
   via `ApplyAsync` (downloads missing items; sync `Apply` drops them). The in-ball Terry re-dresses to
   the active bowler whenever the spotlight moves.
 
+### Milestone 6 follow-up pass (implemented, UNVERIFIED in-editor)
+- Settee boards are 2× larger and spaced; the settee floor grows to seat them; benches now run down the
+  LEFT/RIGHT edges facing inward. WorldPanel sizing fixed: the panel's world footprint is
+  `PanelSize·0.05·WorldScale` (RenderScale cancels), so boards are now sized by scaling the screen
+  GameObject with `RenderScale = 1` — the panel fills the bezel and the scoreboard text is no longer 2×
+  oversized. Support posts stop at the board's bottom edge instead of running up behind the panel. Same
+  fix applied to the backstop pin board.
+- Lane controls are now a CENTERED modal (opened by E) containing the scoreboard + JOIN/LEAVE/START/STOP
+  + CLOSE, with `pointer-events: all` on the interactive elements (that's what makes the freed cursor's
+  clicks land) and `Mouse.Visibility = Visible` re-asserted while open.
+- An unoccupied ball (no active bowler) hides its in-ball Terry.
+
 ### Known gaps / risk areas to check first in-editor
 - The networked `Director` (NetworkMode.Object) is now a CHILD of the non-networked `Lane 1` scene
   object — confirm `[Sync]`/scoreboard still replicates (both are stable scene objects, so it should).
-- Cursor actually frees on E for the STOCK `PlayerController` (verified the lever is
-  `Mouse.Visibility = Visible`, but confirm clicks register on the buttons).
+- Confirm clicks register on the modal buttons (cursor + `pointer-events: all` + `Mouse.Visibility`).
 - Avatar `ApplyAsync` downloading workshop/inventory items for remote players; dressing the in-ball
   Terry on turn changes without hitches.
-- Settee/monitor feel at the new Citizen scale next to the giant lane.
+- Settee/board feel at the new Citizen scale next to the giant lane; benches face across the settee
+  (inward), not toward the boards at the front — change if that reads wrong.
 
 ## Out of scope for now
 

@@ -112,13 +112,12 @@ public sealed class LaneBuilder : Component
 	// hence the earlier "balls" units. Tune by feel.)
 	[Property, Group( "Settee" )] public float BowlerHeightUnits { get; set; } = 72f;    // the s&box Citizen is ≈ 72u tall
 	[Property, Group( "Settee" )] public float BowlerHeightInches { get; set; } = 72f;   // treat Terry as a 6 ft human → ~1 u/in
-	[Property, Group( "Settee" )] public float SetteeDepthInches { get; set; } = 150f;   // how far back the seating zone runs from the ramp foot
-	[Property, Group( "Settee" )] public float SetteeWidthInches { get; set; } = 280f;   // total width of the seating zone
+	[Property, Group( "Settee" )] public float SetteeDepthInches { get; set; } = 220f;   // how far back the seating zone runs from the ramp foot
+	[Property, Group( "Settee" )] public float SetteeWidthInches { get; set; } = 360f;   // min total width; grows to seat the boards
 	[Property, Group( "Settee" )] public float SetteeRiserInches { get; set; } = 4f;     // low step up onto the carpeted zone
 	[Property, Group( "Settee" )] public float BenchSeatHeightInches { get; set; } = 18f;
 	[Property, Group( "Settee" )] public float BenchSeatDepthInches { get; set; } = 22f;
 	[Property, Group( "Settee" )] public float BenchBackHeightInches { get; set; } = 18f; // backrest above the seat
-	[Property, Group( "Settee" )] public float StadiumTierInches { get; set; } = 14f;    // how high the back row's tier is raised above the front row
 	[Property, Group( "Settee" )] public Color SetteeCarpetColor { get; set; } = new Color( 0.16f, 0.10f, 0.22f, 1f );
 	[Property, Group( "Settee" )] public Color BenchFrameColor { get; set; } = new Color( 0.18f, 0.19f, 0.22f, 1f );
 	[Property, Group( "Settee" )] public Color BenchCushionColor { get; set; } = new Color( 0.55f, 0.13f, 0.16f, 1f );
@@ -126,8 +125,8 @@ public sealed class LaneBuilder : Component
 	// ---- Monitor: the overhead score + camera screens above the settee. WorldPanels in physical
 	// bezels on posts, facing back at the seats (toward -x). Citizen-scale too (real inches), so they
 	// read at head height for the people on the settee instead of dominating the back wall.
-	[Property, Group( "Monitor" )] public float MonitorWidthInches { get; set; } = 120f;        // per-screen width; height follows 16:9
-	[Property, Group( "Monitor" )] public float MonitorCenterHeightInches { get; set; } = 96f;  // panel centre above the settee floor (~head height +)
+	[Property, Group( "Monitor" )] public float MonitorWidthInches { get; set; } = 240f;        // per-board width (2× the first pass); height follows 16:9
+	[Property, Group( "Monitor" )] public float MonitorCenterHeightInches { get; set; } = 120f; // board centre above the settee floor (clears the taller boards)
 	[Property, Group( "Monitor" )] public Color MonitorBezelColor { get; set; } = new Color( 0.05f, 0.06f, 0.08f, 1f );
 	[Property, Group( "Monitor" )] public Color MonitorPostColor { get; set; } = new Color( 0.22f, 0.23f, 0.26f, 1f );
 
@@ -380,9 +379,17 @@ public sealed class LaneBuilder : Component
 	/// </summary>
 	private void BuildSettee( float cu, float rampBottomX, float platformHalf )
 	{
+		// Board dimensions first — the settee floor grows to seat the (now 2×) boards.
+		var boardW = MonitorWidthInches * cu;
+		var boardGap = boardW * 0.14f;            // space between the two boards
+		var monitorSpan = boardW * 2f + boardGap; // total width the two boards occupy
+
 		var depth = SetteeDepthInches * cu;
 		var riser = SetteeRiserInches * cu;
-		var halfW = MathF.Min( SetteeWidthInches * cu * 0.5f, platformHalf ); // don't overrun the platform
+		// Wide enough to seat the boards with a margin, but at least the configured seating width.
+		var halfW = MathF.Min(
+			MathF.Max( SetteeWidthInches * cu * 0.5f, monitorSpan * 0.5f + 28f * cu ),
+			platformHalf );
 		var frontX = rampBottomX;          // settee front edge meets the foot of the ramp
 		var backX = rampBottomX - depth;   // back edge, toward the spawn/camera (-x)
 		var midX = (frontX + backX) * 0.5f;
@@ -396,31 +403,20 @@ public sealed class LaneBuilder : Component
 		SetteeFloorCenter = ToWorld( new Vector3( midX, 0f, riser ) );
 		SetteeHalfWidthUnits = halfW;
 
-		// Two bench rows facing the lane (+x), STADIUM-staggered so the back row isn't staring at the
-		// front row's backrests: the front bench sits near the ramp at carpet level, the back bench is
-		// set well behind it on a raised tier so seated bowlers there see over the front row and read
-		// the overhead monitor cleanly.
-		var benchHalfY = halfW * 0.9f;
+		// Benches down the LEFT and RIGHT edges, facing INWARD (toward the settee centre). Each runs most
+		// of the settee depth with its backrest along the outer (±Y) wall edge.
 		var seatH = BenchSeatHeightInches * cu;
 		var seatD = BenchSeatDepthInches * cu;
 		var backH = BenchBackHeightInches * cu;
-		var tierH = StadiumTierInches * cu;
-		var frontBenchX = frontX - depth * 0.26f;
-		var backBenchX = frontX - depth * 0.78f;
-
-		// The raised tier the back row stands on: a step running from the settee's back edge up to
-		// just in front of the back bench.
-		var tierFrontX = backBenchX + seatD * 0.5f + 4f * cu;
-		MakeBox( "SetteeTier", new Vector3( (tierFrontX + backX) * 0.5f, 0f, riser + tierH * 0.5f ),
-			new Vector3( tierFrontX - backX, halfW * 2f, tierH ), SetteeCarpetColor );
-
-		MakeBench( "SetteeBenchFront", frontBenchX, benchHalfY, riser, seatH, seatD, backH, cu );
-		MakeBench( "SetteeBenchBack", backBenchX, benchHalfY, riser + tierH, seatH, seatD, backH, cu );
+		var benchLenX = depth * 0.72f;
+		var benchEdgeY = halfW - seatD * 0.6f; // a touch in from the wall
+		MakeSideBench( "SetteeBenchLeft", midX, -benchEdgeY, +1f, benchLenX, riser, seatH, seatD, backH, cu );
+		MakeSideBench( "SetteeBenchRight", midX, +benchEdgeY, -1f, benchLenX, riser, seatH, seatD, backH, cu );
 
 		// Walk-up control podium + interaction station: stand anywhere on the settee and press E to open
 		// the lane controls and free the cursor (TerryAvatar runs the engage). The podium is a visible
 		// "desk" so there's something to walk up to; the station's range covers the whole settee.
-		var podiumX = frontX - depth * 0.14f;
+		var podiumX = frontX - depth * 0.16f;
 		var podiumH = 40f * cu;
 		MakeBox( "ControlPodium", new Vector3( podiumX, 0f, riser + podiumH * 0.5f ),
 			new Vector3( 18f * cu, 44f * cu, podiumH ), BenchFrameColor );
@@ -429,28 +425,30 @@ public sealed class LaneBuilder : Component
 
 		var station = new GameObject( true, "LaneStation" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		station.LocalPosition = new Vector3( podiumX, 0f, riser );
-		station.Components.Create<LaneStation>().InteractRange = MathF.Max( halfW + depth * 0.7f, 160f );
+		station.Components.Create<LaneStation>().InteractRange = MathF.Max( halfW + depth * 0.7f, 200f );
 
-		BuildMonitor( cu, frontX, riser, halfW );
+		BuildMonitor( cu, frontX, riser, boardW, boardGap );
 	}
 
-	/// <summary>One bench: a cushioned seat slab on a frame, with an upright backrest along its
-	/// rear (-x) edge so it clearly faces the lane. Visual-only (no colliders) — it's furniture.
-	/// <paramref name="cu"/> is the citizen units-per-inch the settee is sized in.</summary>
-	private void MakeBench( string name, float centerX, float halfY, float floorZ, float seatH, float seatD, float backH, float cu )
+	/// <summary>A bench running along X at a ±Y edge of the settee, facing INWARD. <paramref name="inwardY"/>
+	/// is +1 when the settee centre is at +Y of the bench (the left bench) and -1 for the right bench; the
+	/// backrest sits on the outer edge. Visual-only (no colliders) — it's furniture. <paramref name="cu"/>
+	/// is the citizen units-per-inch the settee is sized in.</summary>
+	private void MakeSideBench( string name, float centerX, float centerY, float inwardY, float lengthX, float floorZ, float seatH, float seatD, float backH, float cu )
 	{
 		var cushionThk = 3f * cu;
 		var legH = MathF.Max( seatH - cushionThk, cushionThk ); // frame box under the cushion
 		// Frame / legs.
-		MakeDecal( $"{name}Frame", new Vector3( centerX, 0f, floorZ + legH * 0.5f ),
-			new Vector3( seatD, halfY * 2f, legH ), BenchFrameColor );
+		MakeDecal( $"{name}Frame", new Vector3( centerX, centerY, floorZ + legH * 0.5f ),
+			new Vector3( lengthX, seatD, legH ), BenchFrameColor );
 		// Cushion.
-		MakeDecal( $"{name}Cushion", new Vector3( centerX, 0f, floorZ + legH + cushionThk * 0.5f ),
-			new Vector3( seatD, halfY * 2f, cushionThk ), BenchCushionColor );
-		// Backrest along the rear edge, rising above the seat.
+		MakeDecal( $"{name}Cushion", new Vector3( centerX, centerY, floorZ + legH + cushionThk * 0.5f ),
+			new Vector3( lengthX, seatD, cushionThk ), BenchCushionColor );
+		// Backrest along the OUTER edge (the side away from the settee centre), rising above the seat.
 		var backThk = 2f * cu;
-		MakeDecal( $"{name}Back", new Vector3( centerX - seatD * 0.5f + backThk * 0.5f, 0f, floorZ + seatH + backH * 0.5f ),
-			new Vector3( backThk, halfY * 2f, backH ), BenchFrameColor );
+		var backY = centerY - inwardY * (seatD * 0.5f - backThk * 0.5f);
+		MakeDecal( $"{name}Back", new Vector3( centerX, backY, floorZ + seatH + backH * 0.5f ),
+			new Vector3( lengthX, backThk, backH ), BenchFrameColor );
 	}
 
 	/// <summary>The big backstop pin board: a WorldPanel (PinReadout) exactly the lane's width,
@@ -459,10 +457,11 @@ public sealed class LaneBuilder : Component
 	/// <paramref name="frontX"/> is the back wall's bowler-facing face; <paramref name="wallTopZ"/> its top.</summary>
 	private void BuildBackstopReadout( float frontX, float laneHalf, float wallTopZ, float D )
 	{
+		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
 		var panelPx = new Vector2( 1000f, 720f );          // roughly the rack's aspect
 		var worldW = laneHalf * 2f;                        // EXACTLY the lane width, as asked
-		var renderScale = worldW / (panelPx.x * 0.05f);    // 0.05 = WorldPanel ScreenToWorldScale
-		var worldH = panelPx.y * 0.05f * renderScale;
+		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
+		var worldH = panelPx.y * s2w * scale;
 		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D; // float it clear above the backstop
 
 		// Dark bezel slab just behind the panel for contrast against the alley.
@@ -475,10 +474,11 @@ public sealed class LaneBuilder : Component
 		var screen = new GameObject( true, "BackstopReadoutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		screen.LocalPosition = new Vector3( frontX - 0.02f * D, 0f, centerZ );
 		screen.LocalRotation = Rotation.FromYaw( 180f ); // identity WorldPanel faces +x; flip to face the approach
+		screen.LocalScale = scale;
 
 		var panel = screen.Components.Create<WorldPanel>();
 		panel.PanelSize = panelPx;
-		panel.RenderScale = renderScale;
+		panel.RenderScale = 1f;
 		panel.LookAtCamera = false;
 		panel.InteractionRange = 100000f;
 
@@ -491,55 +491,62 @@ public sealed class LaneBuilder : Component
 	/// <see cref="LaneMonitorCamera"/> / MonitorFeed) and the RIGHT screen is this lane's SCOREBOARD
 	/// (LaneConsole). In s&box +Y is "left" for an entity facing +X, so the camera goes to +offsetY and
 	/// the scoreboard to -offsetY. Each is ~half the settee width so they don't overlap.</summary>
-	private void BuildMonitor( float cu, float frontX, float floorZ, float setteeHalfW )
+	private void BuildMonitor( float cu, float frontX, float floorZ, float boardW, float boardGap )
 	{
 		var centerZ = floorZ + MonitorCenterHeightInches * cu;
-		var worldW = MathF.Min( setteeHalfW * 0.92f, MonitorWidthInches * cu ); // per-screen width
-		var offsetY = setteeHalfW * 0.5f;                                       // left/right of centre
+		var offsetY = (boardW + boardGap) * 0.5f; // each board half a span + gap off centre
 
 		// Ball camera on the bowler's LEFT (+Y).
-		BuildPanelScreen( "LaneFeedScreen", cu, frontX, offsetY, centerZ, worldW,
+		BuildPanelScreen( "LaneFeedScreen", cu, frontX, offsetY, centerZ, boardW,
 			new Vector2( 1280f, 720f ) ).Components.Create<MonitorFeed>();
 
 		// Scoreboard / lane state on the bowler's RIGHT (-Y).
-		BuildPanelScreen( "LaneScoreScreen", cu, frontX, -offsetY, centerZ, worldW,
+		BuildPanelScreen( "LaneScoreScreen", cu, frontX, -offsetY, centerZ, boardW,
 			new Vector2( 1200f, 675f ) ).Components.Create<LaneConsole>();
 	}
 
-	/// <summary>Build one bezelled WorldPanel screen on two posts at the settee, facing the seats (-x),
+	/// <summary>Build one bezelled WorldPanel screen on support posts at the settee, facing the seats (-x),
 	/// and return its GameObject so the caller can mount the razor panel it should display. Citizen-scale
-	/// (<paramref name="cu"/> = citizen units-per-inch).</summary>
-	private GameObject BuildPanelScreen( string name, float cu, float frontX, float centerY, float centerZ, float worldW, Vector2 panelPx )
+	/// (<paramref name="cu"/> = citizen units-per-inch); the board is <paramref name="boardW"/> wide.</summary>
+	private GameObject BuildPanelScreen( string name, float cu, float frontX, float centerY, float centerZ, float boardW, Vector2 panelPx )
 	{
-		var renderScale = worldW / (panelPx.x * 0.05f); // 0.05 = WorldPanel ScreenToWorldScale
-		var worldH = panelPx.y * 0.05f * renderScale;
-		var screenX = frontX - 6f * cu; // stands on the settee carpet, just shy of the ramp foot
+		const float s2w = 0.05f; // WorldPanel.ScreenToWorldScale — world units per panel pixel at scale 1
+		// The panel's world footprint is PanelSize·s2w·WorldScale (RenderScale does NOT change it), so we
+		// SCALE the panel GameObject to make it exactly boardW wide and keep RenderScale = 1: full-resolution
+		// UI that fills the panel. (The old code drove RenderScale instead, which left the panel half the
+		// bezel width and blew the text up.)
+		var scale = boardW / (panelPx.x * s2w);
+		var worldW = boardW;
+		var worldH = panelPx.y * s2w * scale; // = boardW · (panelPx.y / panelPx.x)
+		var screenX = frontX - 6f * cu;       // stands on the settee carpet, just shy of the ramp foot
 
-		// Two support posts from the floor up to the bezel.
-		var postW = 3f * cu;
-		var postSpanY = worldW * 0.5f - postW;
-		var postTopZ = centerZ + worldH * 0.5f + 4f * cu;
-		foreach ( var sy in new[] { -postSpanY, postSpanY } )
-		{
-			MakeDecal( $"{name}Post{(sy < 0 ? "L" : "R")}",
-				new Vector3( screenX, centerY + sy, postTopZ * 0.5f ),
-				new Vector3( postW, postW, postTopZ ), MonitorPostColor );
-		}
-
-		// Bezel slab just behind the panel plane.
 		var bezelThk = 2.5f * cu;
-		var bezelPad = 2.5f * cu;
+		var bezelPad = 2f * cu;
+
+		// Bezel slab a touch larger than the panel, framing it.
 		MakeDecal( $"{name}Bezel", new Vector3( screenX + bezelThk * 0.5f, centerY, centerZ ),
 			new Vector3( bezelThk, worldW + bezelPad * 2f, worldH + bezelPad * 2f ), MonitorBezelColor );
 
-		// The WorldPanel itself, facing -x (toward the seats/camera).
+		// Support posts: legs that stop at the BOTTOM of the board, so they don't run up behind the panel.
+		var boardBottomZ = centerZ - worldH * 0.5f - bezelPad;
+		var postW = 3f * cu;
+		var postSpanY = worldW * 0.5f - postW;
+		foreach ( var sy in new[] { -postSpanY, postSpanY } )
+		{
+			MakeDecal( $"{name}Post{(sy < 0 ? "L" : "R")}",
+				new Vector3( screenX + bezelThk, centerY + sy, boardBottomZ * 0.5f ),
+				new Vector3( postW, postW, boardBottomZ ), MonitorPostColor );
+		}
+
+		// The WorldPanel itself, facing -x (toward the seats/camera). LocalScale is what sizes the board.
 		var screen = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		screen.LocalPosition = new Vector3( screenX - 0.5f * cu, centerY, centerZ );
 		screen.LocalRotation = Rotation.FromYaw( 180f ); // identity WorldPanel faces +x; flip to face the seats
+		screen.LocalScale = scale;
 
 		var panel = screen.Components.Create<WorldPanel>();
 		panel.PanelSize = panelPx;
-		panel.RenderScale = renderScale;
+		panel.RenderScale = 1f;
 		panel.LookAtCamera = false;
 		panel.InteractionRange = 100000f;
 		return screen;

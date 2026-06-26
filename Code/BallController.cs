@@ -177,6 +177,11 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private void UpdateBowlerDress()
 	{
 		var id = Director?.ActiveBowlerId ?? Guid.Empty;
+
+		// An unoccupied ball (nobody up — lobby, between turns, game over) shows no Terry inside.
+		if ( _terry.IsValid() )
+			_terry.Enabled = id != Guid.Empty;
+
 		if ( id != _dressedBowler || !_dressedAny )
 		{
 			_dressedBowler = id;

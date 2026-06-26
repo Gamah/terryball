@@ -137,11 +137,22 @@ public sealed class TerryAvatar : Component
 				Input.EscapePressed = false;
 				CloseControls();
 			}
+			else
+			{
+				// Keep the cursor freed while the panel is open (re-assert in case anything resets it).
+				Mouse.Visibility = MouseVisibility.Visible;
+			}
 		}
 		else if ( _nearStation && Input.Pressed( "use" ) )
 		{
 			OpenControls();
 		}
+	}
+
+	/// <summary>Close the controls panel from the panel's own CLOSE button (restores look + cursor).</summary>
+	public void RequestCloseControls()
+	{
+		if ( _controlsOpen ) CloseControls();
 	}
 
 	private LaneStation NearestStation()

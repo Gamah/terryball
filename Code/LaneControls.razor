@@ -6,16 +6,15 @@
 @inherits PanelComponent
 
 @*
-	The lane controls — a screen-space strip the director owns (spawned alongside the scoreboard on
-	its HUD). It's where players JOIN/LEAVE the next game and the host runs START/STOP. Screen-space
-	(not the in-world settee panel) so it's clickable with the plain cursor, no world-raycast needed.
-
-	Join/Leave just toggles the local player's OWN avatar flag (owner-controlled, no RPC). Start/Stop
-	call the host-authoritative director directly and only render for the host.
+	The lane controls — a screen-space overlay the director owns (spawned on its HUD). Walking up to the
+	settee podium and pressing E opens a CENTERED modal that shows the scoreboard AND the controls
+	(JOIN/LEAVE, host START/STOP, CLOSE). The whole tree is pointer-events: none EXCEPT the modal box and
+	its buttons (pointer-events: all) — that's what lets the freed cursor actually click them (plain
+	ScreenPanel input, the same pattern as rotaliate's settings screen). Engage state + cursor live on
+	the local TerryAvatar.
 *@
 
-<root style="position: absolute; bottom: 28px; left: 0px; right: 0px;
-             flex-direction: column; align-items: center;
+<root style="position: absolute; width: 100%; height: 100%; pointer-events: none;
              font-family: Poppins, sans-serif; color: white;">
 	@{
 		var director = Director;
@@ -26,85 +25,131 @@
 
 	@if ( director is not null )
 	{
-		@* Current-bowler banner while a game is on. *@
-		@if ( playing && !over )
-		{
-			<div style="font-size: 26px; font-weight: 800; margin-bottom: 10px;
-			            padding: 6px 22px; border-radius: 10px; background-color: rgba(241,196,15,0.18);
-			            border-width: 2px; border-color: rgba(241,196,15,0.6);">
-				@UpName is up
-			</div>
-		}
-		@if ( over )
-		{
-			<div style="font-size: 26px; font-weight: 800; margin-bottom: 10px; color: #f1c40f;">
-				GAME OVER
-			</div>
-		}
-
 		@* Walk-up prompt: near the podium but not engaged yet. *@
 		@if ( me is not null && me.NearStation && !me.ControlsOpen )
 		{
-			<div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;
-			            padding: 8px 18px; border-radius: 9px; background-color: rgba(8,10,16,0.82);
-			            border-width: 1px; border-color: rgba(120,160,220,0.4); color: white;">
-				Press <span style="color: #f1c40f; font-weight: 800;">E</span> — Lane Controls
+			<div style="position: absolute; bottom: 64px; left: 0px; right: 0px;
+			            flex-direction: row; justify-content: center;">
+				<div style="font-size: 22px; font-weight: 700; padding: 10px 24px; border-radius: 10px;
+				            background-color: rgba(8,10,16,0.82);
+				            border-width: 1px; border-color: rgba(120,160,220,0.4);">
+					Press <span style="color: #f1c40f; font-weight: 800;">E</span> — Lane Controls
+				</div>
 			</div>
 		}
 
-		@* The interactive control strip only appears once engaged (E pressed): that's when the cursor is
-		   freed, so its buttons are actually clickable. *@
+		@* Centered modal while engaged (cursor is freed). pointer-events: all on the box + buttons. *@
 		@if ( me is not null && me.ControlsOpen )
 		{
-		<div style="flex-direction: row; align-items: center;
-		            padding: 10px 16px; border-radius: 12px; background-color: rgba(8,10,16,0.82);
-		            border-width: 1px; border-color: rgba(120,160,220,0.35);">
+			<div style="position: absolute; width: 100%; height: 100%;
+			            flex-direction: column; align-items: center; justify-content: center;">
+				<div style="pointer-events: all; flex-direction: column; width: 1120px;
+				            padding: 26px 30px; border-radius: 18px; background-color: rgba(8,10,16,0.97);
+				            border-width: 2px; border-color: rgba(120,160,220,0.5);">
 
-			@* Roster summary. *@
-			<div style="font-size: 15px; color: rgba(255,255,255,0.65); margin-right: 16px;">
-				@if ( playing )
-				{
-					<span>PLAYING — @(director.RosterNames.Count) bowler@(director.RosterNames.Count == 1 ? "" : "s")</span>
-				}
-				else
-				{
-					<span>LOBBY — @JoinedCount joined</span>
-				}
-			</div>
+					@* Header: title + game state. *@
+					<div style="flex-direction: row; align-items: center; margin-bottom: 16px;">
+						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 1px;">
+							LANE <span style="color: #5aa0e6;">1</span> CONTROLS
+						</div>
+						<div style="font-size: 18px; font-weight: 700;
+						            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.6)");">
+							@(over ? "GAME OVER" : (playing ? (UpName + " is up") : ("LOBBY — " + JoinedCount + " joined")))
+						</div>
+					</div>
 
-			@* Per-player Join/Leave (needs an avatar of our own). *@
-			@if ( me is not null && !playing )
-			{
-				<div style="margin-left: 10px; padding: 9px 22px; border-radius: 9px; font-size: 17px;
-				            font-weight: 700; cursor: pointer;
-				            background-color: @(me.Joined ? "rgba(192,57,43,0.85)" : "rgba(46,204,113,0.85)");"
-				     onclick=@ToggleJoin>
-					@(me.Joined ? "LEAVE" : "JOIN")
+					@* Scoreboard for every bowler. *@
+					<div style="flex-direction: column; margin-bottom: 18px;">
+						@foreach ( var p in Players )
+						{
+							<div style="flex-direction: row; align-items: stretch; margin-bottom: 6px;
+							            background-color: @(p.Active ? "rgba(241,196,15,0.12)" : "rgba(255,255,255,0.03)");
+							            border-radius: 6px; padding: 3px;">
+
+								<div style="width: 150px; justify-content: center; padding-left: 10px;
+								            font-size: 17px; font-weight: 700;">@p.Name</div>
+
+								@for ( var fr = 0; fr < p.Frames.Count; fr++ )
+								{
+									var frame = p.Frames[fr];
+									var tenth = fr == 9;
+									<div style="flex-direction: column; width: @(tenth ? "66px" : "46px");
+									            border-left-width: 1px; border-color: rgba(255,255,255,0.15);
+									            background-color: @(frame.Active ? "rgba(241,196,15,0.20)" : "transparent");">
+										<div style="font-size: 10px; color: rgba(255,255,255,0.4);
+										            align-items: center; justify-content: center;">@(fr + 1)</div>
+										<div style="flex-direction: row; justify-content: flex-end; padding: 0px 3px;">
+											@foreach ( var mark in frame.Balls )
+											{
+												<div style="width: 18px; height: 18px; margin-left: 1px;
+												            align-items: center; justify-content: center;
+												            font-size: 13px; font-weight: 700;
+												            border-width: 1px; border-color: rgba(255,255,255,0.16);">@mark</div>
+											}
+										</div>
+										<div style="height: 22px; align-items: center; justify-content: center;
+										            font-size: 15px; font-weight: 700;">
+											@(frame.Score.HasValue ? frame.Score.Value.ToString() : "")
+										</div>
+									</div>
+								}
+
+								<div style="width: 62px; flex-direction: column; align-items: center;
+								            justify-content: center; padding-left: 8px;">
+									<div style="font-size: 9px; color: rgba(255,255,255,0.4);">TOTAL</div>
+									<div style="font-size: 18px; font-weight: 800;">@p.Total</div>
+								</div>
+							</div>
+						}
+						@if ( Players.Count == 0 )
+						{
+							<div style="font-size: 16px; color: rgba(255,255,255,0.5); padding: 10px 4px;">
+								No bowlers yet — JOIN, then the host presses START.
+							</div>
+						}
+					</div>
+
+					@* Buttons. *@
+					<div style="flex-direction: row; align-items: center;">
+						@if ( me is not null && !playing )
+						{
+							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+							            font-size: 18px; font-weight: 700; cursor: pointer;
+							            background-color: @(me.Joined ? "rgba(192,57,43,0.9)" : "rgba(46,204,113,0.9)");"
+							     onclick=@ToggleJoin>
+								@(me.Joined ? "LEAVE" : "JOIN")
+							</div>
+						}
+						@if ( IsHost )
+						{
+							@if ( !playing )
+							{
+								<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+								            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(52,152,219,0.9);"
+								     onclick=@(() => director.StartGame())>
+									START
+								</div>
+							}
+							else
+							{
+								<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+								            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(155,89,182,0.9);"
+								     onclick=@(() => director.StopGame())>
+									STOP
+								</div>
+							}
+						}
+						<div style="flex-grow: 1;"></div>
+						<div style="pointer-events: all; padding: 12px 28px; border-radius: 9px;
+						            font-size: 18px; font-weight: 700; cursor: pointer;
+						            background-color: rgba(255,255,255,0.12);"
+						     onclick=@CloseControls>
+							CLOSE (E)
+						</div>
+					</div>
 				</div>
-			}
-
-			@* Host-only Start/Stop. *@
-			@if ( IsHost )
-			{
-				@if ( !playing )
-				{
-					<div style="margin-left: 10px; padding: 9px 22px; border-radius: 9px; font-size: 17px;
-					            font-weight: 700; cursor: pointer; background-color: rgba(52,152,219,0.9);"
-					     onclick=@(() => director.StartGame())>
-						START
-					</div>
-				}
-				else
-				{
-					<div style="margin-left: 10px; padding: 9px 22px; border-radius: 9px; font-size: 17px;
-					            font-weight: 700; cursor: pointer; background-color: rgba(155,89,182,0.9);"
-					     onclick=@(() => director.StopGame())>
-						STOP
-					</div>
-				}
-			}
-		</div>
-	}
+			</div>
+		}
 	}
 </root>
 
@@ -120,6 +165,8 @@
 
 	private int JoinedCount =>
 		Scene?.GetAllComponents<TerryAvatar>().Count( a => a.IsValid() && a.Joined ) ?? 0;
+
+	private List<GameDirector.PlayerView> Players => Director?.BuildScoreView() ?? new();
 
 	private string UpName
 	{
@@ -137,6 +184,9 @@
 		if ( me is not null ) me.Joined = !me.Joined;
 	}
 
+	// CLOSE button: hand back to the avatar so it restores look + cursor exactly like pressing E.
+	private void CloseControls() => LocalAvatar?.RequestCloseControls();
+
 	protected override int BuildHash()
 	{
 		var d = Director;
@@ -145,12 +195,23 @@
 		hash.Add( d?.Phase );
 		hash.Add( d?.GameOver );
 		hash.Add( d?.CurrentPlayer );
-		hash.Add( d?.RosterNames.Count );
 		hash.Add( JoinedCount );
 		hash.Add( me?.Joined );
 		hash.Add( IsHost );
 		hash.Add( me?.NearStation );
 		hash.Add( me?.ControlsOpen );
+		foreach ( var p in Players )
+		{
+			hash.Add( p.Name );
+			hash.Add( p.Active );
+			hash.Add( p.Total );
+			foreach ( var frame in p.Frames )
+			{
+				hash.Add( frame.Score );
+				foreach ( var mark in frame.Balls )
+					hash.Add( mark );
+			}
+		}
 		return hash.ToHashCode();
 	}
 }
