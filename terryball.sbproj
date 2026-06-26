@@ -11,10 +11,10 @@
   "Mounts": null,
   "IsStandaloneOnly": false,
   "Metadata": {
-    "MaxPlayers": 1,
+    "MaxPlayers": 16,
     "MinPlayers": 1,
     "TickRate": 50,
-    "GameNetworkType": "Singleplayer",
+    "GameNetworkType": "Multiplayer",
     "MapSelect": "Unrestricted",
     "MapList": [],
     "RankType": "None",
