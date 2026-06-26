@@ -141,7 +141,33 @@ not to hit a real mph. The on-screen MPH readout (`BallController.ShowSpeed`, de
 `RealBallInches`) is a fun gauge, not a target. Tuning knobs: `AngularDamping`,
 `MassOffsetFactor`, `RunAccel`/`Damping`, ball `Mass` vs pin `PinMass`.
 
+## Milestone 4 — Multiplayer lane director (implemented, UNVERIFIED in-editor)
+
+The `GameDirector` is now a host-authoritative lane that runs the whole alley for up to 16
+players. Built blind against the engine source — **not yet compiled/run in the s&box editor.**
+
+- **Bootstrap + avatars** (`GameDirector` + `TerryAvatar`): auto-hosts on load and spawns a
+  walking `PlayerController` Citizen per connection on the settee. `GameNetworkType` is now
+  `Multiplayer` and client object-spawn/refresh/destroy permissions are locked off (host is the
+  sole spawner).
+- **Lobby/roster** (`LaneControls.razor`): players Join/Leave (own avatar flag); the host runs
+  START/STOP. Game state (phase, per-player encoded frames, current player/frame, game-over) is
+  `[Sync(FromHost)]` on the director (which is `NetworkMode.Object` in the scene), so every
+  client's scoreboard + settee monitor match. Turn rotation cycles bowlers; "{name} is up" banner.
+- **Throws — approach B** (active bowler is authoritative): the bowler runs the whole throw on
+  their own local ball + pins, reports each settled ball to the host (`ReportBall` → `HostBookBall`)
+  and streams ball+pin transforms to spectators (`StreamThrow` → `ApplyStreamedThrow`). Walking
+  Terry hides while you're in the ball.
+- **Camera-feed screen** (`LaneMonitorCamera` + `MonitorFeed.razor`): the settee has two overhead
+  screens — scoreboard (left) and a live chase-cam of the active ball (right), rendered to a texture.
+
+### Known gaps / risk areas to check first in-editor
+- Director `[Sync]`/scoreboard actually replicating (scene-object networking).
+- RPC string args + transform-stream fidelity (20 Hz, no interpolation).
+- Render-target camera producing a feed; perf of the extra per-client scene render.
+- Clean hand-off when a *remote* player's turn ends.
+
 ## Out of scope for now
 
-Levels/goals, multiplayer, UI/HUD, audio, scoring. Floor + Terry + an agreed input
-mechanic first.
+Levels/goals, audio, polish. Multiplayer scaffolding is in (Milestone 4) but needs an
+in-editor compile + smoke test before further work.
