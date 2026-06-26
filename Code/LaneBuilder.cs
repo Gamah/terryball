@@ -458,15 +458,16 @@ public sealed class LaneBuilder : Component
 	private void BuildBackstopReadout( float frontX, float laneHalf, float wallTopZ, float D )
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
-		// Tall enough to seat the header + the four rack rows with headroom: the old 720 was a hair
-		// SHORTER than the content, so the bottom (head-pin) row spilled off the canvas and clipped.
-		var panelPx = new Vector2( 1000f, 900f );
-		var worldW = laneHalf * 2f * 1.4f;                 // a touch wider than the lane so it reads BIG
+		// Match the PORTRAIT aspect of the corner PinStatusOverlay (header stacked over the four-row rack
+		// triangle ≈ 0.76 wide:tall). A landscape canvas squeezed that content vertically and clipped the
+		// bottom row; a matching aspect gives the same shape, just blown up, with headroom to spare.
+		var panelPx = new Vector2( 760f, 1000f );
+		var worldW = laneHalf * 2f * 1.6f;                 // wider than the lane so it reads BIG
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
-		// Float it clear above the backstop AND lift it a few hundred units more so it stops sinking into
-		// the back drop/wall — it should hang well overhead, fully legible from the approach.
-		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D + 300f;
+		// Float it clear above the backstop AND lift it well overhead so it stops sinking into the back
+		// drop/wall — it should hang high, fully legible from the approach.
+		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D + 450f;
 
 		// Dark bezel slab just behind the panel for contrast against the alley.
 		var bezelThk = 0.1f * D;
