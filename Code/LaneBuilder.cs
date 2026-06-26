@@ -461,10 +461,12 @@ public sealed class LaneBuilder : Component
 		// Tall enough to seat the header + the four rack rows with headroom: the old 720 was a hair
 		// SHORTER than the content, so the bottom (head-pin) row spilled off the canvas and clipped.
 		var panelPx = new Vector2( 1000f, 900f );
-		var worldW = laneHalf * 2f;                        // EXACTLY the lane width, as asked
+		var worldW = laneHalf * 2f * 1.4f;                 // a touch wider than the lane so it reads BIG
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
-		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D; // float it clear above the backstop
+		// Float it clear above the backstop AND lift it a few hundred units more so it stops sinking into
+		// the back drop/wall — it should hang well overhead, fully legible from the approach.
+		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D + 300f;
 
 		// Dark bezel slab just behind the panel for contrast against the alley.
 		var bezelThk = 0.1f * D;
