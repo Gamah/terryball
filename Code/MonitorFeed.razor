@@ -1,0 +1,30 @@
+@using Sandbox
+@using Sandbox.UI
+@using System.Linq
+@using Terryball
+@inherits PanelComponent
+
+@*
+	Paints the LaneMonitorCamera's live render target onto this settee screen — the right-hand
+	overhead panel that "doubles" the active bowler's view. The texture updates its own pixels every
+	frame (it's a render target), so we only need to point the panel background at it.
+*@
+
+<root style="width: 100%; height: 100%; background-color: black; background-size: cover;"></root>
+
+@code
+{
+	private LaneMonitorCamera Source => Scene?.GetAllComponents<LaneMonitorCamera>().FirstOrDefault();
+
+	protected override void OnUpdate()
+	{
+		base.OnUpdate();
+
+		var feed = Source?.Feed;
+		if ( Panel is not null && feed is not null )
+			Panel.Style.BackgroundImage = feed;
+	}
+
+	// Static markup — the render target refreshes its own pixels, so the tree never needs rebuilding.
+	protected override int BuildHash() => 1;
+}

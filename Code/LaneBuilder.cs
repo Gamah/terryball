@@ -353,6 +353,11 @@ public sealed class LaneBuilder : Component
 		}
 
 		BuildSettee( ballDiameterUnits, rampBottomX, platformHalf );
+
+		// The chase cam that the right-hand settee screen mirrors (renders the active ball to a
+		// texture). Built locally on every client — it's a re-render of the local ball, which is the
+		// bowler's real ball or the streamed copy spectators see.
+		Components.GetOrCreate<LaneMonitorCamera>();
 	}
 
 	/// <summary>
@@ -454,17 +459,30 @@ public sealed class LaneBuilder : Component
 		screen.Components.Create<PinReadout>();
 	}
 
-	/// <summary>The overhead lane monitor: a WorldPanel (LaneConsole) in a bezel, on two posts,
-	/// mounted above the settee facing back toward the seats (-x) so a seated bowler reads it.</summary>
+	/// <summary>The overhead settee screens, side by side facing the seats (-x): the ten-frame
+	/// SCOREBOARD on the left, and a live CAMERA FEED of whoever's up on the right (a chase cam of the
+	/// active ball rendered to a texture — see <see cref="LaneMonitorCamera"/> / MonitorFeed). Each is
+	/// ~half the settee width so they sit beside each other without overlapping.</summary>
 	private void BuildMonitor( float D, float frontX, float floorZ, float setteeHalfW )
 	{
-		// Panel size in virtual px (16:9) and the world scale that maps it to MonitorWidthBalls.
-		var panelPx = new Vector2( 1200f, 675f );
-		var worldW = MonitorWidthBalls * D; // a proper overhead screen — NOT clamped to the settee width (that's what made it read as a tiny square)
+		var centerZ = floorZ + MonitorCenterHeightBalls * D;
+		var worldW = MathF.Min( setteeHalfW * 0.92f, MonitorWidthBalls * D ); // per-screen width
+		var offsetY = setteeHalfW * 0.5f;                                     // left/right of centre
+
+		BuildPanelScreen( "LaneMonitorScreen", D, frontX, -offsetY, centerZ, worldW,
+			new Vector2( 1200f, 675f ) ).Components.Create<LaneConsole>();
+
+		BuildPanelScreen( "LaneFeedScreen", D, frontX, offsetY, centerZ, worldW,
+			new Vector2( 1280f, 720f ) ).Components.Create<MonitorFeed>();
+	}
+
+	/// <summary>Build one bezelled WorldPanel screen on two posts at the settee, facing the seats (-x),
+	/// and return its GameObject so the caller can mount the razor panel it should display.</summary>
+	private GameObject BuildPanelScreen( string name, float D, float frontX, float centerY, float centerZ, float worldW, Vector2 panelPx )
+	{
 		var renderScale = worldW / (panelPx.x * 0.05f); // 0.05 = WorldPanel ScreenToWorldScale
 		var worldH = panelPx.y * 0.05f * renderScale;
-		var centerZ = floorZ + MonitorCenterHeightBalls * D;
-		var postFrontX = frontX - 0.2f * D; // posts stand on the settee carpet, just shy of the ramp foot
+		var screenX = frontX - 0.2f * D; // stands on the settee carpet, just shy of the ramp foot
 
 		// Two support posts from the floor up to the bezel.
 		var postW = 0.12f * D;
@@ -472,20 +490,20 @@ public sealed class LaneBuilder : Component
 		var postTopZ = centerZ + worldH * 0.5f + 0.15f * D;
 		foreach ( var sy in new[] { -postSpanY, postSpanY } )
 		{
-			MakeDecal( $"MonitorPost{(sy < 0 ? "L" : "R")}",
-				new Vector3( postFrontX, sy, postTopZ * 0.5f ),
+			MakeDecal( $"{name}Post{(sy < 0 ? "L" : "R")}",
+				new Vector3( screenX, centerY + sy, postTopZ * 0.5f ),
 				new Vector3( postW, postW, postTopZ ), MonitorPostColor );
 		}
 
 		// Bezel slab just behind the panel plane.
 		var bezelThk = 0.1f * D;
 		var bezelPad = 0.1f * D;
-		MakeDecal( "MonitorBezel", new Vector3( postFrontX + bezelThk * 0.5f, 0f, centerZ ),
+		MakeDecal( $"{name}Bezel", new Vector3( screenX + bezelThk * 0.5f, centerY, centerZ ),
 			new Vector3( bezelThk, worldW + bezelPad * 2f, worldH + bezelPad * 2f ), MonitorBezelColor );
 
-		// The WorldPanel itself, facing -x (toward the seats/camera). A razor LaneConsole rides it.
-		var screen = new GameObject( true, "LaneMonitorScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		screen.WorldPosition = new Vector3( postFrontX - 0.02f * D, 0f, centerZ );
+		// The WorldPanel itself, facing -x (toward the seats/camera).
+		var screen = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		screen.WorldPosition = new Vector3( screenX - 0.02f * D, centerY, centerZ );
 		screen.WorldRotation = Rotation.FromYaw( 180f ); // identity WorldPanel faces +x; flip to face the seats
 
 		var panel = screen.Components.Create<WorldPanel>();
@@ -493,8 +511,7 @@ public sealed class LaneBuilder : Component
 		panel.RenderScale = renderScale;
 		panel.LookAtCamera = false;
 		panel.InteractionRange = 100000f;
-
-		screen.Components.Create<LaneConsole>();
+		return screen;
 	}
 
 	// Static box with collider on the (uniformly-scaled) root and the visual on a non-uniformly
