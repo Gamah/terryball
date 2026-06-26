@@ -167,7 +167,46 @@ players. Built blind against the engine source — **not yet compiled/run in the
 - Render-target camera producing a feed; perf of the extra per-client scene render.
 - Clean hand-off when a *remote* player's turn ends.
 
+## Milestone 6 — Per-lane authority, Terry-scale settee, walk-up controls, real avatars (implemented, UNVERIFIED in-editor)
+
+- **Per-lane authority** (`Lane.cs`): every lane is now a self-contained subtree under one `Lane 1`
+  root carrying a `Lane` component (geometry, ball, camera, director, feed-cam are its children). All
+  cross-component lookups go through `Lane.Of(this)` / `Lane.Local(scene)` instead of scene-global
+  `GetAllComponents<…>().FirstOrDefault()`, so each director is authoritative only for ITS ball/pins/
+  active-bowler. `LaneBuilder` now builds in lane-LOCAL space (and exposes its landmarks through the
+  lane root transform via `ToWorld`), so a second lane is just the same subtree dropped at an offset.
+  Only one lane is instantiated; the lookups are written for N. (Avatar→lane assignment and per-lane
+  HUD gating are the remaining N-lane seams, noted in code.)
+- **Terry-scale settee** (`LaneBuilder`): the settee + benches + overhead monitors are sized to the
+  walking Citizen (real inches × a citizen units-per-inch derived from `BowlerHeightUnits`), not the
+  giant ball — the people standing on it are the ruler now. (The big backstop pin board stays
+  lane-scale; it's read by the ball from down-lane.)
+- **Settee screens**: from the seated bowler's view (facing +x, so +Y is "left" in s&box) the LEFT
+  overhead screen is the live ball-camera feed (`MonitorFeed`) and the RIGHT is the scoreboard
+  (`LaneConsole`).
+- **Walk-up lane controls** (`LaneStation` + `TerryAvatar` + `LaneControls.razor`): screen-space
+  buttons can't be clicked under the FPS look-lock, so a control podium/`LaneStation` sits on the
+  settee; walking within range shows a "Press E" prompt, and E frees the cursor
+  (`Mouse.Visibility = Visible` + `PlayerController.UseLookControls = false`) and reveals the JOIN/
+  LEAVE/START/STOP strip. E/Escape/walking away restores look + cursor. (Same engage pattern as
+  rotaliate's settings boards.)
+- **Full player avatars** (`TerryAvatar` + `BallController`): each walking Terry — and the Terry
+  riding inside the ball — is dressed in its player's complete Steam avatar, **including workshop /
+  Steam-inventory (community-market) cosmetics**. Clothing objects aren't networked, so every client
+  dresses every avatar locally: own = `CreateFromLocalUser`, others = `CreateFromConnection`, always
+  via `ApplyAsync` (downloads missing items; sync `Apply` drops them). The in-ball Terry re-dresses to
+  the active bowler whenever the spotlight moves.
+
+### Known gaps / risk areas to check first in-editor
+- The networked `Director` (NetworkMode.Object) is now a CHILD of the non-networked `Lane 1` scene
+  object — confirm `[Sync]`/scoreboard still replicates (both are stable scene objects, so it should).
+- Cursor actually frees on E for the STOCK `PlayerController` (verified the lever is
+  `Mouse.Visibility = Visible`, but confirm clicks register on the buttons).
+- Avatar `ApplyAsync` downloading workshop/inventory items for remote players; dressing the in-ball
+  Terry on turn changes without hitches.
+- Settee/monitor feel at the new Citizen scale next to the giant lane.
+
 ## Out of scope for now
 
-Levels/goals, audio, polish. Multiplayer scaffolding is in (Milestone 4) but needs an
+Levels/goals, audio, polish. Multiplayer scaffolding is in (Milestones 4–6) but needs an
 in-editor compile + smoke test before further work.

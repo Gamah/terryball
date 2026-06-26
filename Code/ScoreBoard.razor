@@ -83,7 +83,7 @@
 
 @code
 {
-	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+	private GameDirector Director => Lane.Of( this )?.Director;
 
 	// Rebuild whenever the marks, totals, current frame or game-over state could have changed.
 	protected override int BuildHash()

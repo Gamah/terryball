@@ -14,7 +14,7 @@
 
 @code
 {
-	private LaneMonitorCamera Source => Scene?.GetAllComponents<LaneMonitorCamera>().FirstOrDefault();
+	private LaneMonitorCamera Source => Lane.Of( this )?.Monitor;
 
 	protected override void OnUpdate()
 	{

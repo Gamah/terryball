@@ -1,6 +1,9 @@
 using Sandbox;
 using Sandbox.Citizen;
+using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Terryball;
 
@@ -94,10 +97,19 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	private Rigidbody _body;
 	private GameObject _terry;
+	private SkinnedModelRenderer _terryRenderer;
 	private CitizenAnimationHelper _anim;
 	private Vector3 _terryPrevPos;
+
+	// In-ball Terry is dressed in the ACTIVE bowler's avatar so everyone sees who's up riding inside.
+	// Re-dressed (on every client) whenever the spotlight moves to a different bowler.
+	private Guid _dressedBowler = Guid.Empty;
+	private bool _dressedAny;
+	private CancellationTokenSource _dressCts;
 	private GameDirector _director;
-	private GameDirector Director => _director ??= Scene.GetAllComponents<GameDirector>().FirstOrDefault();
+	// Resolve within our own lane (the director sharing our Lane root), never a scene-global scan, so
+	// each lane's ball answers only to its own director.
+	private GameDirector Director => _director.IsValid() ? _director : (_director = Lane.Of( this )?.Director);
 
 	// Occupant state, in world space: _dir is the unit direction from ball centre to Terry
 	// (starts straight down); _vel is his velocity along the sphere surface.
@@ -150,6 +162,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		var renderer = _terry.Components.GetOrCreate<SkinnedModelRenderer>();
 		renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );
+		_terryRenderer = renderer;
 
 		_anim = _terry.Components.GetOrCreate<CitizenAnimationHelper>();
 		_anim.Target = renderer;
@@ -158,6 +171,54 @@ public sealed class BallController : Component, Component.ICollisionListener
 		PlaceTerry();
 		_terryPrevPos = _terry.WorldPosition;
 	}
+
+	// Keep the in-ball Terry wearing whoever is currently up (runs on every client, bowler or
+	// spectator, so all four feeds show the active bowler's avatar inside the ball).
+	private void UpdateBowlerDress()
+	{
+		var id = Director?.ActiveBowlerId ?? Guid.Empty;
+		if ( id != _dressedBowler || !_dressedAny )
+		{
+			_dressedBowler = id;
+			_dressedAny = true;
+			_ = DressForBowler( id );
+		}
+	}
+
+	/// <summary>Dress the in-ball Terry in the bowler <paramref name="id"/>'s full avatar (community-market
+	/// cosmetics included). Empty id (nobody up) leaves the previous outfit on — the ball is parked then
+	/// anyway. Our own turn reads the complete local avatar; a remote bowler is read from their connection
+	/// (their owned items). ApplyAsync downloads any missing workshop/inventory items first.</summary>
+	private async Task DressForBowler( Guid id )
+	{
+		if ( !_terryRenderer.IsValid() || id == Guid.Empty ) return;
+
+		ClothingContainer clothing;
+		if ( Connection.Local is not null && id == Connection.Local.Id )
+		{
+			clothing = ClothingContainer.CreateFromLocalUser();
+		}
+		else
+		{
+			var conn = Connection.Find( id );
+			clothing = conn is not null ? ClothingContainer.CreateFromConnection( conn ) : null;
+		}
+		if ( clothing is null ) return;
+
+		_dressCts?.Cancel();
+		_dressCts = new CancellationTokenSource();
+		try
+		{
+			await clothing.ApplyAsync( _terryRenderer, _dressCts.Token );
+		}
+		catch ( OperationCanceledException ) { }
+		catch ( Exception e )
+		{
+			Log.Warning( $"[terryball] in-ball dressing failed: {e.Message}" );
+		}
+	}
+
+	protected override void OnDisabled() => _dressCts?.Cancel();
 
 	protected override void OnFixedUpdate()
 	{
@@ -232,6 +293,8 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	protected override void OnUpdate()
 	{
+		UpdateBowlerDress();
+
 		PlaceTerry();
 
 		// Drive Terry's run animation from how fast he's actually moving through the world

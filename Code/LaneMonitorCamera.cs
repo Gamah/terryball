@@ -38,15 +38,20 @@ public sealed class LaneMonitorCamera : Component
 		_cam.FieldOfView = Fov;
 		_cam.BackgroundColor = Color.Black;
 
-		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
-		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
+		var lane = Lane.Of( this );
+		_ball = lane?.Ball;
+		_lane = lane?.Builder;
 	}
 
 	protected override void OnUpdate()
 	{
 		if ( !_cam.IsValid() ) return;
-		if ( !_ball.IsValid() ) _ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
-		if ( !_lane.IsValid() ) _lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
+		if ( !_ball.IsValid() || !_lane.IsValid() )
+		{
+			var lane = Lane.Of( this );
+			if ( !_ball.IsValid() ) _ball = lane?.Ball;
+			if ( !_lane.IsValid() ) _lane = lane?.Builder;
+		}
 		if ( !_ball.IsValid() ) return;
 
 		// Chase cam: behind the ball (-x) and above, looking down-lane toward the pins.

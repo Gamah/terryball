@@ -42,6 +42,20 @@
 			</div>
 		}
 
+		@* Walk-up prompt: near the podium but not engaged yet. *@
+		@if ( me is not null && me.NearStation && !me.ControlsOpen )
+		{
+			<div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;
+			            padding: 8px 18px; border-radius: 9px; background-color: rgba(8,10,16,0.82);
+			            border-width: 1px; border-color: rgba(120,160,220,0.4); color: white;">
+				Press <span style="color: #f1c40f; font-weight: 800;">E</span> — Lane Controls
+			</div>
+		}
+
+		@* The interactive control strip only appears once engaged (E pressed): that's when the cursor is
+		   freed, so its buttons are actually clickable. *@
+		@if ( me is not null && me.ControlsOpen )
+		{
 		<div style="flex-direction: row; align-items: center;
 		            padding: 10px 16px; border-radius: 12px; background-color: rgba(8,10,16,0.82);
 		            border-width: 1px; border-color: rgba(120,160,220,0.35);">
@@ -91,11 +105,12 @@
 			}
 		</div>
 	}
+	}
 </root>
 
 @code
 {
-	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+	private GameDirector Director => Lane.Of( this )?.Director;
 
 	// Our own avatar is the one we own (not a proxy). Null briefly before it spawns.
 	private TerryAvatar LocalAvatar =>
@@ -126,7 +141,16 @@
 	{
 		var d = Director;
 		var me = LocalAvatar;
-		return System.HashCode.Combine(
-			d?.Phase, d?.GameOver, d?.CurrentPlayer, d?.RosterNames.Count, JoinedCount, me?.Joined, IsHost );
+		var hash = new System.HashCode();
+		hash.Add( d?.Phase );
+		hash.Add( d?.GameOver );
+		hash.Add( d?.CurrentPlayer );
+		hash.Add( d?.RosterNames.Count );
+		hash.Add( JoinedCount );
+		hash.Add( me?.Joined );
+		hash.Add( IsHost );
+		hash.Add( me?.NearStation );
+		hash.Add( me?.ControlsOpen );
+		return hash.ToHashCode();
 	}
 }

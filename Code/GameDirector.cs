@@ -194,9 +194,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		if ( !Networking.IsActive )
 			Networking.CreateLobby( new Sandbox.Network.LobbyConfig() );
 
-		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
-		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
-		_camera = Scene.GetAllComponents<BallCamera>().FirstOrDefault();
+		// Resolve our own lane's parts (siblings under our shared Lane root), never a scene-global scan —
+		// each director runs only its own lane's geometry/ball/camera.
+		var lane = Lane.Of( this );
+		_lane = lane?.Builder;
+		_ball = lane?.Ball;
+		_camera = lane?.Camera;
 
 		if ( _ball.IsValid() )
 		{

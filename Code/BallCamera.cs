@@ -45,25 +45,27 @@ public sealed class BallCamera : Component
 
 	protected override void OnEnabled()
 	{
-		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
-		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
+		var lane = Lane.Of( this );
+		_ball = lane?.Ball;
+		_lane = lane?.Builder;
 	}
 
 	protected override void OnUpdate()
 	{
-		// Only ride the ball when the local player is the bowler who's up. Otherwise this client is
-		// walking its Terry around the settee, and its PlayerController owns the camera — so we bow
-		// out entirely and don't fight it for Scene.Camera.
-		var director = Scene.GetAllComponents<GameDirector>().FirstOrDefault();
+		// Only ride the ball when the local player is the bowler who's up ON THIS LANE. Otherwise this
+		// client is walking its Terry around the settee, and its PlayerController owns the camera — so
+		// we bow out entirely and don't fight it for Scene.Camera.
+		var lane = Lane.Of( this );
+		var director = lane?.Director;
 		if ( director is not null && !director.LocalIsBowling ) return;
 
 		if ( !_ball.IsValid() )
 		{
-			_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
+			_ball = lane?.Ball;
 			if ( !_ball.IsValid() ) return;
 		}
 		if ( !_lane.IsValid() )
-			_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
+			_lane = lane?.Builder;
 
 		// Freeze look input while watching; otherwise yaw/pitch follow the mouse as normal.
 		if ( !Watching )

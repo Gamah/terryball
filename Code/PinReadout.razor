@@ -52,7 +52,7 @@
 
 @code
 {
-	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+	private GameDirector Director => Lane.Of( this )?.Director;
 
 	// Rebuild whenever the round state or the set of downed pins changes.
 	protected override int BuildHash()

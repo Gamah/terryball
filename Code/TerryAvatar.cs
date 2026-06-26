@@ -1,5 +1,8 @@
 using Sandbox;
+using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Terryball;
 
@@ -33,12 +36,68 @@ public sealed class TerryAvatar : Component
 	private PlayerController _player;
 	private GameObject _body;
 
-	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+	// --- Walk-up lane controls (LOCAL player only) -------------------------------------------
+	// Screen-space buttons can't be clicked while the FPS look-lock traps the cursor, so the local
+	// bowler walks up to a LaneStation at the settee and presses E: that frees the cursor and opens the
+	// controls. Pure local UI state — never networked.
+	private bool _controlsOpen;
+	private bool _nearStation;
+
+	/// <summary>True while this (local) player has the lane-controls panel open and the cursor freed.</summary>
+	public bool ControlsOpen => _controlsOpen;
+	/// <summary>True while this (local) player is standing in a LaneStation's range (show the prompt).</summary>
+	public bool NearStation => _nearStation;
+
+	/// <summary>The local player's own (non-proxy) avatar, or null before it spawns.</summary>
+	public static TerryAvatar Local( Scene scene )
+		=> scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
+
+	// The director of the lane this avatar is playing on. With one lane that's the only lane; this is
+	// the seam where N-lane assignment will pick the avatar's chosen lane (avatars aren't inside a Lane
+	// subtree, so this can't be Lane.Of).
+	private GameDirector Director => Lane.Local( Scene )?.Director;
+
+	private SkinnedModelRenderer _renderer;
+	private CancellationTokenSource _dressCts;
 
 	protected override void OnStart()
 	{
 		_player = Components.Get<PlayerController>();
-		_body = _player.IsValid() && _player.Renderer.IsValid() ? _player.Renderer.GameObject : null;
+		_renderer = _player.IsValid() ? _player.Renderer : null;
+		_body = _renderer.IsValid() ? _renderer.GameObject : null;
+
+		_ = DressAvatar();
+	}
+
+	/// <summary>
+	/// Dress this walking Terry in its owner's full Steam avatar — including workshop / Steam-inventory
+	/// (community-market) cosmetics. Clothing objects aren't networked, so EVERY client dresses EVERY
+	/// avatar locally: our own from <see cref="ClothingContainer.CreateFromLocalUser"/> (the complete
+	/// local avatar), everyone else's from <see cref="ClothingContainer.CreateFromConnection"/> (their
+	/// avatar user-data, filtered to items they actually own). <c>ApplyAsync</c> — not the synchronous
+	/// <c>Apply</c> — first downloads any missing workshop/inventory items, matching the engine's own
+	/// Dresser; sync Apply silently drops anything not already on disk.
+	/// </summary>
+	private async Task DressAvatar()
+	{
+		if ( !_renderer.IsValid() ) return;
+
+		var clothing = !IsProxy
+			? ClothingContainer.CreateFromLocalUser()
+			: (Network.Owner is not null ? ClothingContainer.CreateFromConnection( Network.Owner ) : null);
+		if ( clothing is null ) return;
+
+		_dressCts?.Cancel();
+		_dressCts = new CancellationTokenSource();
+		try
+		{
+			await clothing.ApplyAsync( _renderer, _dressCts.Token );
+		}
+		catch ( OperationCanceledException ) { }
+		catch ( Exception e )
+		{
+			Log.Warning( $"[terryball] avatar dressing failed: {e.Message}" );
+		}
 	}
 
 	protected override void OnUpdate()
@@ -50,6 +109,86 @@ public sealed class TerryAvatar : Component
 			_player.Enabled = !Bowling;
 		if ( _body.IsValid() )
 			_body.Enabled = !Bowling;
+
+		// Only the local player drives the walk-up controls (proxies are other people's avatars).
+		if ( !IsProxy )
+			UpdateControlsStation();
+	}
+
+	// Find the nearest in-range LaneStation and engage/disengage the lane-controls cursor on E.
+	private void UpdateControlsStation()
+	{
+		// No fiddling with the panel while you're riding the ball.
+		if ( Bowling )
+		{
+			if ( _controlsOpen ) CloseControls();
+			_nearStation = false;
+			return;
+		}
+
+		var station = NearestStation();
+		_nearStation = station is not null;
+
+		if ( _controlsOpen )
+		{
+			// E again, Escape, or walking out of range closes it and restores the look/cursor.
+			if ( Input.Pressed( "use" ) || Input.EscapePressed || station is null )
+			{
+				Input.EscapePressed = false;
+				CloseControls();
+			}
+		}
+		else if ( _nearStation && Input.Pressed( "use" ) )
+		{
+			OpenControls();
+		}
+	}
+
+	private LaneStation NearestStation()
+	{
+		LaneStation best = null;
+		var bestDist = float.MaxValue;
+		var me = GameObject.WorldPosition;
+		foreach ( var s in Scene.GetAllComponents<LaneStation>() )
+		{
+			if ( !s.IsValid() ) continue;
+			var dist = s.WorldPosition.Distance( me );
+			if ( dist < s.InteractRange && dist < bestDist )
+			{
+				best = s;
+				bestDist = dist;
+			}
+		}
+		return best;
+	}
+
+	// Free the cursor for the screen-space controls. Mouse.Visibility=Visible is what flips the engine's
+	// input context to UI (so the buttons take clicks); UseLookControls=false stops the camera spinning
+	// while the mouse drives the cursor instead of the view.
+	private void OpenControls()
+	{
+		_controlsOpen = true;
+		if ( _player.IsValid() ) _player.UseLookControls = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+	}
+
+	private void CloseControls()
+	{
+		_controlsOpen = false;
+		if ( _player.IsValid() ) _player.UseLookControls = true;
+		Mouse.Visibility = MouseVisibility.Auto;
+	}
+
+	// Never leave the cursor freed / look disabled if our avatar goes away while engaged.
+	protected override void OnDisabled()
+	{
+		if ( _controlsOpen ) CloseControls();
+	}
+
+	protected override void OnDestroy()
+	{
+		if ( _controlsOpen ) CloseControls();
+		_dressCts?.Cancel();
 	}
 
 	/// <summary>Bowler → host: a settled ball knocked <paramref name="knocked"/> pins, and the bowler's
