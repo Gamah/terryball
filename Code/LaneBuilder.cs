@@ -158,6 +158,14 @@ public sealed class LaneBuilder : Component
 	/// cleared the whole rack (how much momentum it lost to the pins).</summary>
 	public float PinDeckEndWorldX { get; private set; }
 
+	/// <summary>Centre of the settee carpet (on its top surface), where the director spawns walking
+	/// bowlers. Faces the lane (+x).</summary>
+	public Vector3 SetteeFloorCenter { get; private set; }
+
+	/// <summary>Half the settee's usable width (units) — the director spreads spawned bowlers across
+	/// it so they don't stack on one spot.</summary>
+	public float SetteeHalfWidthUnits { get; private set; }
+
 	protected override void OnEnabled()
 	{
 		if ( _built ) return;
@@ -367,6 +375,10 @@ public sealed class LaneBuilder : Component
 		// Carpeted riser: a low step that reads as the defined seating zone.
 		MakeBox( "SetteeCarpet", new Vector3( midX, 0f, riser * 0.5f ),
 			new Vector3( depth, halfW * 2f, riser ), SetteeCarpetColor );
+
+		// Where the director drops walking bowlers in: on the carpet, mid-settee, facing the lane.
+		SetteeFloorCenter = new Vector3( midX, 0f, riser );
+		SetteeHalfWidthUnits = halfW;
 
 		// Two bench rows facing the lane (+x), STADIUM-staggered so the back row isn't staring at the
 		// front row's backrests: the front bench sits near the ramp at carpet level, the back bench is

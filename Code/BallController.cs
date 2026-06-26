@@ -1,5 +1,6 @@
 using Sandbox;
 using Sandbox.Citizen;
+using System.Linq;
 
 namespace Terryball;
 
@@ -95,6 +96,8 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private GameObject _terry;
 	private CitizenAnimationHelper _anim;
 	private Vector3 _terryPrevPos;
+	private GameDirector _director;
+	private GameDirector Director => _director ??= Scene.GetAllComponents<GameDirector>().FirstOrDefault();
 
 	// Occupant state, in world space: _dir is the unit direction from ball centre to Terry
 	// (starts straight down); _vel is his velocity along the sphere surface.
@@ -160,6 +163,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 	{
 		var dt = Time.Delta;
 		if ( dt <= 0f ) return;
+
+		// Only the client whose turn it is drives the ball; for everyone else it sits parked (its
+		// transform is networked from the active bowler). Nobody up = nobody drives.
+		if ( Director is not null && !Director.LocalIsBowling ) return;
 
 		// Camera-relative run direction on the horizontal plane. While controls are locked (the
 		// ball has crossed the throw line) we read no input at all — wish stays zero.

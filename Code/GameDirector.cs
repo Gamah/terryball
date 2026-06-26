@@ -21,7 +21,7 @@ namespace Terryball;
 ///
 /// <see cref="PinStatuses"/> and <see cref="State"/> are read live by the top-left overlay panel.
 /// </summary>
-public sealed class GameDirector : Component
+public sealed class GameDirector : Component, Component.INetworkListener
 {
 	/// <summary>Hard CAP (seconds) on the watch view before re-racking. We normally cut it short the
 	/// moment the action settles (see the Settle* knobs); this is just the backstop for the rare case
@@ -53,6 +53,19 @@ public sealed class GameDirector : Component
 
 	public enum RoundState { Rolling, Watching }
 	public RoundState State { get; private set; } = RoundState.Rolling;
+
+	// --- Multiplayer ownership ----------------------------------------------------------
+	// The director is host-authoritative. Exactly one connected player is "up" at a time; the host
+	// publishes their connection id here and every client compares it against its own to decide
+	// whether IT drives the ball + ball camera (vs. walking its Terry around the settee). Empty =
+	// nobody up (lobby / between turns), so the ball sits parked and everyone just walks.
+	[Sync( SyncFlags.FromHost )] public Guid ActiveBowlerId { get; set; }
+
+	/// <summary>True if the local client is the bowler currently up. (With no active network session
+	/// — e.g. running the scene raw in the editor before a lobby exists — defaults to true so the
+	/// ball is still drivable.)</summary>
+	public bool LocalIsBowling =>
+		!Networking.IsActive ? true : (ActiveBowlerId != Guid.Empty && ActiveBowlerId == Connection.Local.Id);
 
 	/// <summary>A pin's number (1–10) and whether it currently reads as knocked down.</summary>
 	public readonly record struct PinStatus( int Number, bool Down );
@@ -88,6 +101,7 @@ public sealed class GameDirector : Component
 	private BallController _ball;
 	private BallCamera _camera;
 	private GameObject _hud;   // the director-owned screen-space HUD (pin overlay + scoreboard)
+	private int _spawnCount;   // walking bowlers dropped so far, to fan them across the settee
 
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
@@ -130,6 +144,12 @@ public sealed class GameDirector : Component
 
 	protected override void OnStart()
 	{
+		// Auto-host so the scene is playable solo (you become the host + first bowler) and ready to
+		// accept joiners. If the scene was loaded BY joining someone else's lobby, a session is
+		// already active and we leave it alone.
+		if ( !Networking.IsActive )
+			Networking.CreateLobby( new Sandbox.Network.LobbyConfig() );
+
 		_lane = Scene.GetAllComponents<LaneBuilder>().FirstOrDefault();
 		_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
 		_camera = Scene.GetAllComponents<BallCamera>().FirstOrDefault();
@@ -173,6 +193,59 @@ public sealed class GameDirector : Component
 		_hud.Components.Create<ScreenPanel>();
 		_hud.Components.Create<PinStatusOverlay>();
 		_hud.Components.Create<ScoreBoard>();
+	}
+
+	// --- Network roster ----------------------------------------------------------------
+	// INetworkListener fires on the HOST. Every player who joins (the local host included) gets a
+	// walking Terry on the settee; leaving despawns it. Whether they actually BOWL is a separate
+	// opt-in (TerryAvatar.Joined), locked into the scorecard when the host presses START.
+
+	/// <summary>Host-side: a player finished joining — drop them a walking Terry on the settee.</summary>
+	public void OnActive( Connection channel ) => SpawnAvatar( channel );
+
+	/// <summary>Host-side: a player left — remove their Terry (and drop them from a game in progress).</summary>
+	public void OnDisconnected( Connection channel )
+	{
+		foreach ( var av in Scene.GetAllComponents<TerryAvatar>().ToList() )
+			if ( av.IsValid() && av.GameObject.Network.Owner?.Id == channel.Id )
+				av.GameObject.Destroy();
+	}
+
+	/// <summary>Build one player's walking-Terry avatar (a PlayerController Citizen) at a settee spot
+	/// and hand network ownership to them. Host only — the spawn replicates to every client.</summary>
+	private void SpawnAvatar( Connection channel )
+	{
+		if ( !Networking.IsHost ) return;
+
+		var go = new GameObject( true, $"Terry_{channel.DisplayName}" )
+		{
+			WorldPosition = NextSpawnPosition(),
+			WorldRotation = Rotation.FromYaw( 0f ), // face the lane (+x)
+		};
+
+		var player = go.Components.Create<PlayerController>();
+
+		// Citizen body the PlayerController animates (mirrors its own CreateBodyRenderer()).
+		var body = new GameObject( true, "Body" ) { Parent = go };
+		var renderer = body.Components.Create<SkinnedModelRenderer>();
+		renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );
+		player.Renderer = renderer;
+
+		var avatar = go.Components.Create<TerryAvatar>();
+		avatar.DisplayName = channel.DisplayName;
+
+		go.NetworkSpawn( channel );
+	}
+
+	/// <summary>Fan spawned bowlers across the settee width so they don't pile on one spot.</summary>
+	private Vector3 NextSpawnPosition()
+	{
+		var center = _lane.IsValid() ? _lane.SetteeFloorCenter : Vector3.Zero;
+		var half = _lane.IsValid() ? _lane.SetteeHalfWidthUnits : 200f;
+		var slot = _spawnCount++;
+		var t = (slot % 6) / 5f;                     // 0..1 across six slots, then wraps
+		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, t );
+		return center + new Vector3( 0f, y, 0f );
 	}
 
 	protected override void OnUpdate()

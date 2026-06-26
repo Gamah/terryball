@@ -51,6 +51,12 @@ public sealed class BallCamera : Component
 
 	protected override void OnUpdate()
 	{
+		// Only ride the ball when the local player is the bowler who's up. Otherwise this client is
+		// walking its Terry around the settee, and its PlayerController owns the camera — so we bow
+		// out entirely and don't fight it for Scene.Camera.
+		var director = Scene.GetAllComponents<GameDirector>().FirstOrDefault();
+		if ( director is not null && !director.LocalIsBowling ) return;
+
 		if ( !_ball.IsValid() )
 		{
 			_ball = Scene.GetAllComponents<BallController>().FirstOrDefault();
