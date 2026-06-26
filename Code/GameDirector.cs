@@ -47,8 +47,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	/// <summary>Physics substeps for the world. Re-asserted every frame because the engine replaces
 	/// the PhysicsWorld after OnStart, so setting it once didn't stick (the probe was reading 1).
-	/// Resolves the fast 10-pin cascade instead of smearing the ball through it in coarse steps.</summary>
-	[Property] public int PhysicsSubSteps { get; set; } = 8;
+	/// Resolves the fast 10-pin cascade instead of smearing the ball through it in coarse steps.
+	/// With the physics tick now at 120 Hz (Physics.config FixedUpdateFrequency), 3 substeps already
+	/// gives ~360 solve steps/s — keep it low here or you'll multiply into thousands per second.</summary>
+	[Property] public int PhysicsSubSteps { get; set; } = 3;
 
 	/// <summary>Spew the per-throw pin-crash diagnostics to the console (impact/exit speeds, the physics
 	/// probe, and the per-pin leave breakdown). Off by default — flip it on in the inspector when tuning
