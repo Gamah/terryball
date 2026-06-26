@@ -67,6 +67,25 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	public bool LocalIsBowling =>
 		!Networking.IsActive ? true : (ActiveBowlerId != Guid.Empty && ActiveBowlerId == Connection.Local.Id);
 
+	// --- Shared, host-authoritative game state (synced to every client) -----------------
+	// The host runs all the scoring (against its _players + pins); these mirror just enough for any
+	// client's scoreboard/console to render the same thing. Strings keep it simple: the per-player
+	// frame data is encoded "balls,balls;balls;…" and decoded back in BuildScoreView.
+
+	public enum GamePhase { Lobby, Playing }
+	/// <summary>Lobby = players join/leave; Playing = a game is on (START pressed). Host-set.</summary>
+	[Sync( SyncFlags.FromHost )] public GamePhase Phase { get; set; } = GamePhase.Lobby;
+	/// <summary>The bowlers in this game, in turn order (only meaningful in Playing).</summary>
+	[Sync( SyncFlags.FromHost )] public NetList<string> RosterNames { get; set; } = new();
+	/// <summary>Per-roster-player encoded frame data, parallel to <see cref="RosterNames"/>.</summary>
+	[Sync( SyncFlags.FromHost )] public NetList<string> RosterScores { get; set; } = new();
+	/// <summary>Whose turn it is (index into the roster).</summary>
+	[Sync( SyncFlags.FromHost )] public int CurrentPlayer { get; set; }
+	/// <summary>The frame everyone's on (0–9).</summary>
+	[Sync( SyncFlags.FromHost )] public int CurrentFrame { get; set; }
+	/// <summary>True once the final frame of the last bowler is complete.</summary>
+	[Sync( SyncFlags.FromHost )] public bool GameComplete { get; set; }
+
 	/// <summary>A pin's number (1–10) and whether it currently reads as knocked down.</summary>
 	public readonly record struct PinStatus( int Number, bool Down );
 
@@ -114,10 +133,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private float _peakPinVel;  // peak pin linear speed seen this throw (u/s)
 
 	// --- Game / frame state -------------------------------------------------------------
-	// A bowling game is 10 frames of 1–2 balls (the 10th gets a 3rd on a strike/spare). We
-	// track one PlayerScore per player — a list, so adding players later is a data change, not
-	// a rewrite — but seed exactly one for now. The active player rolls _frame; with a single
-	// player AdvanceFrame just steps the frame, with several it'd rotate players first.
+	// A bowling game is 10 frames of 1–2 balls (the 10th gets a 3rd on a strike/spare). The host
+	// keeps one authoritative PlayerScore per bowler in the roster; bowlers alternate within a
+	// shared frame (P1 frame1, P2 frame1, … then everyone steps to frame2). AdvanceTurn rotates the
+	// active bowler and steps the frame once the last bowler is done. This state is host-only and
+	// mirrored to clients through the synced Roster* fields (see PublishScores).
 
 	/// <summary>One player's scratch: the pin counts knocked on each ball, grouped by frame.</summary>
 	public sealed class PlayerScore
@@ -132,15 +152,17 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		}
 	}
 
-	private readonly List<PlayerScore> _players = new();
+	private readonly List<PlayerScore> _players = new();   // host-authoritative scoring state
+	private readonly List<Guid> _rosterIds = new();        // host: roster slot -> owning connection id
 	private int _current;            // whose turn (index into _players)
-	private int _frame;              // current frame 0..9 for the active player
+	private int _frame;              // current frame 0..9 (shared; players alternate within it)
 	private int _ballStartDown;      // pins already down entering the current ball (swept from earlier balls this frame)
 	private readonly HashSet<int> _sweptPins = new(); // pins cleared off the deck this frame (down on an earlier ball)
 	private bool _gameOver;
 
-	/// <summary>True once the 10th frame is complete — the overlay shows GAME OVER / press P.</summary>
-	public bool GameOver => _gameOver;
+	/// <summary>True once the final frame is complete — panels show GAME OVER. Mirrors the synced
+	/// <see cref="GameComplete"/> so every client reads the same flag.</summary>
+	public bool GameOver => GameComplete;
 
 	protected override void OnStart()
 	{
@@ -167,16 +189,21 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			PlaceBallHome();
 		}
 
-		// One player for now; the list + active-player index are here so multiplayer is a data
-		// change later, not a rewrite. The pins were just racked by the LaneBuilder, so a fresh
-		// game starts on frame 1 with a full deck.
+		// Start in the LOBBY: no roster yet. Players walk up and Join from the lane controls; the
+		// host presses START to lock the roster in and begin frame 1. (Host publishes the empty
+		// state so joining clients render a clean board.)
 		_players.Clear();
-		_players.Add( new PlayerScore( "Player 1" ) );
+		_rosterIds.Clear();
 		_current = 0;
 		_frame = 0;
 		_ballStartDown = 0;
 		_sweptPins.Clear();
 		_gameOver = false;
+		if ( Networking.IsHost )
+		{
+			Phase = GamePhase.Lobby;
+			PublishScores();
+		}
 
 		BuildHud();
 	}
@@ -193,6 +220,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_hud.Components.Create<ScreenPanel>();
 		_hud.Components.Create<PinStatusOverlay>();
 		_hud.Components.Create<ScoreBoard>();
+		_hud.Components.Create<LaneControls>();
 	}
 
 	// --- Network roster ----------------------------------------------------------------
@@ -248,6 +276,117 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		return center + new Vector3( 0f, y, 0f );
 	}
 
+	// --- Lobby controls (driven by the lane controls panel) -----------------------------
+	// Join/Leave is each client toggling its OWN avatar's (owner-controlled) Joined flag directly —
+	// no RPC. Start/Stop are host-only and called straight on the director by the host's own controls
+	// panel (clients don't show those buttons), so there's no instance-RPC on the scene object.
+
+	/// <summary>Host: lock the joined players into a fresh scorecard and tip off frame 1.</summary>
+	public void StartGame()
+	{
+		if ( !Networking.IsHost || Phase == GamePhase.Playing ) return;
+
+		var joined = Scene.GetAllComponents<TerryAvatar>()
+			.Where( a => a.IsValid() && a.Joined )
+			.ToList();
+		if ( joined.Count == 0 ) return; // nobody to play
+
+		_players.Clear();
+		_rosterIds.Clear();
+		foreach ( var a in joined )
+		{
+			_players.Add( new PlayerScore( a.DisplayName ) );
+			_rosterIds.Add( a.GameObject.Network.Owner?.Id ?? Guid.Empty );
+		}
+
+		_current = 0;
+		_frame = 0;
+		_ballStartDown = 0;
+		_sweptPins.Clear();
+		_gameOver = false;
+		Phase = GamePhase.Playing;
+
+		FullRack();
+		SetActiveBowler();
+		PublishScores();
+		BeginRolling();
+		Log.Info( $"[terryball][game] START — {_players.Count} bowler(s), frame 1" );
+	}
+
+	/// <summary>Host: clear the scorecard and drop everyone back to the lobby (walking the settee).</summary>
+	public void StopGame()
+	{
+		if ( !Networking.IsHost ) return;
+
+		Phase = GamePhase.Lobby;
+		_players.Clear();
+		_rosterIds.Clear();
+		_current = 0;
+		_frame = 0;
+		_gameOver = false;
+		ActiveBowlerId = Guid.Empty;
+		State = RoundState.Rolling;
+
+		foreach ( var av in Scene.GetAllComponents<TerryAvatar>() )
+			if ( av.IsValid() ) av.Bowling = false;
+
+		if ( _camera.IsValid() ) _camera.Watching = false;
+		FullRack();
+		PlaceBallHome();
+		PublishScores();
+		Log.Info( "[terryball][game] STOP — back to the lobby" );
+	}
+
+	/// <summary>Point the spotlight at the current roster player: publish their connection id and flip
+	/// exactly their avatar into Bowling (the rest walk/spectate). Host only.</summary>
+	private void SetActiveBowler()
+	{
+		ActiveBowlerId = (_current >= 0 && _current < _rosterIds.Count) ? _rosterIds[_current] : Guid.Empty;
+		foreach ( var av in Scene.GetAllComponents<TerryAvatar>() )
+			if ( av.IsValid() )
+				av.Bowling = av.GameObject.Network.Owner?.Id == ActiveBowlerId && ActiveBowlerId != Guid.Empty;
+	}
+
+	/// <summary>Host: mirror the authoritative scoring state into the synced (FromHost) fields every
+	/// client renders from. Called after anything that changes the cards or whose turn it is.</summary>
+	private void PublishScores()
+	{
+		if ( !Networking.IsHost ) return;
+
+		RosterNames.Clear();
+		RosterScores.Clear();
+		foreach ( var p in _players )
+		{
+			RosterNames.Add( p.Name );
+			RosterScores.Add( EncodeFrames( p.Frames ) );
+		}
+		CurrentPlayer = _current;
+		CurrentFrame = _frame;
+		GameComplete = _gameOver;
+	}
+
+	// Frames encode as "b,b;b;…" — balls comma-separated within a frame, frames semicolon-separated.
+	private static string EncodeFrames( List<List<int>> frames )
+		=> string.Join( ";", frames.Select( f => string.Join( ",", f ) ) );
+
+	private static List<List<int>> DecodeFrames( string s )
+	{
+		var result = new List<List<int>>();
+		if ( !string.IsNullOrEmpty( s ) )
+		{
+			foreach ( var fr in s.Split( ';' ) )
+			{
+				var balls = new List<int>();
+				if ( fr.Length > 0 )
+					foreach ( var b in fr.Split( ',' ) )
+						if ( int.TryParse( b, out var v ) ) balls.Add( v );
+				result.Add( balls );
+			}
+		}
+		while ( result.Count < 10 ) result.Add( new List<int>() );
+		return result;
+	}
+
 	protected override void OnUpdate()
 	{
 		if ( !_lane.IsValid() || !_ball.IsValid() ) return;
@@ -256,12 +395,18 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
 		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
 
-		// Press P at any time to start a brand-new game: frame 1, full rack, ball in hand.
+		// The throw lifecycle + scoring is HOST-authoritative and only runs during a game. Clients
+		// just render the synced state; the lobby has no live throw to track. (Host keyboard P is a
+		// quick START/STOP toggle for solo testing without reaching for the panel.)
+		if ( !Networking.IsHost ) return;
+
 		if ( Input.Keyboard.Pressed( "P" ) )
 		{
-			NewGame();
+			if ( Phase == GamePhase.Playing ) StopGame(); else StartGame();
 			return;
 		}
+
+		if ( Phase != GamePhase.Playing ) return;
 
 		Probe();
 		Score();
@@ -425,6 +570,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		frame.Add( knocked );
 
 		DecideNextBall( frame );
+		PublishScores(); // push the new mark / turn to every client's board
 	}
 
 	// Bowling's flow control. Frames 1–9: a first-ball strike ends the frame, otherwise you get
@@ -439,7 +585,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		{
 			var strike = frame[0] == 10;
 			if ( strike || ball >= 2 )
-				AdvanceFrame();                 // strike (1 ball) or open/spare (2 balls): frame done
+				AdvanceTurn();                  // strike (1 ball) or open/spare (2 balls): frame done
 			else
 				ContinueFrame( fresh: false );  // second ball at the standing pins
 			return;
@@ -457,7 +603,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			var earnedThird = frame[0] == 10 || frame[0] + frame[1] >= 10; // strike or spare
 			if ( !earnedThird )
 			{
-				EndGame();
+				AdvanceTurn();                  // tenth done, no bonus — pass to the next bowler
 			}
 			else
 			{
@@ -467,24 +613,32 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				ContinueFrame( fresh );
 			}
 		}
-		else // third ball thrown — the game is done
+		else // third ball thrown — this bowler's tenth is done
 		{
-			EndGame();
+			AdvanceTurn();
 		}
 	}
 
-	// Advance the active player to their next frame and rack a fresh deck. (With multiple
-	// players this is where you'd rotate to the next player before stepping the frame.)
-	private void AdvanceFrame()
+	// One bowler's frame is done. Rotate to the next bowler at the SAME frame; once the last bowler
+	// finishes, step everyone to the next frame. When the last bowler finishes frame 10, the game's
+	// over. Each new turn re-racks, re-spotlights the bowler, and hands them the ball.
+	private void AdvanceTurn()
 	{
-		_frame++;
-		if ( _frame >= 10 )
+		_current++;
+		if ( _current >= _players.Count )
 		{
-			EndGame();
-			return;
+			_current = 0;
+			_frame++;
+			if ( _frame >= 10 )
+			{
+				EndGame();
+				return;
+			}
 		}
+
 		FullRack();
 		_ballStartDown = 0;
+		SetActiveBowler();
 		BeginRolling();
 	}
 
@@ -510,13 +664,16 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_gameOver = true;
 		State = RoundState.Rolling;
 		if ( _camera.IsValid() ) _camera.Watching = false;
-		_ball.ControlsLocked = true; // park the ball; no more throws until P starts a new game
+		_ball.ControlsLocked = true; // park the ball; STOP returns everyone to the lobby
 		PlaceBallHome();
 
-		var cum = ScoreThrough( _players[_current], out var have );
-		var final = 0;
-		for ( var f = 0; f < 10; f++ ) if ( have[f] ) final = cum[f];
-		Log.Info( $"[terryball][game] complete — final score {final}" );
+		// Everyone exits the ball and is back to walking; the final board stays up until STOP.
+		ActiveBowlerId = Guid.Empty;
+		foreach ( var av in Scene.GetAllComponents<TerryAvatar>() )
+			if ( av.IsValid() ) av.Bowling = false;
+
+		PublishScores();
+		Log.Info( "[terryball][game] complete — final board up; press STOP for the lobby" );
 	}
 
 	// Hand control back and roll the next ball from the run-up.
@@ -526,21 +683,6 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_ball.ControlsLocked = false;
 		if ( _camera.IsValid() ) _camera.Watching = false;
 		PlaceBallHome();
-	}
-
-	// Press-P new game: clear every player's card, full rack, back to frame 1 ball 1.
-	private void NewGame()
-	{
-		foreach ( var p in _players )
-			foreach ( var f in p.Frames )
-				f.Clear();
-		_current = 0;
-		_frame = 0;
-		_gameOver = false;
-		FullRack();
-		_ballStartDown = 0;
-		BeginRolling();
-		Log.Info( "[terryball][game] new game — racked, frame 1" );
 	}
 
 	// Drop every pin back onto its spot, enabled, upright and dead still — a clean rack.
@@ -649,13 +791,20 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		public bool Active { get; init; }
 	}
 
-	/// <summary>Build the scoreboard model for every player. Cheap; called on the panel's rebuild.</summary>
+	/// <summary>Build the scoreboard model for every player from the SYNCED state, so the host and
+	/// every client render an identical board (the host publishes its authoritative scoring into
+	/// RosterNames/RosterScores; this just reads it back). Cheap; called on each panel rebuild.</summary>
 	public List<PlayerView> BuildScoreView()
 	{
 		var views = new List<PlayerView>();
-		for ( var pi = 0; pi < _players.Count; pi++ )
+		var over = GameComplete;
+		for ( var pi = 0; pi < RosterNames.Count; pi++ )
 		{
-			var player = _players[pi];
+			var name = RosterNames[pi];
+			var framesData = pi < RosterScores.Count ? DecodeFrames( RosterScores[pi] ) : DecodeFrames( "" );
+			var player = new PlayerScore( name );
+			for ( var f = 0; f < 10; f++ ) player.Frames[f] = framesData[f];
+
 			var cum = ScoreThrough( player, out var have );
 			var frames = new List<FrameView>( 10 );
 			var total = 0;
@@ -666,15 +815,15 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				{
 					Balls = BallMarks( player.Frames[fr], fr == 9 ),
 					Score = have[fr] ? cum[fr] : null,
-					Active = pi == _current && fr == _frame && !_gameOver,
+					Active = pi == CurrentPlayer && fr == CurrentFrame && !over,
 				} );
 			}
 			views.Add( new PlayerView
 			{
-				Name = player.Name,
+				Name = name,
 				Frames = frames,
 				Total = total,
-				Active = pi == _current,
+				Active = pi == CurrentPlayer && !over,
 			} );
 		}
 		return views;

@@ -1,0 +1,132 @@
+@using Sandbox
+@using Sandbox.UI
+@using System.Linq
+@using System.Collections.Generic
+@using Terryball
+@inherits PanelComponent
+
+@*
+	The lane controls — a screen-space strip the director owns (spawned alongside the scoreboard on
+	its HUD). It's where players JOIN/LEAVE the next game and the host runs START/STOP. Screen-space
+	(not the in-world settee panel) so it's clickable with the plain cursor, no world-raycast needed.
+
+	Join/Leave just toggles the local player's OWN avatar flag (owner-controlled, no RPC). Start/Stop
+	call the host-authoritative director directly and only render for the host.
+*@
+
+<root style="position: absolute; bottom: 28px; left: 0px; right: 0px;
+             flex-direction: column; align-items: center;
+             font-family: Poppins, sans-serif; color: white;">
+	@{
+		var director = Director;
+		var me = LocalAvatar;
+		var playing = director?.Phase == GameDirector.GamePhase.Playing;
+		var over = director?.GameOver ?? false;
+	}
+
+	@if ( director is not null )
+	{
+		@* Current-bowler banner while a game is on. *@
+		@if ( playing && !over )
+		{
+			<div style="font-size: 26px; font-weight: 800; margin-bottom: 10px;
+			            padding: 6px 22px; border-radius: 10px; background-color: rgba(241,196,15,0.18);
+			            border-width: 2px; border-color: rgba(241,196,15,0.6);">
+				@UpName is up
+			</div>
+		}
+		@if ( over )
+		{
+			<div style="font-size: 26px; font-weight: 800; margin-bottom: 10px; color: #f1c40f;">
+				GAME OVER
+			</div>
+		}
+
+		<div style="flex-direction: row; align-items: center;
+		            padding: 10px 16px; border-radius: 12px; background-color: rgba(8,10,16,0.82);
+		            border-width: 1px; border-color: rgba(120,160,220,0.35);">
+
+			@* Roster summary. *@
+			<div style="font-size: 15px; color: rgba(255,255,255,0.65); margin-right: 16px;">
+				@if ( playing )
+				{
+					<span>PLAYING — @(director.RosterNames.Count) bowler@(director.RosterNames.Count == 1 ? "" : "s")</span>
+				}
+				else
+				{
+					<span>LOBBY — @JoinedCount joined</span>
+				}
+			</div>
+
+			@* Per-player Join/Leave (needs an avatar of our own). *@
+			@if ( me is not null && !playing )
+			{
+				<div style="margin-left: 10px; padding: 9px 22px; border-radius: 9px; font-size: 17px;
+				            font-weight: 700; cursor: pointer;
+				            background-color: @(me.Joined ? "rgba(192,57,43,0.85)" : "rgba(46,204,113,0.85)");"
+				     onclick=@ToggleJoin>
+					@(me.Joined ? "LEAVE" : "JOIN")
+				</div>
+			}
+
+			@* Host-only Start/Stop. *@
+			@if ( IsHost )
+			{
+				@if ( !playing )
+				{
+					<div style="margin-left: 10px; padding: 9px 22px; border-radius: 9px; font-size: 17px;
+					            font-weight: 700; cursor: pointer; background-color: rgba(52,152,219,0.9);"
+					     onclick=@(() => director.StartGame())>
+						START
+					</div>
+				}
+				else
+				{
+					<div style="margin-left: 10px; padding: 9px 22px; border-radius: 9px; font-size: 17px;
+					            font-weight: 700; cursor: pointer; background-color: rgba(155,89,182,0.9);"
+					     onclick=@(() => director.StopGame())>
+						STOP
+					</div>
+				}
+			}
+		</div>
+	}
+</root>
+
+@code
+{
+	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+
+	// Our own avatar is the one we own (not a proxy). Null briefly before it spawns.
+	private TerryAvatar LocalAvatar =>
+		Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
+
+	private bool IsHost => Networking.IsHost;
+
+	private int JoinedCount =>
+		Scene?.GetAllComponents<TerryAvatar>().Count( a => a.IsValid() && a.Joined ) ?? 0;
+
+	private string UpName
+	{
+		get
+		{
+			var d = Director;
+			if ( d is null || d.CurrentPlayer < 0 || d.CurrentPlayer >= d.RosterNames.Count ) return "";
+			return d.RosterNames[d.CurrentPlayer];
+		}
+	}
+
+	private void ToggleJoin()
+	{
+		var me = LocalAvatar;
+		if ( me is not null ) me.Joined = !me.Joined;
+	}
+
+	protected override int BuildHash()
+	{
+		var d = Director;
+		var me = LocalAvatar;
+		return System.HashCode.Combine(
+			d?.Phase, d?.GameOver, d?.CurrentPlayer, d?.RosterNames.Count, JoinedCount, me?.Joined, IsHost );
+	}
+}

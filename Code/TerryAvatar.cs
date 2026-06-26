@@ -18,8 +18,9 @@ public sealed class TerryAvatar : Component
 	/// <summary>Steam display name, set by the host on spawn so the scoreboard/banner can use it.</summary>
 	[Sync( SyncFlags.FromHost )] public string DisplayName { get; set; } = "Bowler";
 
-	/// <summary>Opted into the next game's roster (toggled from the lane console before START).</summary>
-	[Sync( SyncFlags.FromHost )] public bool Joined { get; set; }
+	/// <summary>Opted into the next game's roster (toggled from the lane controls before START). Owner-
+	/// controlled — each client flips its OWN avatar's flag directly; the host reads it on START.</summary>
+	[Sync] public bool Joined { get; set; }
 
 	/// <summary>Currently up — riding the ball, not walking. The director sets exactly one true.</summary>
 	[Sync( SyncFlags.FromHost )] public bool Bowling { get; set; }
