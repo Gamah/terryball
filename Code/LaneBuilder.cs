@@ -458,7 +458,9 @@ public sealed class LaneBuilder : Component
 	private void BuildBackstopReadout( float frontX, float laneHalf, float wallTopZ, float D )
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
-		var panelPx = new Vector2( 1000f, 720f );          // roughly the rack's aspect
+		// Tall enough to seat the header + the four rack rows with headroom: the old 720 was a hair
+		// SHORTER than the content, so the bottom (head-pin) row spilled off the canvas and clipped.
+		var panelPx = new Vector2( 1000f, 900f );
 		var worldW = laneHalf * 2f;                        // EXACTLY the lane width, as asked
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;

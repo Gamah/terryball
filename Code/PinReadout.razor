@@ -26,10 +26,10 @@
 	@* The exact layout of the corner PinStatusOverlay, just scaled up uniformly (~3.4×): title over
 	   count over the rack triangle, all stacked in the root's column. flex-shrink: 0 keeps the rows from
 	   being squished to fit, and the column header keeps the text from overflowing the board's width. *@
-	<div style="font-size: 68px; font-weight: 700; margin-bottom: 7px; flex-shrink: 0;">
+	<div style="font-size: 90px; font-weight: 700; margin-bottom: 9px; flex-shrink: 0;">
 		@(watching ? "WATCHING" : "PINS")
 	</div>
-	<div style="font-size: 48px; color: rgba(255,255,255,0.7); margin-bottom: 40px; flex-shrink: 0;">
+	<div style="font-size: 63px; color: rgba(255,255,255,0.7); margin-bottom: 54px; flex-shrink: 0;">
 		@(10 - down) UP / @down DOWN
 	</div>
 
@@ -39,8 +39,8 @@
 			@foreach ( var n in row )
 			{
 				var isDown = director?.IsPinDown( n ) ?? false;
-				<div style="width: 88px; height: 88px; margin: 10px; border-radius: 44px; flex-shrink: 0;
-				            align-items: center; justify-content: center; font-size: 40px;
+				<div style="width: 116px; height: 116px; margin: 13px; border-radius: 58px; flex-shrink: 0;
+				            align-items: center; justify-content: center; font-size: 54px;
 				            font-weight: 600; color: @(isDown ? "rgba(255,255,255,0.55)" : "black");
 				            background-color: @(isDown ? "#c0392b" : "#2ecc71");">
 					@n
