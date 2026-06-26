@@ -5,9 +5,12 @@
 
 @*
 	The local bowler's on-screen controls while riding the ball. Right now that's just the escape
-	hatch: an "Exit ball" button that ends your turn (drops you back to the settee) for when the
-	director gets wedged mid-turn. The button click works whenever the cursor is free (e.g. chat open);
-	the G key does the same and always works even while the mouse is captured for aiming.
+	hatch: a button-styled prompt for the G key, which ends your turn (drops you back to the settee)
+	for when the director gets wedged mid-turn.
+
+	It's deliberately pointer-events: none — an interactive screen panel flips the engine into UI input
+	mode while you're aiming, which zeroes AnalogLook and freezes the ball camera. So this is a visible
+	affordance and the action lives on the G key (which works while the mouse is captured for aiming).
 *@
 
 <root>
@@ -17,9 +20,9 @@
 	}
 	@if ( bowling )
 	{
-		<div class="bail" onclick=@LeaveBall>
-			<div class="label">Exit ball</div>
+		<div class="bail">
 			<div class="key">G</div>
+			<div class="label">Exit ball</div>
 		</div>
 	}
 </root>
@@ -44,12 +47,7 @@
 		border-radius: 8px;
 		font-family: Poppins, sans-serif;
 		color: white;
-		pointer-events: all;
-		transition: background-color 0.1s ease;
-	}
-
-	.bail:hover {
-		background-color: rgba(170, 45, 45, 0.92);
+		pointer-events: none;
 	}
 
 	.bail .label {
@@ -70,11 +68,6 @@
 @code
 {
 	private GameDirector Director => Lane.Of( this )?.Director;
-
-	void LeaveBall()
-	{
-		TerryAvatar.Local( Scene )?.RequestLeaveBall();
-	}
 
 	protected override int BuildHash() => System.HashCode.Combine( Director?.LocalIsBowling ?? false );
 }
