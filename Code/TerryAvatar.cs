@@ -1,17 +1,22 @@
 using Sandbox;
+using System.Linq;
 
 namespace Terryball;
 
 /// <summary>
 /// Rides each player's networked walking-Terry object (a <see cref="PlayerController"/> Citizen).
-/// Carries their display name and the two state bits the director (host) flips:
-///   <see cref="Joined"/>  — opted into the next game's roster via the lane console.
-///   <see cref="Bowling"/> — currently the active bowler, up and riding the shared ball.
+/// Carries their display name + the two state bits the director (host) flips, AND is the networked
+/// conduit for the active bowler's throw (it's owned by that client, so its RPCs originate there):
+///   <see cref="DisplayName"/> — Steam name, host-set on spawn.
+///   <see cref="Joined"/>      — opted into the next game's roster (owner-controlled).
+///   <see cref="Bowling"/>     — currently up, riding the ball (host-set; exactly one true).
 ///
-/// Both are host-authoritative ([Sync] FromHost): the director decides who's joined and who's up,
-/// and every client reads it. While a player is Bowling their walking body steps aside — it's
-/// hidden (their Terry appears riding inside the glass ball instead) and their PlayerController is
-/// suspended so the <see cref="BallController"/>/<see cref="BallCamera"/> own the throw.
+/// While a player is Bowling their walking body steps aside — hidden (their Terry appears riding
+/// inside the glass ball instead) and their PlayerController suspended so the ball owns the throw.
+///
+/// Throw networking (approach B — the bowler is authoritative for their own turn):
+///   <see cref="ReportBall"/>  — bowler → host: a settled ball's pinfall + whether the turn's done.
+///   <see cref="StreamThrow"/> — bowler → everyone: ball + pin transforms, so spectators see it.
 /// </summary>
 public sealed class TerryAvatar : Component
 {
@@ -28,6 +33,8 @@ public sealed class TerryAvatar : Component
 	private PlayerController _player;
 	private GameObject _body;
 
+	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+
 	protected override void OnStart()
 	{
 		_player = Components.Get<PlayerController>();
@@ -43,5 +50,23 @@ public sealed class TerryAvatar : Component
 			_player.Enabled = !Bowling;
 		if ( _body.IsValid() )
 			_body.Enabled = !Bowling;
+	}
+
+	/// <summary>Bowler → host: a settled ball knocked <paramref name="knocked"/> pins, and the bowler's
+	/// own rules say their turn is <paramref name="turnDone"/>. The host books it onto the scorecard
+	/// (and rotates to the next bowler when done). Runs on the host.</summary>
+	[Rpc.Host]
+	public void ReportBall( int knocked, int downMask, bool turnDone )
+		=> Director?.HostBookBall( knocked, downMask, turnDone );
+
+	/// <summary>Bowler → everyone: stream the live ball + pin transforms (and current down-mask) so
+	/// spectators watch the throw on their frozen local copies. Unreliable + throttled; a dropped
+	/// packet just means one skipped frame. Encoded as a flat comma-separated float list.</summary>
+	[Rpc.Broadcast( NetFlags.Unreliable )]
+	public void StreamThrow( string data, int downMask )
+	{
+		// Only apply on clients who AREN'T the bowler — the bowler has the real physics.
+		if ( IsProxy )
+			Director?.ApplyStreamedThrow( data, downMask );
 	}
 }

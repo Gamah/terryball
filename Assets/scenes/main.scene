@@ -164,6 +164,7 @@
       "Name": "Director",
       "Position": "0,0,0",
       "Enabled": true,
+      "NetworkMode": 1,
       "Components": [
         {
           "__type": "Terryball.GameDirector",

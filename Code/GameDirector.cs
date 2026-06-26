@@ -1,6 +1,7 @@
 using Sandbox;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Terryball;
@@ -89,11 +90,30 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// <summary>A pin's number (1–10) and whether it currently reads as knocked down.</summary>
 	public readonly record struct PinStatus( int Number, bool Down );
 
-	private readonly List<PinStatus> _statuses = new();
-	/// <summary>Live per-pin standing/down state, ordered by pin number, for the overlay.</summary>
-	public IReadOnlyList<PinStatus> PinStatuses => _statuses;
+	private readonly List<PinStatus> _statuses = new();   // bowler-local scoring scratch (from Score())
+
+	/// <summary>Bit n (1–10) set = pin n reads as down. The single per-client source every pin readout
+	/// draws from: the active bowler fills it from its authoritative physics (<see cref="Score"/>), and
+	/// every spectator fills it from the bowler's stream (<see cref="ApplyStreamedThrow"/>), so all four
+	/// pin surfaces agree on every machine even though only the bowler simulates the pins.</summary>
+	public int PinDownBits { get; private set; }
+
+	/// <summary>Live per-pin standing/down state, ordered by pin number, derived from the bitmask.</summary>
+	public IReadOnlyList<PinStatus> PinStatuses
+	{
+		get
+		{
+			var list = new List<PinStatus>( 10 );
+			for ( var n = 1; n <= 10; n++ ) list.Add( new PinStatus( n, IsPinDown( n ) ) );
+			return list;
+		}
+	}
+
 	/// <summary>Count of pins currently down — handy for the overlay header / build hash.</summary>
-	public int DownCount => _statuses.Count( s => s.Down );
+	public int DownCount
+	{
+		get { var c = 0; for ( var n = 1; n <= 10; n++ ) if ( IsPinDown( n ) ) c++; return c; }
+	}
 
 	/// <summary>The rack laid out as the bowler sees it down-lane: head pin (1) nearest at the BOTTOM,
 	/// the back row (7–10) farthest at the top, mirrored left-right (10 on the left) — a 180° turn of
@@ -107,20 +127,22 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		new[] { 1 },
 	};
 
-	/// <summary>Is pin <paramref name="number"/> currently reading as down? The director's live
-	/// scoring is the authority for every pin panel.</summary>
-	public bool IsPinDown( int number )
-	{
-		foreach ( var s in _statuses )
-			if ( s.Number == number ) return s.Down;
-		return false;
-	}
+	/// <summary>Is pin <paramref name="number"/> (1–10) currently reading as down?</summary>
+	public bool IsPinDown( int number ) => (PinDownBits & (1 << number)) != 0;
 
 	private LaneBuilder _lane;
 	private BallController _ball;
 	private BallCamera _camera;
 	private GameObject _hud;   // the director-owned screen-space HUD (pin overlay + scoreboard)
 	private int _spawnCount;   // walking bowlers dropped so far, to fan them across the settee
+
+	// --- Approach-B throw networking (the active bowler is authoritative for their own turn) -------
+	private readonly List<int> _localBalls = new(); // bowler-side: the balls thrown THIS frame, for the rules
+	private bool _wasBowling;        // edge-detect when the local client becomes/stops being the bowler
+	private float _lastStreamAt;     // throttle for the transform stream
+	private TerryAvatar _localAvatar;
+	private TerryAvatar LocalAvatar =>
+		(_localAvatar.IsValid() ? _localAvatar : (_localAvatar = Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy )));
 
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
@@ -306,10 +328,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_gameOver = false;
 		Phase = GamePhase.Playing;
 
-		FullRack();
+		// No physics here — the first bowler racks + rolls on their own machine (BeginTurn) the moment
+		// their spotlight (ActiveBowlerId) lands.
 		SetActiveBowler();
 		PublishScores();
-		BeginRolling();
 		Log.Info( $"[terryball][game] START — {_players.Count} bowler(s), frame 1" );
 	}
 
@@ -395,18 +417,31 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
 		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
 
-		// The throw lifecycle + scoring is HOST-authoritative and only runs during a game. Clients
-		// just render the synced state; the lobby has no live throw to track. (Host keyboard P is a
-		// quick START/STOP toggle for solo testing without reaching for the panel.)
-		if ( !Networking.IsHost ) return;
-
-		if ( Input.Keyboard.Pressed( "P" ) )
+		// Host keyboard P is a quick START/STOP toggle for solo testing without reaching for the panel.
+		if ( Networking.IsHost && Input.Keyboard.Pressed( "P" ) )
 		{
 			if ( Phase == GamePhase.Playing ) StopGame(); else StartGame();
 			return;
 		}
 
-		if ( Phase != GamePhase.Playing ) return;
+		if ( Phase != GamePhase.Playing )
+		{
+			_wasBowling = false;
+			return;
+		}
+
+		// Approach B: whoever is UP runs their whole throw on their OWN authoritative local ball + pins
+		// and streams the result; everyone else (spectators) just plays back the stream onto their
+		// local copies (ApplyStreamedThrow slams the transforms + kills velocity so they don't drift).
+		var bowling = LocalIsBowling;
+		if ( bowling && !_wasBowling ) BeginTurn();     // we just got the ball — rack + reset
+		_wasBowling = bowling;
+
+		if ( !bowling )
+			return; // spectator — the stream drives our view; nothing to simulate here
+
+		// We're the bowler: live physics, run the lifecycle, and stream transforms to the watchers.
+		StreamTransforms();
 
 		Probe();
 		Score();
@@ -415,8 +450,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		{
 			case RoundState.Rolling:
 				// Arm watch-mode the moment the ball's centre passes the throw line (unless the
-				// game's already over and the ball is parked).
-				if ( !_gameOver && _ball.WorldPosition.x >= _lane.ThrowLineWorldX )
+				// game's already over and the ball is parked). GameComplete is synced, so this is
+				// correct whether or not the bowler is the host.
+				if ( !GameComplete && _ball.WorldPosition.x >= _lane.ThrowLineWorldX )
 					EnterWatch();
 				break;
 
@@ -552,76 +588,68 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		Log.Info( $"[terryball][leave] standing={string.Join( ",", standing )}  ({standing.Count} left)" );
 	}
 
-	// The watch has ended and the pins have settled: book this ball's pinfall onto the active
-	// player's frame, then decide what comes next — another ball this frame (respot the pins
-	// still standing), a fresh frame (full re-rack), or the end of the game.
+	// The watch has ended and the pins have settled (BOWLER side). Count what this ball knocked from
+	// our authoritative local pins, report it to the host for the scorecard, and apply the bowling
+	// rules locally to either respot for our next ball or end our turn (the host then rotates).
 	private void ProcessSettledBall()
 	{
 		LogLeave();
 
-		// Pins down now (Score() already marks both physics-down pins AND ones swept on an
-		// earlier ball this frame), minus the ones that were already down entering this ball,
-		// is exactly what THIS ball knocked over.
-		var downNow = _statuses.Count( s => s.Down );
-		var knocked = Math.Clamp( downNow - _ballStartDown, 0, 10 );
+		// Pins down now (Score() marks both physics-down pins AND ones swept on an earlier ball this
+		// frame), minus the ones already down entering this ball, is what THIS ball knocked over.
+		var knocked = Math.Clamp( DownCount - _ballStartDown, 0, 10 );
+		_localBalls.Add( knocked );
 
-		var player = _players[_current];
-		var frame = player.Frames[_frame];
-		frame.Add( knocked );
+		var turnDone = DecideLocal();
+		LocalAvatar?.ReportBall( knocked, PinDownBits, turnDone ); // host books it onto the card
 
-		DecideNextBall( frame );
-		PublishScores(); // push the new mark / turn to every client's board
+		if ( turnDone )
+		{
+			// Hand back: park the ball and wait for the host to spotlight the next bowler.
+			_ball.ControlsLocked = true;
+			State = RoundState.Rolling;
+			if ( _camera.IsValid() ) _camera.Watching = false;
+		}
 	}
 
-	// Bowling's flow control. Frames 1–9: a first-ball strike ends the frame, otherwise you get
-	// a second ball at the pins you left. The 10th frame is the special case — a strike or spare
-	// buys a third ball, and a cleared deck (double-strike, or the spare ball) re-racks fresh.
-	private void DecideNextBall( List<int> frame )
+	// Bowling's flow control for OUR turn, on OUR local ball list. Returns true if the turn is over
+	// (host rotates to the next bowler); otherwise it has already set up our next ball. Uses the
+	// synced CurrentFrame so the 10th-frame rules apply even when the bowler isn't the host.
+	private bool DecideLocal()
 	{
-		var tenth = _frame == 9;
+		var frame = _localBalls;
+		var tenth = CurrentFrame == 9;
 		var ball = frame.Count; // balls thrown so far this frame (1, 2 or 3)
 
 		if ( !tenth )
 		{
 			var strike = frame[0] == 10;
-			if ( strike || ball >= 2 )
-				AdvanceTurn();                  // strike (1 ball) or open/spare (2 balls): frame done
-			else
-				ContinueFrame( fresh: false );  // second ball at the standing pins
-			return;
+			if ( strike || ball >= 2 ) return true;  // strike (1 ball) or open/spare (2 balls): done
+			ContinueFrame( fresh: false );           // second ball at the standing pins
+			return false;
 		}
 
 		// --- 10th frame ---
 		if ( ball == 1 )
 		{
-			// A strike clears the deck, so the bonus ball is on a fresh rack; otherwise it's the
-			// ordinary second ball at what's left.
-			ContinueFrame( fresh: frame[0] == 10 );
+			ContinueFrame( fresh: frame[0] == 10 );  // strike clears the deck -> fresh rack
+			return false;
 		}
-		else if ( ball == 2 )
+		if ( ball == 2 )
 		{
 			var earnedThird = frame[0] == 10 || frame[0] + frame[1] >= 10; // strike or spare
-			if ( !earnedThird )
-			{
-				AdvanceTurn();                  // tenth done, no bonus — pass to the next bowler
-			}
-			else
-			{
-				// Third ball on a fresh rack only if the deck was just cleared: a second strike
-				// after an opening strike, or the spare ball (which by definition cleared it).
-				var fresh = frame[0] == 10 ? frame[1] == 10 : true;
-				ContinueFrame( fresh );
-			}
+			if ( !earnedThird ) return true;
+			var fresh = frame[0] == 10 ? frame[1] == 10 : true;
+			ContinueFrame( fresh );
+			return false;
 		}
-		else // third ball thrown — this bowler's tenth is done
-		{
-			AdvanceTurn();
-		}
+		return true; // third ball thrown — our tenth is done
 	}
 
-	// One bowler's frame is done. Rotate to the next bowler at the SAME frame; once the last bowler
-	// finishes, step everyone to the next frame. When the last bowler finishes frame 10, the game's
-	// over. Each new turn re-racks, re-spotlights the bowler, and hands them the ball.
+	// HOST bookkeeping. One bowler's frame is done: rotate to the next bowler at the SAME frame; once
+	// the last bowler finishes, step everyone to the next frame; after the last bowler's frame 10 the
+	// game's over. No physics here — the newly-spotlighted bowler racks + rolls on their own machine
+	// (BeginTurn) when their ActiveBowlerId arrives.
 	private void AdvanceTurn()
 	{
 		_current++;
@@ -636,10 +664,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			}
 		}
 
-		FullRack();
-		_ballStartDown = 0;
 		SetActiveBowler();
-		BeginRolling();
+		PublishScores();
 	}
 
 	// Stay in the same frame for another ball. fresh=true racks a clean deck (10th-frame bonus
@@ -683,6 +709,104 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_ball.ControlsLocked = false;
 		if ( _camera.IsValid() ) _camera.Watching = false;
 		PlaceBallHome();
+	}
+
+	// --- Approach-B throw: the active bowler runs the whole turn on its own physics ----------------
+
+	// We just became the active bowler: rack a clean deck on our authoritative local pins and roll.
+	// (The pins/ball were idle on our machine while spectating — FullRack + PlaceBallHome reset them.)
+	private void BeginTurn()
+	{
+		_localBalls.Clear();
+		_sweptPins.Clear();
+		_ballStartDown = 0;
+		PinDownBits = 0;
+		FullRack();      // fresh deck on our authoritative local pins
+		BeginRolling();  // ball home, controls live, camera on the ball
+	}
+
+	// Bowler → everyone: push our live ball + pin transforms (throttled ~20 Hz) so spectators watch.
+	private void StreamTransforms()
+	{
+		if ( Time.Now - _lastStreamAt < 0.05f ) return;
+		_lastStreamAt = Time.Now;
+		LocalAvatar?.StreamThrow( EncodeThrow(), PinDownBits );
+	}
+
+	// Flatten ball + 10 pins to "x,y,z,qx,qy,qz,qw,…" (invariant culture). Ball first, then pins in
+	// _lane.Pins order — which is identical on every client, since LaneBuilder builds them the same.
+	private string EncodeThrow()
+	{
+		var vals = new List<float>( 7 * 11 );
+		void Add( Vector3 p, Rotation r )
+		{
+			vals.Add( p.x ); vals.Add( p.y ); vals.Add( p.z );
+			vals.Add( r.x ); vals.Add( r.y ); vals.Add( r.z ); vals.Add( r.w );
+		}
+		Add( _ball.WorldPosition, _ball.WorldRotation );
+		foreach ( var p in _lane.Pins )
+		{
+			var ok = p.Object.IsValid();
+			Add( ok ? p.Object.WorldPosition : Vector3.Zero, ok ? p.Object.WorldRotation : Rotation.Identity );
+		}
+		return string.Join( ",", vals.Select( v => v.ToString( "F3", CultureInfo.InvariantCulture ) ) );
+	}
+
+	/// <summary>Spectator side (called from the bowler's StreamThrow RPC): slam our frozen local ball +
+	/// pins to the streamed transforms and adopt the streamed down-mask, so we watch the throw.</summary>
+	public void ApplyStreamedThrow( string data, int downMask )
+	{
+		PinDownBits = downMask;
+		if ( !_lane.IsValid() || !_ball.IsValid() || string.IsNullOrEmpty( data ) ) return;
+
+		var f = data.Split( ',' );
+		if ( f.Length < 7 * 11 ) return;
+
+		var i = 0;
+		Vector3 NextPos() { var v = new Vector3( P( f[i] ), P( f[i + 1] ), P( f[i + 2] ) ); i += 3; return v; }
+		Rotation NextRot() { var r = new Rotation( P( f[i] ), P( f[i + 1] ), P( f[i + 2] ), P( f[i + 3] ) ); i += 4; return r; }
+
+		PinThere( _ball.GameObject, NextPos(), NextRot() );
+		foreach ( var p in _lane.Pins )
+		{
+			var pos = NextPos();
+			var rot = NextRot();
+			if ( p.Object.IsValid() ) PinThere( p.Object, pos, rot );
+		}
+	}
+
+	// Slam an object to a streamed transform and kill its velocity, so our local (un-driven) physics
+	// doesn't carry it off between the ~20 Hz stream packets.
+	private static void PinThere( GameObject go, Vector3 pos, Rotation rot )
+	{
+		if ( !go.IsValid() ) return;
+		go.WorldPosition = pos;
+		go.WorldRotation = rot;
+		var rb = go.Components.Get<Rigidbody>();
+		if ( rb.IsValid() )
+		{
+			rb.Velocity = Vector3.Zero;
+			rb.AngularVelocity = Vector3.Zero;
+		}
+	}
+
+	private static float P( string s )
+		=> float.TryParse( s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v ) ? v : 0f;
+
+	/// <summary>Host side (called from the bowler's ReportBall RPC): book a settled ball's pinfall onto
+	/// the active player's card, reflect the leave on the host's own panels, and rotate when the
+	/// bowler says their turn is done.</summary>
+	public void HostBookBall( int knocked, int downMask, bool turnDone )
+	{
+		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
+
+		if ( _current >= 0 && _current < _players.Count && _frame >= 0 && _frame < 10 )
+			_players[_current].Frames[_frame].Add( knocked );
+		PinDownBits = downMask;
+		PublishScores();
+
+		if ( turnDone )
+			AdvanceTurn();
 	}
 
 	// Drop every pin back onto its spot, enabled, upright and dead still — a clean rack.
@@ -749,6 +873,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		var maxOffsetSq = maxOffset * maxOffset;
 
 		_statuses.Clear();
+		var bits = 0;
 		foreach ( var p in _lane.Pins )
 		{
 			var down = true;
@@ -765,7 +890,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				down = tilted || offsetSq > maxOffsetSq;
 			}
 			_statuses.Add( new PinStatus( p.Number, down ) );
+			if ( down ) bits |= 1 << p.Number;
 		}
+		PinDownBits = bits; // the bowler's authoritative leave, for every pin panel + the stream
 	}
 
 	// --- Score view for the overlay -----------------------------------------------------
