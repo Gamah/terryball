@@ -41,6 +41,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// <summary>And below this angular speed (rad/s) — catches a pin still spinning in place.</summary>
 	[Property, Group( "Settle" )] public float SettleAngularThreshold { get; set; } = 1.0f;
 
+	/// <summary>Soft cap on how many bowlers a single game seats. Tunable per-lane on the director in the
+	/// scene. Joiners past this are simply not locked into the roster when START is pressed.</summary>
+	[Property, Group( "Players" )] public int MaxPlayers { get; set; } = 6;
+
 	/// <summary>Physics substeps for the world. Re-asserted every frame because the engine replaces
 	/// the PhysicsWorld after OnStart, so setting it once didn't stick (the probe was reading 1).
 	/// Resolves the fast 10-pin cascade instead of smearing the ball through it in coarse steps.</summary>
@@ -61,6 +65,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	// whether IT drives the ball + ball camera (vs. walking its Terry around the settee). Empty =
 	// nobody up (lobby / between turns), so the ball sits parked and everyone just walks.
 	[Sync( SyncFlags.FromHost )] public Guid ActiveBowlerId { get; set; }
+
+	/// <summary>Bumped by the host every time a turn is (re)assigned — including when the SAME bowler is
+	/// up again (solo play, or two turns in a row). The bowler client begins a fresh turn whenever this
+	/// changes, so back-to-back turns by one player still re-rack and re-roll instead of hanging on the
+	/// parked ball. (Watching ActiveBowlerId alone can't catch a same-bowler hand-back — it never edges.)</summary>
+	[Sync( SyncFlags.FromHost )] public int TurnSerial { get; set; }
 
 	/// <summary>True if the local client is the bowler currently up. (With no active network session
 	/// — e.g. running the scene raw in the editor before a lobby exists — defaults to true so the
@@ -138,7 +148,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	// --- Approach-B throw networking (the active bowler is authoritative for their own turn) -------
 	private readonly List<int> _localBalls = new(); // bowler-side: the balls thrown THIS frame, for the rules
-	private bool _wasBowling;        // edge-detect when the local client becomes/stops being the bowler
+	private int _servedTurn = -1;    // the TurnSerial we last began a turn for (-1 = none yet this client)
 	private float _lastStreamAt;     // throttle for the transform stream
 	private TerryAvatar _localAvatar;
 	private TerryAvatar LocalAvatar =>
@@ -295,8 +305,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	{
 		var center = _lane.IsValid() ? _lane.SetteeFloorCenter : Vector3.Zero;
 		var half = _lane.IsValid() ? _lane.SetteeHalfWidthUnits : 200f;
+		var slots = Math.Max( 1, MaxPlayers );
 		var slot = _spawnCount++;
-		var t = (slot % 6) / 5f;                     // 0..1 across six slots, then wraps
+		var t = slots > 1 ? (slot % slots) / (float)(slots - 1) : 0.5f; // 0..1 across the seats, then wraps
 		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, t );
 		return center + new Vector3( 0f, y, 0f );
 	}
@@ -313,6 +324,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		var joined = Scene.GetAllComponents<TerryAvatar>()
 			.Where( a => a.IsValid() && a.Joined )
+			.Take( Math.Max( 1, MaxPlayers ) ) // soft cap — extra joiners just don't make this game's roster
 			.ToList();
 		if ( joined.Count == 0 ) return; // nobody to play
 
@@ -366,6 +378,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// exactly their avatar into Bowling (the rest walk/spectate). Host only.</summary>
 	private void SetActiveBowler()
 	{
+		TurnSerial++; // a new turn is starting — even if it's the same bowler as last turn (see TurnSerial)
 		ActiveBowlerId = (_current >= 0 && _current < _rosterIds.Count) ? _rosterIds[_current] : Guid.Empty;
 		foreach ( var av in Scene.GetAllComponents<TerryAvatar>() )
 			if ( av.IsValid() )
@@ -428,17 +441,19 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		}
 
 		if ( Phase != GamePhase.Playing )
-		{
-			_wasBowling = false;
 			return;
-		}
 
 		// Approach B: whoever is UP runs their whole throw on their OWN authoritative local ball + pins
 		// and streams the result; everyone else (spectators) just plays back the stream onto their
 		// local copies (ApplyStreamedThrow slams the transforms + kills velocity so they don't drift).
 		var bowling = LocalIsBowling;
-		if ( bowling && !_wasBowling ) BeginTurn();     // we just got the ball — rack + reset
-		_wasBowling = bowling;
+		// Begin a fresh turn whenever the host hands US a NEW turn serial (covers the first turn AND a
+		// same-bowler hand-back, which the old become-bowler edge silently missed — that was the hang).
+		if ( bowling && _servedTurn != TurnSerial )
+		{
+			_servedTurn = TurnSerial;
+			BeginTurn();     // we just got the ball — rack + reset
+		}
 
 		if ( !bowling )
 			return; // spectator — the stream drives our view; nothing to simulate here

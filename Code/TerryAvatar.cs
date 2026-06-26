@@ -35,6 +35,7 @@ public sealed class TerryAvatar : Component
 
 	private PlayerController _player;
 	private GameObject _body;
+	private bool _wasBowling;   // edge-detect the end of our turn, to walk us back to the settee
 
 	// --- Walk-up lane controls (LOCAL player only) -------------------------------------------
 	// Screen-space buttons can't be clicked while the FPS look-lock traps the cursor, so the local
@@ -112,7 +113,30 @@ public sealed class TerryAvatar : Component
 
 		// Only the local player drives the walk-up controls (proxies are other people's avatars).
 		if ( !IsProxy )
+		{
+			// Our turn just ended (handed off to the next bowler, or the game finished): put us back in
+			// the settee, not stranded up at the lane station where we pressed START. The transform is
+			// owner-authoritative, so we move ourselves rather than the host yanking us.
+			if ( _wasBowling && !Bowling )
+				ReturnToSettee();
+
 			UpdateControlsStation();
+		}
+		_wasBowling = Bowling;
+	}
+
+	// Drop us back onto the settee carpet, fanned across its width by a stable per-player offset so
+	// returning bowlers don't stack on one spot. The lane builder hands us the seating zone's geometry.
+	private void ReturnToSettee()
+	{
+		var builder = Lane.Local( Scene )?.Builder;
+		if ( !builder.IsValid() ) return;
+
+		var half = builder.SetteeHalfWidthUnits;
+		var spread = (Math.Abs( (Network.Owner?.Id.GetHashCode() ?? 0) ) % 1000) / 1000f; // 0..1, stable
+		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, spread );
+		GameObject.WorldPosition = builder.SetteeFloorCenter + new Vector3( 0f, y, 0f );
+		GameObject.WorldRotation = Rotation.FromYaw( 0f ); // face the lane (+x)
 	}
 
 	// Find the nearest in-range LaneStation and engage/disengage the lane-controls cursor on E.
