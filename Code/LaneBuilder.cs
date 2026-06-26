@@ -114,6 +114,7 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Settee" )] public float BenchSeatHeightBalls { get; set; } = 0.35f;
 	[Property, Group( "Settee" )] public float BenchSeatDepthBalls { get; set; } = 0.5f;
 	[Property, Group( "Settee" )] public float BenchBackHeightBalls { get; set; } = 0.4f; // backrest above the seat
+	[Property, Group( "Settee" )] public float StadiumTierBalls { get; set; } = 0.32f;   // how high the back row's tier is raised above the front row
 	[Property, Group( "Settee" )] public Color SetteeCarpetColor { get; set; } = new Color( 0.16f, 0.10f, 0.22f, 1f );
 	[Property, Group( "Settee" )] public Color BenchFrameColor { get; set; } = new Color( 0.18f, 0.19f, 0.22f, 1f );
 	[Property, Group( "Settee" )] public Color BenchCushionColor { get; set; } = new Color( 0.55f, 0.13f, 0.16f, 1f );
@@ -121,8 +122,8 @@ public sealed class LaneBuilder : Component
 	// ---- Monitor: the overhead score screen above the settee. A WorldPanel (LaneConsole.razor)
 	// in a physical bezel on two posts, facing back at the seats (toward -x). Sized in ball diameters
 	// too, so it reads at a glance instead of dominating the whole back wall.
-	[Property, Group( "Monitor" )] public float MonitorWidthBalls { get; set; } = 2.2f;        // panel width; height follows 16:9
-	[Property, Group( "Monitor" )] public float MonitorCenterHeightBalls { get; set; } = 1.25f; // panel centre above the settee floor
+	[Property, Group( "Monitor" )] public float MonitorWidthBalls { get; set; } = 3.4f;        // panel width; height follows 16:9
+	[Property, Group( "Monitor" )] public float MonitorCenterHeightBalls { get; set; } = 1.65f; // panel centre above the settee floor
 	[Property, Group( "Monitor" )] public Color MonitorBezelColor { get; set; } = new Color( 0.05f, 0.06f, 0.08f, 1f );
 	[Property, Group( "Monitor" )] public Color MonitorPostColor { get; set; } = new Color( 0.22f, 0.23f, 0.26f, 1f );
 
@@ -281,6 +282,11 @@ public sealed class LaneBuilder : Component
 		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (H + backWallH) * 0.5f ),
 			new Vector3( backThk, platformHalf * 2f, H + backWallH ), BarrierColor );
 
+		// ---- Backstop readout: a LARGE, lane-width pin board floating above the back wall, facing
+		// back at the bowler. Same director data as the corner overlay, blown up so the leave reads
+		// from the approach. (pitEndX is the wall's bowler-facing face; H+backWallH its top.)
+		BuildBackstopReadout( pitEndX, laneHalf, H + backWallH, ballDiameterUnits );
+
 		// ---- Boards: 39 alternating-tint planks across the lane, straddling z = H so they read as
 		// the surface itself (not floating above it) with the seams showing through. Visual-only —
 		// no collider — so the ball never catches them. Bowlers aim by board number, so they're
@@ -362,15 +368,26 @@ public sealed class LaneBuilder : Component
 		MakeBox( "SetteeCarpet", new Vector3( midX, 0f, riser * 0.5f ),
 			new Vector3( depth, halfW * 2f, riser ), SetteeCarpetColor );
 
-		// Two bench rows facing the lane (+x): the front bench near the ramp, a second row behind it.
+		// Two bench rows facing the lane (+x), STADIUM-staggered so the back row isn't staring at the
+		// front row's backrests: the front bench sits near the ramp at carpet level, the back bench is
+		// set well behind it on a raised tier so seated bowlers there see over the front row and read
+		// the overhead monitor cleanly.
 		var benchHalfY = halfW * 0.9f;
 		var seatH = BenchSeatHeightBalls * D;
 		var seatD = BenchSeatDepthBalls * D;
 		var backH = BenchBackHeightBalls * D;
-		var frontBenchX = frontX - depth * 0.30f;
-		var backBenchX = frontX - depth * 0.72f;
+		var tierH = StadiumTierBalls * D;
+		var frontBenchX = frontX - depth * 0.26f;
+		var backBenchX = frontX - depth * 0.78f;
+
+		// The raised tier the back row stands on: a step running from the settee's back edge up to
+		// just in front of the back bench.
+		var tierFrontX = backBenchX + seatD * 0.5f + 0.10f * D;
+		MakeBox( "SetteeTier", new Vector3( (tierFrontX + backX) * 0.5f, 0f, riser + tierH * 0.5f ),
+			new Vector3( tierFrontX - backX, halfW * 2f, tierH ), SetteeCarpetColor );
+
 		MakeBench( "SetteeBenchFront", frontBenchX, benchHalfY, riser, seatH, seatD, backH, D );
-		MakeBench( "SetteeBenchBack", backBenchX, benchHalfY, riser, seatH, seatD, backH, D );
+		MakeBench( "SetteeBenchBack", backBenchX, benchHalfY, riser + tierH, seatH, seatD, backH, D );
 
 		BuildMonitor( D, frontX, riser, halfW );
 	}
@@ -393,13 +410,45 @@ public sealed class LaneBuilder : Component
 			new Vector3( backThk, halfY * 2f, backH ), BenchFrameColor );
 	}
 
+	/// <summary>The big backstop pin board: a WorldPanel (PinReadout) exactly the lane's width,
+	/// floating above the back wall and facing back at the bowler (-x). It shows the same director
+	/// pin data as the corner overlay, blown up so the leave is legible all the way from the approach.
+	/// <paramref name="frontX"/> is the back wall's bowler-facing face; <paramref name="wallTopZ"/> its top.</summary>
+	private void BuildBackstopReadout( float frontX, float laneHalf, float wallTopZ, float D )
+	{
+		var panelPx = new Vector2( 1000f, 720f );          // roughly the rack's aspect
+		var worldW = laneHalf * 2f;                        // EXACTLY the lane width, as asked
+		var renderScale = worldW / (panelPx.x * 0.05f);    // 0.05 = WorldPanel ScreenToWorldScale
+		var worldH = panelPx.y * 0.05f * renderScale;
+		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D; // float it clear above the backstop
+
+		// Dark bezel slab just behind the panel for contrast against the alley.
+		var bezelThk = 0.1f * D;
+		var bezelPad = 0.12f * D;
+		MakeDecal( "BackstopBezel", new Vector3( frontX + bezelThk * 0.5f, 0f, centerZ ),
+			new Vector3( bezelThk, worldW + bezelPad * 2f, worldH + bezelPad * 2f ), MonitorBezelColor );
+
+		// The WorldPanel itself, facing -x (toward the bowler). A PinReadout razor rides it.
+		var screen = new GameObject( true, "BackstopReadoutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		screen.WorldPosition = new Vector3( frontX - 0.02f * D, 0f, centerZ );
+		screen.WorldRotation = Rotation.FromYaw( 180f ); // identity WorldPanel faces +x; flip to face the approach
+
+		var panel = screen.Components.Create<WorldPanel>();
+		panel.PanelSize = panelPx;
+		panel.RenderScale = renderScale;
+		panel.LookAtCamera = false;
+		panel.InteractionRange = 100000f;
+
+		screen.Components.Create<PinReadout>();
+	}
+
 	/// <summary>The overhead lane monitor: a WorldPanel (LaneConsole) in a bezel, on two posts,
 	/// mounted above the settee facing back toward the seats (-x) so a seated bowler reads it.</summary>
 	private void BuildMonitor( float D, float frontX, float floorZ, float setteeHalfW )
 	{
 		// Panel size in virtual px (16:9) and the world scale that maps it to MonitorWidthBalls.
 		var panelPx = new Vector2( 1200f, 675f );
-		var worldW = MathF.Min( MonitorWidthBalls * D, setteeHalfW * 2f ); // keep it within the settee width
+		var worldW = MonitorWidthBalls * D; // a proper overhead screen — NOT clamped to the settee width (that's what made it read as a tiny square)
 		var renderScale = worldW / (panelPx.x * 0.05f); // 0.05 = WorldPanel ScreenToWorldScale
 		var worldH = panelPx.y * 0.05f * renderScale;
 		var centerZ = floorZ + MonitorCenterHeightBalls * D;

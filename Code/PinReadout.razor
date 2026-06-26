@@ -1,0 +1,67 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using System.Linq;
+@using System.Collections.Generic;
+@using Terryball;
+@inherits PanelComponent
+
+@*
+	The BIG pin readout — a lane-width board mounted above the backstop, facing back at the bowler so
+	the standing/down rack is legible from the approach. It's the same data as the corner
+	PinStatusOverlay (GameDirector.RackRows + director.IsPinDown), just rendered LARGE to fill a
+	WorldPanel: head pin at the bottom, back row at the top, green standing / red down.
+*@
+
+<root style="width: 100%; height: 100%; flex-direction: column; align-items: center;
+             justify-content: center; padding: 40px;
+             font-family: Poppins, sans-serif; color: white;
+             background-color: rgba(6,8,12,0.92); border-radius: 24px;
+             border-width: 6px; border-color: rgba(90,150,220,0.45);">
+	@{
+		var director = Director;
+		var down = director?.DownCount ?? 0;
+		var watching = director?.State == GameDirector.RoundState.Watching;
+	}
+
+	<div style="flex-direction: row; align-items: baseline; margin-bottom: 24px;">
+		<div style="font-size: 80px; font-weight: 800; letter-spacing: 4px;
+		            color: @(watching ? "#f1c40f" : "white");">
+			@(watching ? "WATCHING" : "PINS")
+		</div>
+		<div style="font-size: 48px; font-weight: 700; margin-left: 36px; color: rgba(255,255,255,0.7);">
+			@(10 - down) UP / @down DOWN
+		</div>
+	</div>
+
+	@foreach ( var row in GameDirector.RackRows )
+	{
+		<div style="flex-direction: row; justify-content: center;">
+			@foreach ( var n in row )
+			{
+				var isDown = director?.IsPinDown( n ) ?? false;
+				<div style="width: 96px; height: 96px; margin: 10px; border-radius: 48px;
+				            align-items: center; justify-content: center; font-size: 46px;
+				            font-weight: 700; color: @(isDown ? "rgba(255,255,255,0.5)" : "black");
+				            background-color: @(isDown ? "#c0392b" : "#2ecc71");">
+					@n
+				</div>
+			}
+		</div>
+	}
+</root>
+
+@code
+{
+	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
+
+	// Rebuild whenever the round state or the set of downed pins changes.
+	protected override int BuildHash()
+	{
+		var director = Director;
+		var mask = 0;
+		if ( director is not null )
+			foreach ( var s in director.PinStatuses )
+				if ( s.Down ) mask |= 1 << s.Number;
+		return System.HashCode.Combine( director?.State, mask );
+	}
+}

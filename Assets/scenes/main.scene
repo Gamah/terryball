@@ -174,29 +174,6 @@
           "DisplacementThresholdInches": 4
         }
       ]
-    },
-    {
-      "__guid": "b0000009-0000-4000-8000-000000000009",
-      "Name": "HUD",
-      "Position": "0,0,0",
-      "Enabled": true,
-      "Components": [
-        {
-          "__type": "Sandbox.ScreenPanel",
-          "__guid": "b0000009-0001-4000-8000-000000000009",
-          "__enabled": true
-        },
-        {
-          "__type": "Terryball.PinStatusOverlay",
-          "__guid": "b0000009-0002-4000-8000-000000000009",
-          "__enabled": true
-        },
-        {
-          "__type": "Terryball.ScoreBoard",
-          "__guid": "b0000009-0003-4000-8000-000000000009",
-          "__enabled": true
-        }
-      ]
     }
   ]
 }

@@ -27,12 +27,12 @@
 		@down up / @(10 - down) down
 	</div>
 
-	@foreach ( var row in Rows )
+	@foreach ( var row in GameDirector.RackRows )
 	{
 		<div style="flex-direction: row; justify-content: center;">
 			@foreach ( var n in row )
 			{
-				var isDown = IsDown( director, n );
+				var isDown = director?.IsPinDown( n ) ?? false;
 				<div style="width: 26px; height: 26px; margin: 3px; border-radius: 13px;
 				            align-items: center; justify-content: center; font-size: 12px;
 				            font-weight: 600; color: @(isDown ? "rgba(255,255,255,0.55)" : "black");
@@ -46,26 +46,10 @@
 
 @code
 {
-	// Rack triangle as the bowler sees it down-lane: head pin (1) nearest, so at the BOTTOM, the
-	// back row (7–10) farthest at the top — and mirrored left-right (10 on the left) to match the
-	// view from behind the lane. (A straight 180° rotation of the physical rack.)
-	private static readonly int[][] Rows =
-	{
-		new[] { 10, 9, 8, 7 },
-		new[] { 6, 5, 4 },
-		new[] { 3, 2 },
-		new[] { 1 },
-	};
-
+	// The rack layout (GameDirector.RackRows) and per-pin down state (director.IsPinDown) both live on
+	// the director now, so this corner overlay and the big lane-width board above the backstop draw
+	// from one source and can't disagree.
 	private GameDirector Director => Scene?.GetAllComponents<GameDirector>().FirstOrDefault();
-
-	private static bool IsDown( GameDirector director, int number )
-	{
-		if ( director is null ) return false;
-		foreach ( var s in director.PinStatuses )
-			if ( s.Number == number ) return s.Down;
-		return false;
-	}
 
 	// Rebuild whenever the round state or the set of downed pins changes.
 	protected override int BuildHash()

@@ -63,9 +63,31 @@ public sealed class GameDirector : Component
 	/// <summary>Count of pins currently down — handy for the overlay header / build hash.</summary>
 	public int DownCount => _statuses.Count( s => s.Down );
 
+	/// <summary>The rack laid out as the bowler sees it down-lane: head pin (1) nearest at the BOTTOM,
+	/// the back row (7–10) farthest at the top, mirrored left-right (10 on the left) — a 180° turn of
+	/// the physical rack. The single source every pin readout (the corner overlay AND the big
+	/// lane-width board above the backstop) draws from, so they can never disagree.</summary>
+	public static readonly int[][] RackRows =
+	{
+		new[] { 10, 9, 8, 7 },
+		new[] { 6, 5, 4 },
+		new[] { 3, 2 },
+		new[] { 1 },
+	};
+
+	/// <summary>Is pin <paramref name="number"/> currently reading as down? The director's live
+	/// scoring is the authority for every pin panel.</summary>
+	public bool IsPinDown( int number )
+	{
+		foreach ( var s in _statuses )
+			if ( s.Number == number ) return s.Down;
+		return false;
+	}
+
 	private LaneBuilder _lane;
 	private BallController _ball;
 	private BallCamera _camera;
+	private GameObject _hud;   // the director-owned screen-space HUD (pin overlay + scoreboard)
 
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
@@ -135,6 +157,22 @@ public sealed class GameDirector : Component
 		_ballStartDown = 0;
 		_sweptPins.Clear();
 		_gameOver = false;
+
+		BuildHud();
+	}
+
+	/// <summary>The director owns its own on-screen HUD — it spawns the screen-space pin overlay and
+	/// ten-frame scoreboard at runtime (the same build-it-in-code pattern the lane and ball use)
+	/// rather than relying on a hand-placed scene object, so every score/pin panel belongs to and is
+	/// driven by the director. The in-world settee monitor and the big backstop board read this same
+	/// director, so all four surfaces show one consistent game state.</summary>
+	private void BuildHud()
+	{
+		if ( _hud.IsValid() ) return;
+		_hud = new GameObject( true, "DirectorHUD" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		_hud.Components.Create<ScreenPanel>();
+		_hud.Components.Create<PinStatusOverlay>();
+		_hud.Components.Create<ScoreBoard>();
 	}
 
 	protected override void OnUpdate()
