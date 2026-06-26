@@ -92,19 +92,22 @@
 	TextEntry _entry;
 	bool _focused;
 
-	// Don't pop chat while riding the ball or while the lane-controls cursor is already engaged.
+	// Chat is fine while riding the ball — only the lane-controls cursor (already its own UI mode)
+	// blocks it. While the box is open we free the cursor + freeze the look (below) so typing doesn't
+	// spin the ball/walk camera.
 	bool CanOpen
 	{
 		get
 		{
 			var me = TerryAvatar.Local( Scene );
-			return me.IsValid() && !me.Bowling && !me.ControlsOpen;
+			return me.IsValid() && !me.ControlsOpen;
 		}
 	}
 
 	protected override void OnDestroy()
 	{
 		IsOpen = false;
+		Mouse.Visibility = MouseVisibility.Auto;
 	}
 
 	protected override void OnUpdate()
@@ -117,6 +120,10 @@
 				Close();
 				return;
 			}
+			// Free the cursor for the text box; with the mouse un-captured AnalogLook reads ~0, so the
+			// ball/walk camera stops following the mouse while you type (BallCamera also hard-gates on
+			// IsOpen). Re-assert each frame in case anything flips it back.
+			Mouse.Visibility = MouseVisibility.Visible;
 			if ( !_focused && _entry != null )
 			{
 				_entry.Focus();
@@ -153,6 +160,7 @@
 	void Close()
 	{
 		IsOpen = false;
+		Mouse.Visibility = MouseVisibility.Auto; // hand the cursor back to look control
 		if ( _entry != null ) _entry.Text = "";
 		StateHasChanged();
 	}

@@ -262,6 +262,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_hud.Components.Create<ScoreBoard>();
 		_hud.Components.Create<LaneControls>();
 		_hud.Components.Create<ChatPanel>();
+		_hud.Components.Create<BowlerHud>();
 	}
 
 	// --- Network roster ----------------------------------------------------------------
@@ -453,6 +454,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// and streams the result; everyone else (spectators) just plays back the stream onto their
 		// local copies (ApplyStreamedThrow slams the transforms + kills velocity so they don't drift).
 		var bowling = LocalIsBowling;
+
+		// Escape hatch: G lets the bowler bail out of the ball (the HUD shows a button too). Works even
+		// if the turn's wedged — it RPCs the host to end our turn. Skip while the chat box has the keys.
+		if ( bowling && !ChatPanel.IsOpen && Input.Keyboard.Pressed( "G" ) )
+			LocalAvatar?.RequestLeaveBall();
+
 		// Begin a fresh turn whenever the host hands US a NEW turn serial (covers the first turn AND a
 		// same-bowler hand-back, which the old become-bowler edge silently missed — that was the hang).
 		if ( bowling && _servedTurn != TurnSerial )
@@ -836,6 +843,17 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		if ( turnDone )
 			AdvanceTurn();
+	}
+
+	/// <summary>Host side (called from the bowler's RequestLeaveBall RPC): the active bowler hit the
+	/// escape hatch — end their turn so the game moves on and they drop out of the ball. Recovers from a
+	/// wedged turn without anyone having to restart the game.</summary>
+	public void HostLeaveBall( Connection caller )
+	{
+		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
+		if ( caller is null || caller.Id != ActiveBowlerId ) return; // only the player who's up can bail
+		Log.Info( "[terryball][game] bowler bailed out of the ball — advancing the turn" );
+		AdvanceTurn();
 	}
 
 	// Drop every pin back onto its spot, enabled, upright and dead still — a clean rack.

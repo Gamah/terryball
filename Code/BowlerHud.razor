@@ -1,0 +1,80 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Terryball;
+@inherits PanelComponent
+
+@*
+	The local bowler's on-screen controls while riding the ball. Right now that's just the escape
+	hatch: an "Exit ball" button that ends your turn (drops you back to the settee) for when the
+	director gets wedged mid-turn. The button click works whenever the cursor is free (e.g. chat open);
+	the G key does the same and always works even while the mouse is captured for aiming.
+*@
+
+<root>
+	@{
+		var director = Director;
+		var bowling = director?.LocalIsBowling ?? false;
+	}
+	@if ( bowling )
+	{
+		<div class="bail" onclick=@LeaveBall>
+			<div class="label">Exit ball</div>
+			<div class="key">G</div>
+		</div>
+	}
+</root>
+
+<style>
+	root {
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+	}
+
+	.bail {
+		position: absolute;
+		top: 24px;
+		right: 24px;
+		flex-direction: row;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 16px;
+		background-color: rgba(120, 30, 30, 0.78);
+		border: 1px solid rgba(255, 180, 180, 0.5);
+		border-radius: 8px;
+		font-family: Poppins, sans-serif;
+		color: white;
+		pointer-events: all;
+		transition: background-color 0.1s ease;
+	}
+
+	.bail:hover {
+		background-color: rgba(170, 45, 45, 0.92);
+	}
+
+	.bail .label {
+		font-size: 17px;
+		font-weight: 600;
+	}
+
+	.bail .key {
+		font-size: 14px;
+		font-weight: 700;
+		color: rgba(0, 0, 0, 0.8);
+		background-color: rgba(255, 255, 255, 0.85);
+		padding: 1px 8px;
+		border-radius: 5px;
+	}
+</style>
+
+@code
+{
+	private GameDirector Director => Lane.Of( this )?.Director;
+
+	void LeaveBall()
+	{
+		TerryAvatar.Local( Scene )?.RequestLeaveBall();
+	}
+
+	protected override int BuildHash() => System.HashCode.Combine( Director?.LocalIsBowling ?? false );
+}

@@ -236,6 +236,12 @@ public sealed class TerryAvatar : Component
 	public void ReportBall( int knocked, int downMask, bool turnDone )
 		=> Director?.HostBookBall( knocked, downMask, turnDone );
 
+	/// <summary>Bowler → host: escape hatch — let me out of the ball. The host ends our turn so the game
+	/// moves on (and we drop back to the settee). For unsticking a director that's wedged mid-turn.</summary>
+	[Rpc.Host]
+	public void RequestLeaveBall()
+		=> Director?.HostLeaveBall( Network.Owner );
+
 	/// <summary>Bowler → everyone: stream the live ball + pin transforms (and current down-mask) so
 	/// spectators watch the throw on their frozen local copies. Unreliable + throttled; a dropped
 	/// packet just means one skipped frame. Encoded as a flat comma-separated float list.</summary>
