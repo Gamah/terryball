@@ -883,17 +883,22 @@ public sealed class LaneBuilder : Component
 		// Collision: a convex hull per COARSE silhouette slab. Convex per slab handles the concave
 		// neck a single hull would fill in; the stack closes the whole solid. (Unchanged by the
 		// render-mesh stripe split, so mass + inertia stay exactly as tuned.)
+		// Hulls stay at a COARSE ring count, independent of the render lathe: the convex COOKER is
+		// far fussier than the mesh builder, and a 96-point-per-slab hull (render radial) can be
+		// rejected at cook time — which silently drops the pin's physics shapes and lets the ball
+		// pass straight through. A near-cylindrical pin needs nothing finer than this anyway.
+		const int hullRadial = 24;
 		var rings = PinSilhouette.Length;
 		for ( var i = 0; i < rings - 1; i++ )
 		{
-			var hull = new List<Vector3>( radial * 2 );
+			var hull = new List<Vector3>( hullRadial * 2 );
 			for ( var k = i; k <= i + 1; k++ )
 			{
 				var rr = PinSilhouette[k].dia * bellyRadius;
 				var zz = PinSilhouette[k].t * height;
-				for ( var j = 0; j < radial; j++ )
+				for ( var j = 0; j < hullRadial; j++ )
 				{
-					var a = j / (float)radial * MathF.PI * 2f;
+					var a = j / (float)hullRadial * MathF.PI * 2f;
 					hull.Add( new Vector3( rr * MathF.Cos( a ), rr * MathF.Sin( a ), zz ) );
 				}
 			}
