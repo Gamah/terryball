@@ -37,8 +37,10 @@ public sealed class PinImpactAudio : Component
 	/// hits are exempt (see ReportImpact), so this only throttles clack/deck chatter.</summary>
 	[Property] public int MaxImpactsPerFrame { get; set; } = 16;
 
-	/// <summary>Log every contact and every play/skip decision, to diagnose missing hits.</summary>
-	[Property] public bool Debug { get; set; }
+	// Diagnostic logging of every contact + play/skip decision, gated on the SAME checkbox as the pin
+	// crash logging: GameDirector.LogPinCrash (the lane's Debug group).
+	private GameDirector _director;
+	public bool Debug => (_director.IsValid() ? _director : (_director = Lane.Of( this )?.Director))?.LogPinCrash ?? false;
 
 	/// <summary>A new impact within this time AND <see cref="CoalesceRadius"/> of a recent one is
 	/// dropped — the many micro-contacts of a scatter collapse into distinct clacks, not a buzz.</summary>
