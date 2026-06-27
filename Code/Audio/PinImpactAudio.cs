@@ -23,6 +23,11 @@ public sealed class PinImpactAudio : Component
 	/// so gentle 1-2 pin taps still clack — only true settling jitter falls under it.</summary>
 	[Property] public float MinNormalSpeed { get; set; } = 12f;
 
+	/// <summary>Minimum contact impulse for a pin/deck hit to sound. Sliding/grinding contacts report
+	/// a high normal speed but ~zero impulse (no real momentum exchanged) — gating on impulse drops
+	/// that spam so the actual hits punch through. Ball↔pin is exempt (always the headline hit).</summary>
+	[Property] public float MinImpulse { get; set; } = 8f;
+
 	/// <summary>Closing speed mapped to full volume. Anything faster just clamps.</summary>
 	[Property] public float LoudNormalSpeed { get; set; } = 600f;
 
@@ -37,10 +42,10 @@ public sealed class PinImpactAudio : Component
 	/// hits are exempt (see ReportImpact), so this only throttles clack/deck chatter.</summary>
 	[Property] public int MaxImpactsPerFrame { get; set; } = 16;
 
-	// Diagnostic logging of every contact + play/skip decision, gated on the SAME checkbox as the pin
-	// crash logging: GameDirector.LogPinCrash (the lane's Debug group).
+	// Diagnostic logging of every contact + play/skip decision, on its OWN toggle
+	// (GameDirector.LogPinAudio) so it isn't drowned by the per-frame physics [coast] spam.
 	private GameDirector _director;
-	public bool Debug => (_director.IsValid() ? _director : (_director = Lane.Of( this )?.Director))?.LogPinCrash ?? false;
+	public bool Debug => (_director.IsValid() ? _director : (_director = Lane.Of( this )?.Director))?.LogPinAudio ?? false;
 
 	/// <summary>A new impact within this time AND <see cref="CoalesceRadius"/> of a recent one is
 	/// dropped — the many micro-contacts of a scatter collapse into distinct clacks, not a buzz.</summary>
@@ -55,25 +60,31 @@ public sealed class PinImpactAudio : Component
 	private int _playsThisFrame;
 	private float _lastFrameTime;
 
+	// EXACT counts of the shipped clackN.wav / thudN.wav files. Must match what's in
+	// Assets/sounds/pins/ — SoundFile.Load returns a BROKEN (non-null) handle for a missing file
+	// rather than null, so probing past the real count fills the random pool with silent picks.
+	[Property] public int ClackVariants { get; set; } = 6;
+	[Property] public int ThudVariants { get; set; } = 2;
+
 	protected override void OnEnabled()
 	{
-		_clack = BuildEvent( "clack", 16 );
-		_thud = BuildEvent( "thud", 8 );
+		_clack = BuildEvent( "clack", ClackVariants );
+		_thud = BuildEvent( "thud", ThudVariants );
 		_ready = _clack != null && _thud != null;
 		if ( !_ready )
 			Log.Warning( "[terryball] PinImpactAudio: no pin sounds loaded from Assets/sounds/pins/ — pins will be silent." );
 	}
 
-	// Load sounds/pins/<prefix>0.wav, <prefix>1.wav, ... until one is missing, and wrap them in a
-	// SoundEvent that picks one at random with a little pitch spread per play.
-	private SoundEvent BuildEvent( string prefix, int max )
+	// Load EXACTLY count files (sounds/pins/<prefix>0.wav .. <prefix>{count-1}.wav) into a SoundEvent
+	// that picks one at random with a little pitch spread per play. Don't over-probe: a missing index
+	// loads as a broken handle that plays silence.
+	private SoundEvent BuildEvent( string prefix, int count )
 	{
 		var sounds = new List<SoundFile>();
-		for ( int i = 0; i < max; i++ )
+		for ( int i = 0; i < count; i++ )
 		{
 			var sf = SoundFile.Load( $"sounds/pins/{prefix}{i}.wav" );
-			if ( sf == null ) break;
-			sounds.Add( sf );
+			if ( sf != null ) sounds.Add( sf );
 		}
 		if ( sounds.Count == 0 ) return null;
 
@@ -91,12 +102,18 @@ public sealed class PinImpactAudio : Component
 	/// <summary>Funnelled here by a pin's listener. <see cref="ContactKind"/> picks the voicing:
 	/// pin↔pin = wood clack; ball↔pin = the pocket smash (prominent clack + low boom); pin↔deck/
 	/// backstop = low thud.</summary>
-	public void ReportImpact( Vector3 worldPos, float normalSpeed, ContactKind kind )
+	public void ReportImpact( Vector3 worldPos, float normalSpeed, float impulse, ContactKind kind )
 	{
 		if ( !_ready ) return;
 		if ( normalSpeed < MinNormalSpeed )
 		{
 			if ( Debug ) Log.Info( $"[pinaudio] skip {kind} normalSpeed={normalSpeed:F0} < min {MinNormalSpeed}" );
+			return;
+		}
+		// drop sliding/grinding contacts (high relative speed, ~no impulse); the ball hit is exempt
+		if ( kind != ContactKind.Ball && impulse < MinImpulse )
+		{
+			if ( Debug ) Log.Info( $"[pinaudio] skip {kind} impulse={impulse:F0} < min {MinImpulse} (grind/slide)" );
 			return;
 		}
 
@@ -223,6 +240,6 @@ public sealed class PinImpactListener : Component, Component.ICollisionListener
 		// Pin-on-pin fires this callback on BOTH pins for the one contact. We deliberately DON'T pick a
 		// single side — if that side were on cooldown the clack would be dropped; instead both report
 		// and the bank coalesces the duplicate by position + time.
-		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, kind );
+		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, c.Contact.Impulse, kind );
 	}
 }

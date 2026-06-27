@@ -57,6 +57,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// the crash.</summary>
 	[Property, Group( "Debug" )] public bool LogPinCrash { get; set; } = false;
 
+	/// <summary>Log the pin-AUDIO pipeline (every contact + play/skip decision) — separate from
+	/// <see cref="LogPinCrash"/> so the sound debug isn't buried under the per-frame coast spam.</summary>
+	[Property, Group( "Debug" )] public bool LogPinAudio { get; set; } = false;
+
 	/// <summary>Tip past this many degrees off vertical and the pin reads as knocked down.</summary>
 	[Property] public float TiltThresholdDegrees { get; set; } = 30f;
 	/// <summary>Shoved this many real inches off its spot (horizontally) and the pin reads as down,
