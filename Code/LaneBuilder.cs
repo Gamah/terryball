@@ -41,6 +41,14 @@ public sealed class LaneBuilder : Component
 	/// bed. (Was cranked to 0.9 as an overshoot; walked back with the rest of the restitution pass.)</summary>
 	[Property, Group( "Lane" )] public float LaneElasticity { get; set; } = 0.3f;
 
+	/// <summary>Restitution of the PIT FLOOR and BACK WALL only — the catch zone behind the pins.
+	/// Near-dead so the ball dumps its energy instead of rebounding off a bouncy wall back into the
+	/// rack. Real pits hang a cushion/curtain for exactly this; here it's a dead, grippy surface.</summary>
+	[Property, Group( "Pit" )] public float BackstopElasticity { get; set; } = 0.02f;
+	/// <summary>Friction of the pit floor and back wall. High, so a ball that drops into the pit scrubs
+	/// off speed fast rather than skating around or climbing back out.</summary>
+	[Property, Group( "Pit" )] public float BackstopFriction { get; set; } = 0.9f;
+
 	/// <summary>Distance (real inches) the throw line sits in FRONT of the head pin — the gate
 	/// where modern alleys capture ball speed and, here, where control is handed to physics so you
 	/// can watch the hit. 60" = 5 ft, in the 3–7 ft range asked for.</summary>
@@ -64,7 +72,7 @@ public sealed class LaneBuilder : Component
 
 	[Property, Group( "Pit" )] public float PinDeckTailInches { get; set; } = 6f;   // lane surface past the back row
 	[Property, Group( "Pit" )] public float PitLengthInches { get; set; } = 36f;
-	[Property, Group( "Pit" )] public float PitDepthInches { get; set; } = 10f;
+	[Property, Group( "Pit" )] public float PitDepthInches { get; set; } = 24f;
 	[Property, Group( "Pit" )] public float BackWallHeightInches { get; set; } = 40f;
 	[Property, Group( "Pit" )] public Color PitColor { get; set; } = new Color( 0.08f, 0.08f, 0.09f, 1f );
 
@@ -297,10 +305,12 @@ public sealed class LaneBuilder : Component
 		// ---- Pit: a recessed floor behind the pins so there's no instant falloff, then a back wall.
 		var pitTop = H - pitD;
 		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitTop * 0.5f ),
-			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitTop ), PitColor );
+			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitTop ), PitColor,
+			elasticity: BackstopElasticity, friction: BackstopFriction );
 		var backThk = 12f * u;
 		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (H + backWallH) * 0.5f ),
-			new Vector3( backThk, platformHalf * 2f, H + backWallH ), BarrierColor );
+			new Vector3( backThk, platformHalf * 2f, H + backWallH ), BarrierColor,
+			elasticity: BackstopElasticity, friction: BackstopFriction );
 
 		// ---- Backstop readout: a LARGE, lane-width pin board floating above the back wall, facing
 		// back at the bowler. Same director data as the corner overlay, blown up so the leave reads
@@ -580,7 +590,8 @@ public sealed class LaneBuilder : Component
 	// A rotation, if given, is applied to the root so the collider tilts with the visual (ramp).
 	// Positions are LANE-LOCAL (relative to this builder's GameObject = the lane root): the whole lane
 	// rides its root transform, so a second lane is just the same subtree dropped at another spot.
-	private void MakeBox( string name, Vector3 localPos, Vector3 size, Color tint, Rotation? rot = null )
+	private void MakeBox( string name, Vector3 localPos, Vector3 size, Color tint, Rotation? rot = null,
+		float? elasticity = null, float? friction = null )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.LocalPosition = localPos;
@@ -588,7 +599,8 @@ public sealed class LaneBuilder : Component
 
 		var col = go.Components.GetOrCreate<BoxCollider>();
 		col.Scale = size;
-		col.Elasticity = LaneElasticity; // bouncy deck/walls so pins ricochet (cranked for chaos)
+		col.Elasticity = elasticity ?? LaneElasticity; // bouncy deck/walls so pins ricochet (cranked for chaos)
+		if ( friction.HasValue ) col.Friction = friction.Value;
 
 		var visual = new GameObject( true, name + "Visual" ) { Parent = go };
 		var mr = visual.Components.GetOrCreate<ModelRenderer>();
