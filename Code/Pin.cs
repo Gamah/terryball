@@ -10,12 +10,15 @@ namespace Terryball;
 /// interpolated, no hand-rolled transform broadcast. Spectators (the host included) see the one shared
 /// rack, not a private local copy slammed to ~20 Hz samples.
 ///
+/// Spawned at the SCENE ROOT (not parented into the lane subtree): a networked object parented under a
+/// non-networked scene object doesn't replicate cleanly to late-joiners, so the pin finds its lane via
+/// <see cref="Lane.Local"/> instead and registers with that lane's builder.
+///
 /// The catch: the render/collision MESH is the lane's runtime-lathed PROCEDURAL model, and procedural
 /// models do NOT replicate across the network (they aren't serialisable). So a freshly-replicated pin
 /// arrives on a proxy with a null model and renders as the purple ERROR checker. The fix is here: every
-/// client — owner and proxy alike — re-attaches its OWN local copy of that identical, deterministic
-/// model in <see cref="OnStart"/> via <see cref="LaneBuilder.ConfigurePin"/>. The object is networked;
-/// the mesh is rebuilt locally.
+/// client re-attaches its OWN local copy of that identical, deterministic model in <see cref="OnStart"/>
+/// via <see cref="LaneBuilder.ConfigurePin"/>. The object is networked; the mesh is rebuilt locally.
 /// </summary>
 public sealed class Pin : Component
 {
@@ -27,13 +30,17 @@ public sealed class Pin : Component
 	/// between balls. Synced so the spot is identical on every client.</summary>
 	[Sync] public Vector3 Home { get; set; }
 
+	private LaneBuilder _builder;
+
 	protected override void OnStart()
 	{
-		// Attach the lane's local procedural model + the pin's physics/audio config. Runs on every
-		// client (owner and proxy), which is what re-skins the replicated proxy pins off the ERROR model.
-		// Resolve via the parent subtree, but fall back to the single local lane in case a network proxy
-		// didn't inherit the scene-parent reference (today there's only one lane, so this can't be wrong).
-		var lane = Lane.Of( this ) ?? Lane.Local( Scene );
-		lane?.Builder?.ConfigurePin( this );
+		// Resolve our lane (we're root-spawned, so go by the single local lane) and register so the
+		// director can find us even while we're swept off the deck (disabled) — a scene-wide component
+		// scan skips disabled objects, which would lose swept pins and break the re-rack.
+		_builder = (Lane.Of( this ) ?? Lane.Local( Scene ))?.Builder;
+		_builder?.ConfigurePin( this ); // attach the local procedural mesh + physics (re-skins proxies)
+		_builder?.RegisterPin( this );
 	}
+
+	protected override void OnDestroy() => _builder?.UnregisterPin( this );
 }

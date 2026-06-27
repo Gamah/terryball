@@ -158,28 +158,32 @@ public sealed class LaneBuilder : Component
 	// So this lane doesn't own a private list — it RESOLVES its pins live from the Pin components in its
 	// own subtree, ordered by number. _pinSpots is just the rack layout the host spawns from.
 	private readonly List<(int Number, Vector3 Home)> _pinSpots = new();
+	// The lane's live Pin components, registered by each Pin on start. A registry (not a scene scan) so
+	// SWEPT pins — disabled GameObjects, which a scene-wide component query skips — stay visible to the
+	// director and get re-racked. Every client maintains its own as the networked pins replicate in.
+	private readonly List<Pin> _pinComponents = new();
 
 	/// <summary>True once the host has spawned this lane's ten networked pins.</summary>
 	public bool PinsSpawned { get; private set; }
 
-	/// <summary>The ten pins with their home spots, resolved live from the replicated <see cref="Pin"/>
-	/// objects under this lane and ordered by number — identical on every client. Returns a fresh list
-	/// so a caller can safely re-query Pins mid-iteration.</summary>
+	/// <summary>A <see cref="Pin"/> registers itself here on start (and unregisters on destroy) so the
+	/// director can address it by number even while it's swept off the deck (disabled).</summary>
+	public void RegisterPin( Pin pin )
+	{
+		if ( pin.IsValid() && !_pinComponents.Contains( pin ) ) _pinComponents.Add( pin );
+	}
+	public void UnregisterPin( Pin pin ) => _pinComponents.Remove( pin );
+
+	/// <summary>The ten pins with their home spots, ordered by number — identical on every client.
+	/// Returns a fresh list (includes swept/disabled pins) so a caller can safely re-query mid-iteration.</summary>
 	public IReadOnlyList<PinPlacement> Pins
 	{
 		get
 		{
-			var myLane = Lane.Of( this );
-			var view = new List<PinPlacement>( 10 );
-			foreach ( var pin in Scene.GetAllComponents<Pin>() )
-			{
-				if ( !pin.IsValid() ) continue;
-				// Only THIS lane's pins. Fall back to the single local lane if a proxy pin didn't inherit
-				// its scene-parent reference (one lane today, so the fallback is unambiguous).
-				var pinLane = Lane.Of( pin ) ?? Lane.Local( Scene );
-				if ( pinLane != myLane ) continue;
-				view.Add( new PinPlacement( pin.Number, pin.GameObject, pin.Home ) );
-			}
+			var view = new List<PinPlacement>( _pinComponents.Count );
+			foreach ( var pin in _pinComponents )
+				if ( pin.IsValid() )
+					view.Add( new PinPlacement( pin.Number, pin.GameObject, pin.Home ) );
 			view.Sort( static ( a, b ) => a.Number.CompareTo( b.Number ) );
 			return view;
 		}
@@ -734,7 +738,9 @@ public sealed class LaneBuilder : Component
 
 		foreach ( var (number, home) in _pinSpots )
 		{
-			var go = new GameObject( true, $"Pin{number}" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+			// Root-spawned (NOT parented into the lane): a networked object under a non-networked scene
+			// parent fails to replicate to late-joiners. The Pin finds its lane via Lane.Local instead.
+			var go = new GameObject( true, $"Pin{number}" ) { Flags = GameObjectFlags.NotSaved };
 			go.WorldPosition = home;
 			go.NetworkMode = NetworkMode.Object;
 
