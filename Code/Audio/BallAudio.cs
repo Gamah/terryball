@@ -36,8 +36,12 @@ public sealed class BallAudio : Component
 
 	/// <summary>"whump whump whump" depth — how hard the per-revolution pulse swells the roll (0 = off).</summary>
 	[Property, Group( "Roll" )] public float RollWhump { get; set; } = 0.8f;
-	/// <summary>Whumps per second at full speed (<see cref="RollSpeedRef"/>) — the ball's apparent spin rate.</summary>
-	[Property, Group( "Roll" )] public float RollWhumpRate { get; set; } = 9f;
+	/// <summary>
+	/// Whumps per second at full speed (<see cref="RollSpeedRef"/>) — the ball's apparent spin rate.
+	/// Real bowling rev rate is ~300-360 RPM (≈5-6 rev/s); high-rev pros reach ~450 RPM (~7.5 Hz). At
+	/// full speed we sit near the top of the typical range; below full speed the whumps space out.
+	/// </summary>
+	[Property, Group( "Roll" )] public float RollWhumpRate { get; set; } = 5.5f;
 
 	private const int SR = 44100;
 
