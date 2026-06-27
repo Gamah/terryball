@@ -45,9 +45,11 @@ public sealed class LaneBuilder : Component
 	/// Near-dead so the ball dumps its energy instead of rebounding off a bouncy wall back into the
 	/// rack. Real pits hang a cushion/curtain for exactly this; here it's a dead, grippy surface.</summary>
 	[Property, Group( "Pit" )] public float BackstopElasticity { get; set; } = 0.02f;
-	/// <summary>Friction of the pit floor and back wall. High, so a ball that drops into the pit scrubs
-	/// off speed fast rather than skating around or climbing back out.</summary>
-	[Property, Group( "Pit" )] public float BackstopFriction { get; set; } = 0.9f;
+	/// <summary>Friction of the pit floor and back wall. Deliberately LOW: a heavily-revved ball jammed
+	/// into the floor↔wall corner of a high-friction pit grips and launches itself back up the lane.
+	/// A real pit cushion kills the ball by being dead (low elasticity), not grippy — so we keep this
+	/// slick and let the near-zero restitution do the absorbing.</summary>
+	[Property, Group( "Pit" )] public float BackstopFriction { get; set; } = 0.2f;
 
 	/// <summary>Distance (real inches) the throw line sits in FRONT of the head pin — the gate
 	/// where modern alleys capture ball speed and, here, where control is handed to physics so you
