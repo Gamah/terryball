@@ -61,30 +61,35 @@ public static class PinSynth
 	// real wood damps its high partials almost instantly, so the top modes are barely more than the
 	// contact "tick" while a low body resonance gives the brief knock. The modes are excited by the
 	// noise burst (see Render), which is what keeps it woody instead of bell-like.
+	// Tuned to a spectral analysis of a real alley crash (see notes below): the perceived pin clatter
+	// lives low — dominant ~250-350 Hz with the energy almost entirely under 500 Hz and a steep
+	// roll-off above ~1 kHz. (Earlier bright/mid recipes read as "metallic" / "milk jug" precisely
+	// because they had energy up at 1-6 kHz that the real sound doesn't.) Only a faint tick remains
+	// up top for attack definition.
 	public static readonly Recipe PinOnPin = new(
 		new[]
 		{
-			// Energy sits in the MIDS (the wood "crack"), not a single dominant low resonance — a
-			// lone low mode rings like a hollow jug. Decays are short so nothing reads as a pitch.
-			new Mode( 540f,  0.45f, 0.020f ),
-			new Mode( 980f,  0.70f, 0.018f ),
-			new Mode( 1650f, 1.00f, 0.013f ), // dominant crack
-			new Mode( 2700f, 0.75f, 0.009f ),
-			new Mode( 4300f, 0.45f, 0.005f ),
-			new Mode( 6400f, 0.22f, 0.003f ), // bright snap of the contact
+			new Mode( 240f,  0.80f, 0.040f ),
+			new Mode( 336f,  1.00f, 0.045f ), // dominant — matches a measured reference peak
+			new Mode( 520f,  0.55f, 0.025f ),
+			new Mode( 850f,  0.30f, 0.015f ),
+			new Mode( 1500f, 0.12f, 0.008f ),
+			new Mode( 2600f, 0.08f, 0.003f ), // faint contact "tick" only
 		},
-		noiseSeconds: 0.006f, noiseGain: 0.9f, noiseCutoff01: 0.85f );
+		noiseSeconds: 0.007f, noiseGain: 0.7f, noiseCutoff01: 0.35f );
 
-	// Pin against the lane bed / deck / gutter: a duller, shorter thud — lower body, faster decay,
-	// darker strike noise.
+	// A pin struck hard against the deck / backstop / pit — or by the ball — voices this: the deep
+	// "whump" that carries most of a real crash's energy (the analysis put ~80% below 200 Hz). This
+	// is still the PIN's sound, not a ball sound; we don't synthesise any ball audio.
 	public static readonly Recipe PinOnStructure = new(
 		new[]
 		{
-			new Mode( 150f, 1.00f, 0.045f ),
-			new Mode( 300f, 0.60f, 0.028f ),
-			new Mode( 620f, 0.30f, 0.014f ),
+			new Mode( 150f, 1.00f, 0.060f ), // ~166 Hz reference peak
+			new Mode( 230f, 0.70f, 0.045f ),
+			new Mode( 380f, 0.40f, 0.030f ),
+			new Mode( 700f, 0.15f, 0.015f ),
 		},
-		noiseSeconds: 0.014f, noiseGain: 1.0f, noiseCutoff01: 0.22f );
+		noiseSeconds: 0.012f, noiseGain: 0.8f, noiseCutoff01: 0.18f );
 
 	/// <summary>
 	/// Render one impact into <paramref name="dest"/> and return the number of samples written
