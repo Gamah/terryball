@@ -134,6 +134,7 @@ public sealed class LaneBuilder : Component
 
 	private bool _built;
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
+	private PinImpactAudio _pinAudio; // shared procedural-crash bank; pins route collisions here
 	private Model _arrowModel; // shared by the seven targeting arrows
 	private Material _pinMat;       // glossy white pin body
 	private Material _pinStripeMat; // red neck stripes (same shader, red tint)
@@ -348,6 +349,7 @@ public sealed class LaneBuilder : Component
 		// ---- Pins: regulation triangle on the platform top — head pin nearest the bowler, rows of
 		// 1/2/3/4 stepping away, each centred across the lane.
 		_pinModel = BuildPinModel( u );
+		_pinAudio = Components.GetOrCreate<PinImpactAudio>(); // one bank for the lane; pins funnel here
 		var n = 1;
 		for ( var r = 0; r < 4; r++ )
 		{
@@ -697,6 +699,9 @@ public sealed class LaneBuilder : Component
 		// sweep through. The ball keeps EnhancedCcd; with pins discrete, ball-vs-pin CCD runs again.
 		rb.EnhancedCcd = false;
 		rb.GravityScale = _pinGravityScale; // scale-correct 1g at lane size × feel knob (pins only)
+
+		// Procedural crash audio: this listener routes the pin's collisions to the shared bank.
+		go.Components.Create<PinImpactListener>().Bank = _pinAudio;
 
 		return go;
 	}
