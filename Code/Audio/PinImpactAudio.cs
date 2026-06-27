@@ -35,7 +35,7 @@ public sealed class PinImpactAudio : Component
 
 	/// <summary>Per-play pitch spread (the recordings are at one pitch; this stops repeats sounding
 	/// identical). The lane is ~17k units long, so the falloff is generous on purpose.</summary>
-	[Property] public Vector2 PitchRange { get; set; } = new( 0.82f, 0.94f );
+	[Property] public Vector2 PitchRange { get; set; } = new( 0.93f, 1.04f );
 	[Property] public float SoundDistance { get; set; } = 50000f;
 
 	/// <summary>Most impacts to start in a single frame — caps a 10-pin scatter's burst. Ball↔pin
