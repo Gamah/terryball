@@ -14,10 +14,12 @@ namespace Terryball;
 /// call renders each variation once into a stored buffer at startup — no synthesis code changes, only
 /// who holds the buffers. See <see cref="PinImpactAudio.Mode"/>.
 ///
-/// A struck maple pin is, acoustically, a handful of decaying sinusoids (its resonant modes) plus a
-/// short contact transient. We synthesise each mode with a recursive complex rotator multiplied by a
-/// per-sample exponential decay, so the inner loop is a few multiply-adds per mode — no per-sample
-/// <c>sin</c>/<c>exp</c>. That keeps a full ~0.2s tail well under a millisecond to generate.
+/// A struck maple pin is, acoustically, a few heavily-damped resonant modes excited by a short
+/// contact transient. We model that directly: a brief filtered-noise burst (the strike) drives a
+/// bank of two-pole resonators (the modes). Exciting the resonances with broadband noise — rather
+/// than ringing clean seeded sinusoids — is what gives the woody/struck character instead of a
+/// metallic bell tone. The inner loop is a few multiply-adds per mode (no per-sample
+/// <c>sin</c>/<c>exp</c>), so a full tail generates in well under a millisecond.
 /// </summary>
 public static class PinSynth
 {
@@ -55,29 +57,31 @@ public static class PinSynth
 		}
 	}
 
-	// Maple-on-maple: the bright, hollow pin-on-pin clack. A low body thunk plus several upper
-	// partials that decay fast, so it cracks then rings briefly.
+	// Maple-on-maple: a hard, woody "clack". Decays are short and strongly frequency-dependent —
+	// real wood damps its high partials almost instantly, so the top modes are barely more than the
+	// contact "tick" while a low body resonance gives the brief knock. The modes are excited by the
+	// noise burst (see Render), which is what keeps it woody instead of bell-like.
 	public static readonly Recipe PinOnPin = new(
 		new[]
 		{
-			new Mode( 420f,  0.50f, 0.120f ),
-			new Mode( 1300f, 1.00f, 0.090f ),
-			new Mode( 2150f, 0.70f, 0.060f ),
-			new Mode( 3400f, 0.45f, 0.040f ),
-			new Mode( 5200f, 0.25f, 0.025f ),
+			new Mode( 380f,  1.00f, 0.055f ),
+			new Mode( 720f,  0.80f, 0.038f ),
+			new Mode( 1500f, 0.55f, 0.018f ),
+			new Mode( 2600f, 0.30f, 0.010f ),
+			new Mode( 4200f, 0.15f, 0.006f ),
 		},
-		noiseSeconds: 0.006f, noiseGain: 0.6f, noiseCutoff01: 0.55f );
+		noiseSeconds: 0.011f, noiseGain: 1.0f, noiseCutoff01: 0.55f );
 
-	// Pin against the lane bed / deck / gutter: a duller, shorter thud — lower partials, heavier
-	// transient, darker noise.
+	// Pin against the lane bed / deck / gutter: a duller, shorter thud — lower body, faster decay,
+	// darker strike noise.
 	public static readonly Recipe PinOnStructure = new(
 		new[]
 		{
-			new Mode( 180f, 1.00f, 0.080f ),
-			new Mode( 320f, 0.60f, 0.060f ),
-			new Mode( 700f, 0.35f, 0.035f ),
+			new Mode( 150f, 1.00f, 0.045f ),
+			new Mode( 300f, 0.60f, 0.028f ),
+			new Mode( 620f, 0.30f, 0.014f ),
 		},
-		noiseSeconds: 0.010f, noiseGain: 0.8f, noiseCutoff01: 0.25f );
+		noiseSeconds: 0.014f, noiseGain: 1.0f, noiseCutoff01: 0.22f );
 
 	/// <summary>
 	/// Render one impact into <paramref name="dest"/> and return the number of samples written
@@ -104,62 +108,72 @@ public static class PinSynth
 
 		var modes = recipe.Modes;
 		int m = modes.Length;
-		Span<float> re = stackalloc float[m];
-		Span<float> im = stackalloc float[m];
-		Span<float> cos = stackalloc float[m];
-		Span<float> sin = stackalloc float[m];
-		Span<float> dec = stackalloc float[m];
-		Span<float> gain = stackalloc float[m];
+		// Each mode is a two-pole resonator EXCITED BY the contact noise, not a free-ringing sine.
+		// Driving the resonances with a broadband strike is what gives the woody/struck character —
+		// pure seeded sinusoids are exactly what sounds metallic. State: y1/y2 = last two outputs.
+		Span<float> y1 = stackalloc float[m];
+		Span<float> y2 = stackalloc float[m];
+		Span<float> a1 = stackalloc float[m];   // 2 r cos(w0)
+		Span<float> a2 = stackalloc float[m];   // r^2
+		Span<float> gain = stackalloc float[m]; // mode level, pre-scaled to normalise the resonator
 
 		for ( int k = 0; k < m; k++ )
 		{
 			float f = modes[k].Freq * pitch * freqJitter;
 			double w = 2.0 * Math.PI * f / SampleRate;
-			cos[k] = (float)Math.Cos( w );
-			sin[k] = (float)Math.Sin( w );
-			// e^{-1/(tau*sr)} : per-sample decay so the rotator's magnitude follows e^{-t/tau}.
+			// pole radius from the target decay time-constant: r = e^{-1/(tau*sr)}
 			float tau = modes[k].Decay * decayJitter / pitch;
-			dec[k] = (float)Math.Exp( -1.0 / Math.Max( 1e-4, tau * SampleRate ) );
-			gain[k] = modes[k].Gain;
-			re[k] = 1f; // z[0] = 1 -> Im = 0, so each mode's sinusoid starts at the contact instant
-			im[k] = 0f;
+			float r = (float)Math.Exp( -1.0 / Math.Max( 1e-4, tau * SampleRate ) );
+			a1[k] = (float)(2.0 * r * Math.Cos( w ));
+			a2[k] = r * r;
+			// (1 - r) keeps each resonator's response level roughly equal regardless of decay length
+			gain[k] = modes[k].Gain * (1f - r);
+			y1[k] = 0f; y2[k] = 0f;
 		}
 
-		int noiseSamples = (int)(recipe.NoiseSeconds * SampleRate);
-		float noiseDecay = noiseSamples > 0 ? (float)Math.Exp( -4.0 / noiseSamples ) : 0f;
+		int noiseSamples = Math.Max( 1, (int)(recipe.NoiseSeconds * SampleRate) );
+		float noiseDecay = (float)Math.Exp( -5.0 / noiseSamples ); // sharp strike that fades fast
 		float noiseEnv = recipe.NoiseGain;
 		float lp = 0f;
 
-		// Normalise so the summed mode gains can't routinely clip; the soft-clip below catches peaks.
+		// Normalise so the summed modes sit at a sane level; the soft-clip below catches peaks.
 		float norm = 0f;
-		for ( int k = 0; k < m; k++ ) norm += gain[k];
+		for ( int k = 0; k < m; k++ ) norm += modes[k].Gain;
 		norm = norm > 0f ? 1f / norm : 1f;
+
+		float dcPrev = 0f, dcOut = 0f;
 
 		for ( int n = 0; n < count; n++ )
 		{
-			float s = 0f;
-			for ( int k = 0; k < m; k++ )
-			{
-				// advance the rotator one sample, then shrink by the decay factor
-				float nr = re[k] * cos[k] - im[k] * sin[k];
-				float ni = re[k] * sin[k] + im[k] * cos[k];
-				nr *= dec[k]; ni *= dec[k];
-				re[k] = nr; im[k] = ni;
-				s += im[k] * gain[k];
-			}
-			s *= norm;
-
+			// Excitation: a hard click at t0 plus a few ms of lowpassed noise — the contact transient
+			// that strikes every resonance at once.
+			float exc = 0f;
 			if ( n < noiseSamples )
 			{
 				float white = rng.Float() * 2f - 1f;
-				lp += recipe.NoiseCutoff01 * (white - lp); // one-pole lowpass for woodiness
-				s += lp * noiseEnv;
+				if ( n == 0 ) white += 1f; // initial impact spike
+				lp += recipe.NoiseCutoff01 * (white - lp);
+				exc = lp * noiseEnv;
 				noiseEnv *= noiseDecay;
 			}
 
-			// soft clip then to 16-bit
-			s = (float)Math.Tanh( s * 1.2f ) * amplitude;
-			int v = (int)(s * 32000f);
+			float s = 0f;
+			for ( int k = 0; k < m; k++ )
+			{
+				// two-pole resonator: y = exc + a1*y1 - a2*y2
+				float y = exc + a1[k] * y1[k] - a2[k] * y2[k];
+				y2[k] = y1[k]; y1[k] = y;
+				s += y * gain[k];
+			}
+			s *= norm;
+
+			// block the resonators' DC leakage so the body modes read as a knock, not a thump-with-bias
+			dcOut = s - dcPrev + 0.995f * dcOut;
+			dcPrev = s;
+
+			// gentle soft clip then to 16-bit
+			float outv = (float)Math.Tanh( dcOut ) * amplitude;
+			int v = (int)(outv * 32000f);
 			dest[n] = (short)Math.Clamp( v, short.MinValue, short.MaxValue );
 		}
 
