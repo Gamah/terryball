@@ -645,25 +645,29 @@ public sealed class LaneBuilder : Component
 
 	/// <summary>
 	/// Regulation pin silhouette as (height fraction up from the base, diameter as a fraction
-	/// of the belly diameter). Revolving this profile gives the classic bowling-pin shape, and
-	/// because the solid is built straight from this curve the belly's volume sits low and the
-	/// mass distribution is realistic without any manual centre-of-mass tweak.
+	/// of the belly diameter). Points are the official USBC contour: the manual fixes the
+	/// diameter at twelve measured heights (base 2.03", belly 4.77" at 4.5", neck 1.78" at 10",
+	/// head 2.55" at 13.5"), here divided by the 4.766" belly to make the "1.0" reference. The
+	/// crown dome is added on top. Revolving this gives the true bowling-pin shape, and because
+	/// the solid is built straight from the curve the belly's volume sits low and the mass
+	/// distribution (centre of gravity ~5.3" up) is realistic with no manual tweak.
 	/// </summary>
 	private static readonly (float t, float dia)[] PinSilhouette =
 	{
-		(0.00f, 0.432f), // base
-		(0.05f, 0.472f),
-		(0.10f, 0.617f),
-		(0.20f, 0.881f),
-		(0.30f, 1.000f), // belly — widest
-		(0.40f, 0.923f),
-		(0.50f, 0.713f),
-		(0.60f, 0.483f),
-		(0.667f, 0.377f), // neck — narrowest
-		(0.75f, 0.483f),
-		(0.85f, 0.611f), // head — flared
-		(0.93f, 0.483f),
-		(1.00f, 0.252f), // domed top (kept >0 so the cap isn't degenerate)
+		(0.000f, 0.426f), // base — 2.03"
+		(0.050f, 0.594f), // 0.75"
+		(0.150f, 0.820f), // 2.25"
+		(0.225f, 0.946f), // 3-3/8"
+		(0.300f, 1.000f), // 4-1/2" belly — widest (4.77")
+		(0.392f, 0.957f), // 5-7/8"
+		(0.575f, 0.518f), // 8-5/8"
+		(0.625f, 0.413f), // 9-3/8"
+		(0.667f, 0.374f), // 10" neck — narrowest (1.78")
+		(0.725f, 0.392f), // 10-7/8"
+		(0.783f, 0.439f), // 11-3/4"
+		(0.900f, 0.535f), // 13-1/2" head — widest crown (2.55")
+		(0.955f, 0.380f), // crown dome
+		(1.000f, 0.165f), // rounded top (kept >0 so the cap isn't degenerate)
 	};
 
 	// A pin instance: Rigidbody + ModelRenderer + ModelCollider, all pointing at the one shared
@@ -701,19 +705,62 @@ public sealed class LaneBuilder : Component
 	// on these — collision still uses the coarse PinSilhouette, so mass/inertia are untouched.
 	private static readonly (float lo, float hi)[] PinStripeBands = { (0.69f, 0.73f), (0.78f, 0.82f) };
 
-	// Diameter (as a fraction of the belly) at an arbitrary height t, linearly interpolated along
-	// PinSilhouette — lets the render mesh insert extra rings at the stripe edges.
+	// Monotone-cubic (Fritsch–Carlson) tangents through PinSilhouette. A linear interpolation of
+	// the sparse spec points reads as a stack of cones; a monotone cubic passes through every spec
+	// diameter yet curves smoothly between them and — unlike a plain Catmull-Rom — never overshoots,
+	// so the render lathe never bulges past the belly or pinches below the neck.
+	private static readonly float[] _silSlope = BuildSilhouetteSlopes();
+
+	private static float[] BuildSilhouetteSlopes()
+	{
+		var s = PinSilhouette;
+		var n = s.Length;
+		var d = new float[n - 1]; // secant slope of each segment
+		for ( var i = 0; i < n - 1; i++ )
+			d[i] = (s[i + 1].dia - s[i].dia) / (s[i + 1].t - s[i].t);
+
+		var m = new float[n];
+		m[0] = d[0];
+		m[n - 1] = d[n - 2];
+		for ( var i = 1; i < n - 1; i++ )
+			m[i] = (d[i - 1] * d[i] <= 0f) ? 0f : (d[i - 1] + d[i]) * 0.5f; // flat at extrema (belly/neck)
+
+		// Limiter: clamp tangents into the monotone region so no segment overshoots its endpoints.
+		for ( var i = 0; i < n - 1; i++ )
+		{
+			if ( d[i] == 0f ) { m[i] = 0f; m[i + 1] = 0f; continue; }
+			var a = m[i] / d[i];
+			var b = m[i + 1] / d[i];
+			var h = a * a + b * b;
+			if ( h > 9f )
+			{
+				var tau = 3f / MathF.Sqrt( h );
+				m[i] = tau * a * d[i];
+				m[i + 1] = tau * b * d[i];
+			}
+		}
+		return m;
+	}
+
+	// Diameter (as a fraction of the belly) at an arbitrary height t, along the smooth monotone-cubic
+	// PinSilhouette — lets the render mesh resample the profile as finely as it likes.
 	private static float DiaAt( float t )
 	{
 		var s = PinSilhouette;
 		if ( t <= s[0].t ) return s[0].dia;
-		for ( var i = 1; i < s.Length; i++ )
-			if ( t <= s[i].t )
-			{
-				var f = (t - s[i - 1].t) / (s[i].t - s[i - 1].t);
-				return s[i - 1].dia + (s[i].dia - s[i - 1].dia) * f;
-			}
-		return s[^1].dia;
+		if ( t >= s[^1].t ) return s[^1].dia;
+
+		var i = 1;
+		while ( i < s.Length && t > s[i].t ) i++;
+		var t0 = s[i - 1].t; var t1 = s[i].t;
+		var hgap = t1 - t0;
+		var x = (t - t0) / hgap;
+		var y0 = s[i - 1].dia; var y1 = s[i].dia;
+		var m0 = _silSlope[i - 1] * hgap; var m1 = _silSlope[i] * hgap; // Hermite tangents (curve units)
+
+		var x2 = x * x; var x3 = x2 * x;
+		return (2f * x3 - 3f * x2 + 1f) * y0 + (x3 - 2f * x2 + x) * m0
+			+ (-2f * x3 + 3f * x2) * y1 + (x3 - x2) * m1;
 	}
 
 	// The pins' glossy-white body material and the red-tinted copy for the stripes. Both ride the
@@ -741,12 +788,16 @@ public sealed class LaneBuilder : Component
 
 		var height = PinHeightInches * u;
 		var bellyRadius = PinWidthInches * u * 0.5f; // belly diameter is the profile's "1.0"
-		const int radial = 24;                       // segments around the circumference
+		const int radial = 48;                       // segments around the circumference (smooth lathe)
 
-		// --- Render profile: the silhouette resampled with extra rings at each stripe edge, so the
-		//     two red bands can be peeled off onto their own material. Finer than the collision rings. ---
+		// --- Render profile: the smooth monotone-cubic silhouette resampled at a high, uniform ring
+		//     count, plus exact rings at every spec point and each stripe edge. The dense sampling +
+		//     curved interpolation makes the body read as a continuous surface, not stacked cones, and
+		//     keeps the two red bands on their own material. Far finer than the collision rings. ---
+		const int smoothRings = 72;
 		var ts = PinSilhouette.Select( p => p.t ).ToList();
 		foreach ( var band in PinStripeBands ) { ts.Add( band.lo ); ts.Add( band.hi ); }
+		for ( var i = 0; i <= smoothRings; i++ ) ts.Add( i / (float)smoothRings );
 		ts = ts.Distinct().OrderBy( x => x ).ToList();
 		var fineRings = ts.Count;
 
