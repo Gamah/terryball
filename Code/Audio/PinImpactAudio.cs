@@ -5,27 +5,20 @@ using System.Collections.Generic;
 namespace Terryball;
 
 /// <summary>
-/// Plays the pins' procedural impact sounds. One of these lives on the lane; every pin carries a
-/// <see cref="PinImpactListener"/> that funnels its collisions here. This component owns the
-/// playback plumbing — stream pool, per-frame throttle, and spatial/temporal coalescing — none of
-/// which knows or cares how the audio was made.
+/// Plays the pins' impact sounds from a palette of real CC0 bowling recordings (in
+/// <c>Assets/sounds/pins/</c>), jumbled per contact the way bowling games do: each pin collision
+/// fires a short one-shot picked at random with pitch/volume variation, so a clean pocket strike and
+/// a weak corner tap sound different purely from how the individual hits layer up — no pre-baked
+/// "crash" sample. (We abandoned the procedural synth: it kept reading as metallic/hollow, and real
+/// recordings carry their own room ambience, which is our reverb.)
 ///
-/// The sound itself comes from <see cref="PinSynth"/>. Two ways to wire that up, selected by
-/// <see cref="Mode"/>:
-///   • <b>Live</b> (this branch's default, option #1) — synthesise each impact on demand into a
-///     single shared scratch buffer. Cheap (sub-ms) and reactive: amplitude and pitch track the
-///     real impact strength, so every clack differs.
-///   • <b>Prebaked</b> (option #2) — render a small fixed bank of variations once when the
-///     component enables, then just pick one per hit. Zero per-hit DSP; the runtime profile is
-///     identical to shipping WAVs. Kept working here so switching is a one-property flip, and to
-///     prove the <see cref="PinSynth.Render"/> seam is genuinely shared.
+/// One of these lives on the lane; every pin carries a <see cref="PinImpactListener"/> that funnels
+/// its collisions here. This component owns classification (wood clack vs low thud), the per-frame
+/// burst cap, and spatial/temporal coalescing; the random pick + pitch/volume spread is handled by
+/// s&amp;box's <see cref="SoundEvent"/>.
 /// </summary>
 public sealed class PinImpactAudio : Component
 {
-	public enum SourceMode { Live, Prebaked }
-
-	[Property] public SourceMode Mode { get; set; } = SourceMode.Live;
-
 	/// <summary>Closing speed (units/s) below which an impact is inaudible chatter and skipped.</summary>
 	[Property] public float MinNormalSpeed { get; set; } = 40f;
 
@@ -34,113 +27,63 @@ public sealed class PinImpactAudio : Component
 
 	[Property] public float Volume { get; set; } = 1.0f;
 
-	/// <summary>Falloff distance for the spatialised one-shots. The lane is ~17k units long at the
-	/// default scale (~23 units/inch), so this is generous on purpose — short impulsive sounds gain
-	/// nothing from a tight radius and everything from not being silently culled.</summary>
+	/// <summary>Per-play pitch spread (the recordings are at one pitch; this stops repeats sounding
+	/// identical). The lane is ~17k units long, so the falloff is generous on purpose.</summary>
+	[Property] public Vector2 PitchRange { get; set; } = new( 0.9f, 1.1f );
 	[Property] public float SoundDistance { get; set; } = 50000f;
 
 	/// <summary>Most impacts to start in a single frame — caps a 10-pin scatter's burst.</summary>
-	[Property] public int MaxImpactsPerFrame { get; set; } = 8;
-
-	/// <summary>Most one-shots sounding at once (each ~1s with the room tail); oldest stolen past this.</summary>
-	[Property] public int MaxConcurrent { get; set; } = 16;
+	[Property] public int MaxImpactsPerFrame { get; set; } = 10;
 
 	/// <summary>A new impact within this time AND <see cref="CoalesceRadius"/> of a recent one is
 	/// dropped — the many micro-contacts of a scatter collapse into distinct clacks, not a buzz.</summary>
-	[Property] public float CoalesceWindow { get; set; } = 0.035f;
-	[Property] public float CoalesceRadius { get; set; } = 60f;
+	[Property] public float CoalesceWindow { get; set; } = 0.03f;
+	[Property] public float CoalesceRadius { get; set; } = 55f;
 
-	// Bake variation knobs (Prebaked mode only).
-	[Property] public int PrebakedVariations { get; set; } = 8;
+	private SoundEvent _clack; // pin-on-pin wood hit
+	private SoundEvent _thud;  // pin/ball against deck, backstop, pit — the low whump
+	private bool _ready;
 
-	/// <summary>Bake an alley room tail into each clack. The dry synth alone is bare/hollow; a room
-	/// gives it the "crashing in a big hall" body. Independent of any scene geometry.</summary>
-	[Property, Group( "Reverb" )] public bool EnableReverb { get; set; } = true;
-	[Property, Group( "Reverb" ), Range( 0f, 0.97f )] public float ReverbRoomSize { get; set; } = 0.88f;
-	[Property, Group( "Reverb" ), Range( 0f, 1f )] public float ReverbDamping { get; set; } = 0.35f;
-	[Property, Group( "Reverb" ), Range( 0f, 1f )] public float ReverbWet { get; set; } = 0.32f;
-	[Property, Group( "Reverb" )] public float ReverbTailSeconds { get; set; } = 0.7f;
-
-	// One scratch buffer feeds every Live impact: WriteData copies into the native ring synchronously,
-	// so we can refill and reuse it immediately. _dry holds the raw synth; _wet holds it plus the room
-	// tail (longer, so it needs more room).
-	private const float MaxDrySeconds = 0.35f;
-	private short[] _dry;
-	private short[] _wet;
-	private PinReverb _reverb;
-
-	// Prebaked banks: a handful of pre-rendered clacks per material, picked at random per hit.
-	private List<(short[] buf, int len)> _bakedPin;
-	private List<(short[] buf, int len)> _bakedStructure;
-
-	private readonly List<Active> _active = new();
 	private readonly List<(float time, Vector3 pos)> _recent = new();
 	private int _playsThisFrame;
 	private float _lastFrameTime;
 
-	private struct Active { public SoundStream Stream; public SoundHandle Handle; }
-
 	protected override void OnEnabled()
 	{
-		int dryMax = (int)(MaxDrySeconds * PinSynth.SampleRate);
-		int wetMax = dryMax + (int)((ReverbTailSeconds + 0.1f) * PinSynth.SampleRate);
-		_dry = new short[dryMax];
-		_wet = new short[wetMax];
-		_reverb = new PinReverb();
+		_clack = BuildEvent( "clack", 16 );
+		_thud = BuildEvent( "thud", 8 );
+		_ready = _clack != null && _thud != null;
+		if ( !_ready )
+			Log.Warning( "[terryball] PinImpactAudio: no pin sounds loaded from Assets/sounds/pins/ — pins will be silent." );
+	}
 
-		if ( Mode == SourceMode.Prebaked )
+	// Load sounds/pins/<prefix>0.wav, <prefix>1.wav, ... until one is missing, and wrap them in a
+	// SoundEvent that picks one at random with a little pitch spread per play.
+	private SoundEvent BuildEvent( string prefix, int max )
+	{
+		var sounds = new List<SoundFile>();
+		for ( int i = 0; i < max; i++ )
 		{
-			_bakedPin = Bake( PinSynth.PinOnPin, wetMax );
-			_bakedStructure = Bake( PinSynth.PinOnStructure, wetMax );
+			var sf = SoundFile.Load( $"sounds/pins/{prefix}{i}.wav" );
+			if ( sf == null ) break;
+			sounds.Add( sf );
 		}
-	}
+		if ( sounds.Count == 0 ) return null;
 
-	private PinReverb.Settings ReverbSettings => new()
-	{
-		RoomSize = ReverbRoomSize,
-		Damping = ReverbDamping,
-		Wet = ReverbWet,
-		TailSeconds = ReverbTailSeconds,
-	};
-
-	protected override void OnDisabled()
-	{
-		foreach ( var a in _active ) a.Stream?.Dispose();
-		_active.Clear();
-		_recent.Clear();
-	}
-
-	private List<(short[] buf, int len)> Bake( in PinSynth.Recipe recipe, int wetMax )
-	{
-		// The SAME render (and reverb) the live path uses — just run once, into kept buffers.
-		var list = new List<(short[], int)>( PrebakedVariations );
-		for ( int i = 0; i < PrebakedVariations; i++ )
+		return new SoundEvent
 		{
-			var buf = new short[wetMax];
-			float pitch = 0.9f + i / (float)Math.Max( 1, PrebakedVariations - 1 ) * 0.25f;
-			int dryLen = PinSynth.Render( recipe, 1.0f, pitch, seed: i * 374761393 + 17, _dry );
-			int len = WetLength( dryLen, buf );
-			list.Add( (buf, len) );
-		}
-		return list;
+			Sounds = sounds,
+			Volume = 1.0f, // actual level is set per-hit from impact strength
+			Pitch = new RangedFloat( PitchRange.x, PitchRange.y ),
+		};
 	}
 
-	// Run the dry render in _dry through the reverb into dest, or just copy it dry. Returns length.
-	private int WetLength( int dryLen, short[] dest )
+	/// <summary>Funnelled here by a pin's listener. <paramref name="onStructure"/> is true when the
+	/// pin hit something that isn't another pin (the ball, the deck, the backstop, the pit) — that's
+	/// the low thud; pin-on-pin is the wood clack.</summary>
+	public void ReportImpact( Vector3 worldPos, float normalSpeed, bool onStructure )
 	{
-		if ( !EnableReverb || ReverbWet <= 0f )
-		{
-			int n = Math.Min( dryLen, dest.Length );
-			Array.Copy( _dry, dest, n );
-			return n;
-		}
-		return _reverb.Process( _dry, dryLen, ReverbSettings, dest );
-	}
-
-	/// <summary>Funnelled here by a pin's listener. <paramref name="onStructure"/> picks the duller
-	/// voice (pin hit the lane/deck), otherwise it's the wood-on-wood clack.</summary>
-	public void ReportImpact( Vector3 worldPos, float normalSpeed, bool onStructure, int seed )
-	{
+		if ( !_ready ) return;
 		if ( normalSpeed < MinNormalSpeed ) return;
 
 		// reset the per-frame budget when a new frame starts
@@ -152,30 +95,32 @@ public sealed class PinImpactAudio : Component
 		if ( _playsThisFrame >= MaxImpactsPerFrame ) return;
 		if ( IsCoalesced( worldPos ) ) return;
 
-		float strength = MathX.Clamp(
+		float strength = Math.Clamp(
 			(normalSpeed - MinNormalSpeed) / Math.Max( 1f, LoudNormalSpeed - MinNormalSpeed ), 0f, 1f );
-		// perceptual: ease volume so soft taps aren't silent and hard hits don't all pin to 1
+		// ease so soft taps aren't silent and hard hits don't all pin to full
 		float amplitude = MathF.Sqrt( strength ) * Volume;
-		// harder hits a touch brighter; plus a little per-hit pitch scatter
-		float pitch = 0.95f + strength * 0.2f;
 
-		if ( Mode == SourceMode.Live )
+		if ( onStructure )
 		{
-			var recipe = onStructure ? PinSynth.PinOnStructure : PinSynth.PinOnPin;
-			int dryLen = PinSynth.Render( recipe, amplitude, pitch, seed, _dry );
-			int len = WetLength( dryLen, _wet );
-			PlayPcm( worldPos, _wet, len, 1f, 1f );
+			Play( _thud, worldPos, amplitude );
+			// a hard ball-into-pocket cracks as well as booms — layer a clack on top
+			if ( strength > 0.5f ) Play( _clack, worldPos, amplitude * 0.7f );
 		}
 		else
 		{
-			var bank = onStructure ? _bakedStructure : _bakedPin;
-			if ( bank == null || bank.Count == 0 ) return;
-			var pick = bank[Math.Abs( seed ) % bank.Count];
-			PlayPcm( worldPos, pick.buf, pick.len, amplitude, pitch );
+			Play( _clack, worldPos, amplitude );
 		}
 
 		_playsThisFrame++;
 		_recent.Add( (Time.Now, worldPos) );
+	}
+
+	private void Play( SoundEvent ev, Vector3 pos, float volume )
+	{
+		var h = Sound.Play( ev, pos );
+		if ( !h.IsValid() ) return;
+		h.Volume = volume;
+		h.Distance = SoundDistance;
 	}
 
 	private bool IsCoalesced( Vector3 pos )
@@ -189,49 +134,8 @@ public sealed class PinImpactAudio : Component
 		return false;
 	}
 
-	private void PlayPcm( Vector3 pos, short[] buf, int len, float volume, float pitch )
-	{
-		if ( len <= 0 || buf == null ) return;
-
-		if ( _active.Count >= MaxConcurrent )
-		{
-			_active[0].Stream?.Dispose();
-			_active.RemoveAt( 0 );
-		}
-
-		var stream = new SoundStream( PinSynth.SampleRate, 1 );
-		stream.WriteData( buf.AsSpan( 0, len ) ); // queue the samples BEFORE the voice starts, so a
-		                                          // one-shot can't drain-and-finish before they land
-
-		var handle = stream.Play( volume, pitch );
-		if ( !handle.IsValid() )
-		{
-			stream.Dispose();
-			return;
-		}
-
-		handle.Position = pos;
-		handle.SpacialBlend = 1f;
-		handle.Distance = SoundDistance;
-
-		stream.Close(); // no more data — drains the queued buffer then stops
-
-		_active.Add( new Active { Stream = stream, Handle = handle } );
-	}
-
 	protected override void OnUpdate()
 	{
-		// reap finished one-shots
-		for ( int i = _active.Count - 1; i >= 0; i-- )
-		{
-			var h = _active[i].Handle;
-			if ( !h.IsValid() || !h.IsPlaying )
-			{
-				_active[i].Stream?.Dispose();
-				_active.RemoveAt( i );
-			}
-		}
-
 		// prune the coalesce window
 		for ( int i = _recent.Count - 1; i >= 0; i-- )
 		{
@@ -269,14 +173,6 @@ public sealed class PinImpactListener : Component, Component.ICollisionListener
 			return;
 
 		_nextAllowed = Time.Now + Cooldown;
-		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, onStructure: !otherIsPin, seed: GetSeed( c ) );
-	}
-
-	private int _hits;
-
-	private int GetSeed( Collision c )
-	{
-		// Vary per pin and per contact so successive hits don't render identically.
-		return GameObject.GetHashCode() ^ (int)(c.Contact.NormalSpeed * 7.3f) ^ (_hits++ * 374761393);
+		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, onStructure: !otherIsPin );
 	}
 }
