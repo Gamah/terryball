@@ -137,6 +137,9 @@ public sealed class BallController : Component, Component.ICollisionListener
 		_body.AngularDamping = AngularDamping;
 		_body.MassOverride = Mass; // realistic bowling-ball mass vs the pins
 		_body.EnhancedCcd = true;  // don't tunnel through the pins at speed
+		// Mute the engine's default surface collision sounds for the ball too (ball↔lane drop, gutter,
+		// etc.) — they're the generic clunks; the pins carry their own procedural crash audio.
+		_body.RigidbodyFlags |= RigidbodyFlags.DisableCollisionSounds;
 
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.
 		var visual = new GameObject( true, "BallVisual" )

@@ -34,8 +34,10 @@ public sealed class PinImpactAudio : Component
 
 	[Property] public float Volume { get; set; } = 1.0f;
 
-	/// <summary>Falloff distance for the spatialised one-shots.</summary>
-	[Property] public float SoundDistance { get; set; } = 4000f;
+	/// <summary>Falloff distance for the spatialised one-shots. The lane is ~17k units long at the
+	/// default scale (~23 units/inch), so this is generous on purpose — short impulsive sounds gain
+	/// nothing from a tight radius and everything from not being silently culled.</summary>
+	[Property] public float SoundDistance { get; set; } = 50000f;
 
 	/// <summary>Most impacts to start in a single frame — caps a 10-pin scatter's burst.</summary>
 	[Property] public int MaxImpactsPerFrame { get; set; } = 8;
@@ -161,6 +163,9 @@ public sealed class PinImpactAudio : Component
 		}
 
 		var stream = new SoundStream( PinSynth.SampleRate, 1 );
+		stream.WriteData( buf.AsSpan( 0, len ) ); // queue the samples BEFORE the voice starts, so a
+		                                          // one-shot can't drain-and-finish before they land
+
 		var handle = stream.Play( volume, pitch );
 		if ( !handle.IsValid() )
 		{
@@ -172,8 +177,7 @@ public sealed class PinImpactAudio : Component
 		handle.SpacialBlend = 1f;
 		handle.Distance = SoundDistance;
 
-		stream.WriteData( buf.AsSpan( 0, len ) ); // synchronous copy into the native ring
-		stream.Close();                            // no more data — drains then stops
+		stream.Close(); // no more data — drains the queued buffer then stops
 
 		_active.Add( new Active { Stream = stream, Handle = handle } );
 	}
