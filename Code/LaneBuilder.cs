@@ -700,6 +700,11 @@ public sealed class LaneBuilder : Component
 		rb.EnhancedCcd = false;
 		rb.GravityScale = _pinGravityScale; // scale-correct 1g at lane size × feel knob (pins only)
 
+		// Silence the engine's built-in surface collision sound — our procedural crash audio replaces
+		// it. CollisionSoundSystem skips a contact if EITHER body has this flag, so flagging the pins
+		// covers pin↔pin, pin↔ball and pin↔lane.
+		rb.RigidbodyFlags |= RigidbodyFlags.DisableCollisionSounds;
+
 		// Procedural crash audio: this listener routes the pin's collisions to the shared bank.
 		go.Components.Create<PinImpactListener>().Bank = _pinAudio;
 
