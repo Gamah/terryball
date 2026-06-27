@@ -1,0 +1,17 @@
+Terryball sound sources (all CC0 1.0 Universal / public domain; attribution NOT required).
+Recorded into short one-shots from these Freesound uploads, then sliced/normalized.
+
+pins/  (pin crash):
+  clack0-5  <- Freesound #499788 "Single bowling pin knock" by Rvgerxini      (CC0)
+  thud0     <- Freesound #128969 "Bowling Ball" by driftworks                 (CC0)
+  thud1     <- Freesound #441856 "Bowling ball striking pins" by Yarmonics    (CC0)
+
+ball/  (throw / lane entry one-shot):
+  throw0    <- Freesound #128969 "Bowling Ball" by driftworks                 (CC0)
+  throw1    <- Freesound #593593 "Bowling" by Rehanjo                         (CC0)
+  throw2    <- Freesound #441856 "Bowling ball striking pins" by Yarmonics    (CC0)
+
+The ROLL rumble is synthesised at runtime (Code/Audio/BallAudio.cs), no sample.
+
+CC0: https://creativecommons.org/publicdomain/zero/1.0/
+Listed for our own provenance only; no obligation under CC0.

@@ -71,6 +71,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// time-constant); 20 hauls the ball down hard, stopping it in well under a second. Tune by feel.</summary>
 	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 20f;
 
+	/// <summary>Ball world velocity (units/s); zero before the body exists. For the roll audio.</summary>
+	public Vector3 Velocity => _body.IsValid() ? _body.Velocity : Vector3.Zero;
+	/// <summary>The drive target top speed (units/s) — the roll audio's reference for "full speed".</summary>
+	public float MaxDriveSpeed => MaxSpeed;
+	/// <summary>0..1 turning effort the player is applying (perpendicular correction), 0 after release.</summary>
+	public float SteerEffort01 { get; private set; }
+
 	/// <summary>When set, the ball ignores BOTH input and braking and just coasts on its own
 	/// momentum (physics only). The round director flips this on once the ball crosses the throw
 	/// line so the throw is committed to physics and you can watch it hit the pins.</summary>
@@ -140,6 +147,9 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// Mute the engine's default surface collision sounds for the ball too (ball↔lane drop, gutter,
 		// etc.) — they're the generic clunks; the pins carry their own procedural crash audio.
 		_body.RigidbodyFlags |= RigidbodyFlags.DisableCollisionSounds;
+
+		// Procedural roll rumble + foul-line throw sound.
+		Components.GetOrCreate<BallAudio>();
 
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.
 		var visual = new GameObject( true, "BallVisual" )
@@ -271,6 +281,20 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// Locked = neither drive nor brake: the ball coasts on momentum alone into the pins.
 		if ( !ControlsLocked )
 			_body.ApplyForce( velError * gain );
+
+		// Steering effort for the roll-rumble audio: the part of the correction perpendicular to
+		// travel — i.e. how hard the player is TURNING, not just accelerating straight. Zero once
+		// the ball is released (ControlsLocked), so the roll smooths out after the throw.
+		if ( ControlsLocked || !hasInput )
+		{
+			SteerEffort01 = 0f;
+		}
+		else
+		{
+			var dir = vel.Length > 1f ? vel.Normal : (wish.Length > 0.01f ? wish.Normal : Vector3.Forward);
+			var lateral = velError - velError.Dot( dir ) * dir;
+			SteerEffort01 = (lateral.Length / (MaxSpeed * 0.5f)).Clamp( 0f, 1f );
+		}
 
 		// --- Terry's visual climb (no longer drives the ball) --------------------------
 		// Spherical-pendulum on the inner surface: input pushes Terry up-slope toward wishDir,

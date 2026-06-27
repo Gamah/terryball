@@ -154,6 +154,8 @@ public sealed class LaneBuilder : Component
 
 	/// <summary>World X of the throw line. The director arms watch-mode when the ball crosses it.</summary>
 	public float ThrowLineWorldX { get; private set; }
+	/// <summary>World x of the foul line (lane entry). The ball crossing this is the "throw".</summary>
+	public float FoulLineWorldX { get; private set; }
 
 	/// <summary>Centre of the run-up area on the platform TOP surface (z = play surface), where the
 	/// ball is spawned/re-racked. Add the ball's radius to sit it on the surface.</summary>
@@ -328,6 +330,7 @@ public sealed class LaneBuilder : Component
 		// to cross ThrowLineWorldX and hands control to physics for the hit.
 		var throwLineX = headPinX - ThrowLineDistanceInches * u;            // lane-local x
 		ThrowLineWorldX = ToWorld( new Vector3( throwLineX, 0f, 0f ) ).x;   // exposed in world space
+		FoulLineWorldX = ToWorld( new Vector3( foulX, 0f, 0f ) ).x;         // lane entry — drives the throw sound
 		MakeDecal( "ThrowLine", new Vector3( throwLineX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
 
