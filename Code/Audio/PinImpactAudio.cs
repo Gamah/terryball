@@ -231,9 +231,11 @@ public sealed class PinImpactListener : Component, Component.ICollisionListener
 		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, onStructure: !otherIsPin, seed: GetSeed( c ) );
 	}
 
+	private int _hits;
+
 	private int GetSeed( Collision c )
 	{
 		// Vary per pin and per contact so successive hits don't render identically.
-		return GameObject.GetHashCode() ^ (int)(c.Contact.NormalSpeed * 7.3f) ^ Environment.TickCount;
+		return GameObject.GetHashCode() ^ (int)(c.Contact.NormalSpeed * 7.3f) ^ (_hits++ * 374761393);
 	}
 }
