@@ -25,10 +25,10 @@ public sealed class BallAudio : Component
 	[Property, Group( "Throw" )] public int ThrowVariants { get; set; } = 3;
 
 	/// <summary>Speed (units/s) treated as "full" roll — speed maps roughly linearly to this.</summary>
-	[Property, Group( "Roll" )] public float RollSpeedRef { get; set; } = 3500f;
-	[Property, Group( "Roll" )] public float RollVolume { get; set; } = 0.7f;
+	[Property, Group( "Roll" )] public float RollSpeedRef { get; set; } = 4500f;
+	[Property, Group( "Roll" )] public float RollVolume { get; set; } = 0.3f;
 	/// <summary>How much steering effort adds rumble (amplitude wobble) on top of the base roll.</summary>
-	[Property, Group( "Roll" )] public float SteerRumble { get; set; } = 0.8f;
+	[Property, Group( "Roll" )] public float SteerRumble { get; set; } = 0.5f;
 
 	private const int SR = 44100;
 
@@ -131,29 +131,37 @@ public sealed class BallAudio : Component
 
 		_rollHandle.Position = pos;
 
-		float speed01 = (_ball.Velocity.Length / Math.Max( 1f, RollSpeedRef )).Clamp( 0f, 1f );
-		float steer01 = _ball.SteerEffort01;
-
 		int target = (int)(0.12f * SR);                 // keep ~120ms queued
 		int want = Math.Min( target - _roll.QueuedSampleCount, _rollBuf.Length );
 		want = Math.Min( want, _roll.MaxWriteSampleCount );
 		if ( want <= 0 ) return;
 
-		// Brightness of the rumble rises a little with speed; deep when slow.
-		float cutoff = 0.018f + speed01 * 0.06f;
+		// The roll only sounds AFTER the ball crosses the foul line (the throw), until it resets back
+		// behind the line. Before the throw — on the approach — it stays silent.
+		float speed01 = _thrown ? (_ball.Velocity.Length / Math.Max( 1f, RollSpeedRef )).Clamp( 0f, 1f ) : 0f;
 		float amp = speed01 * RollVolume * Volume;
-		float amInc = (28f + steer01 * 30f) / SR;       // wobble rate, faster while steering
+		if ( amp <= 0.0005f )
+		{
+			Array.Clear( _rollBuf, 0, want );           // keep the stream primed but silent
+			_roll.WriteData( _rollBuf.AsSpan( 0, want ) );
+			return;
+		}
+
+		float steer01 = _ball.SteerEffort01;            // non-zero only while still steering (pre-lock)
+		// DEEP rumble: a ~40-90 Hz cutoff, not the old ~hundreds-of-Hz hiss that read as wind.
+		float cutoff = 0.006f + speed01 * 0.007f;
+		float amInc = (24f + steer01 * 26f) / SR;       // wobble rate, faster while steering
 
 		for ( int n = 0; n < want; n++ )
 		{
 			float white = NextFloat() * 2f - 1f;
 			_lp1 += cutoff * (white - _lp1);
-			_lp2 += cutoff * (_lp1 - _lp2);             // two-pole → deep rumble
+			_lp2 += cutoff * (_lp1 - _lp2);             // two-pole → deep brown rumble
 
 			_amPhase += amInc; if ( _amPhase >= 1f ) _amPhase -= 1f;
 			float wobble = 1f + steer01 * SteerRumble * MathF.Sin( _amPhase * MathF.PI * 2f );
 
-			float s = _lp2 * 3.5f * amp * wobble;        // *3.5: the double-LP loses a lot of level
+			float s = _lp2 * 9f * amp * wobble;          // *9: makeup for the deep double-LP's level loss
 			int v = (int)(MathF.Tanh( s ) * 30000f);
 			_rollBuf[n] = (short)Math.Clamp( v, short.MinValue, short.MaxValue );
 		}
