@@ -8,8 +8,9 @@ namespace Terryball;
 /// The ball's own audio, on the ball GameObject:
 ///   • a one-shot THROW sound when the ball crosses the foul line (lane entry), jumbled from a small
 ///     CC0 sample set with pitch/volume RNG so it never sounds identical;
-///   • a continuous ROLL rumble whose level/brightness tracks ball speed, with extra "rumble" while
-///     the player is steering (turning) on the approach.
+///   • a continuous ROLL rumble whose level/brightness tracks ball speed, with a per-revolution
+///     "whump whump whump" pulse (spin rate derived from speed) plus extra "rumble" while the
+///     player is steering (turning) on the approach.
 ///
 /// The roll is synthesised (filtered noise fed through a <see cref="SoundStream"/>) rather than a
 /// looped sample: it's inherently seamless and modulates in real time on speed + steering, which a
@@ -33,6 +34,11 @@ public sealed class BallAudio : Component
 	/// <summary>How much steering effort adds rumble (amplitude wobble) on top of the base roll.</summary>
 	[Property, Group( "Roll" )] public float SteerRumble { get; set; } = 0.5f;
 
+	/// <summary>"whump whump whump" depth — how hard the per-revolution pulse swells the roll (0 = off).</summary>
+	[Property, Group( "Roll" )] public float RollWhump { get; set; } = 0.8f;
+	/// <summary>Whumps per second at full speed (<see cref="RollSpeedRef"/>) — the ball's apparent spin rate.</summary>
+	[Property, Group( "Roll" )] public float RollWhumpRate { get; set; } = 9f;
+
 	private const int SR = 44100;
 
 	private BallController _ball;
@@ -51,6 +57,7 @@ public sealed class BallAudio : Component
 	private float _lp1, _lp2;     // two-pole lowpass state (deep rumble)
 	private float _amSmoothed = 1f;
 	private float _amPhase;
+	private float _whumpPhase;     // per-revolution "whump" cycle, advanced by speed
 	private uint _rng = 0x1234567u;
 
 	protected override void OnEnabled()
@@ -158,6 +165,9 @@ public sealed class BallAudio : Component
 		// DEEP rumble: a ~40-90 Hz cutoff, not the old ~hundreds-of-Hz hiss that read as wind.
 		float cutoff = 0.006f + speed01 * 0.007f;
 		float amInc = (24f + steer01 * 26f) / SR;       // wobble rate, faster while steering
+		// "whump whump whump": one amplitude pulse per ball revolution. Spin rate tracks speed, so the
+		// whumps speed up and slow down with the ball — based on velocity, not a real rotation read.
+		float whumpInc = speed01 * RollWhumpRate / SR;
 
 		for ( int n = 0; n < want; n++ )
 		{
@@ -168,7 +178,12 @@ public sealed class BallAudio : Component
 			_amPhase += amInc; if ( _amPhase >= 1f ) _amPhase -= 1f;
 			float wobble = 1f + steer01 * SteerRumble * MathF.Sin( _amPhase * MathF.PI * 2f );
 
-			float s = _lp2 * 9f * amp * wobble;          // *9: makeup for the deep double-LP's level loss
+			_whumpPhase += whumpInc; if ( _whumpPhase >= 1f ) _whumpPhase -= 1f;
+			// raised-cosine swelled then sharpened (^3) into a thump that punches once per turn
+			float pulse = 0.5f + 0.5f * MathF.Cos( _whumpPhase * MathF.PI * 2f );
+			float whump = 1f + RollWhump * (pulse * pulse * pulse);
+
+			float s = _lp2 * 9f * amp * wobble * whump;  // *9: makeup for the deep double-LP's level loss
 			int v = (int)(MathF.Tanh( s ) * 30000f);
 			_rollBuf[n] = (short)Math.Clamp( v, short.MinValue, short.MaxValue );
 		}
