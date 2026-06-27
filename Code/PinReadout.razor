@@ -26,10 +26,10 @@
 	@* The exact layout of the corner PinStatusOverlay, just scaled up uniformly (~3.4×): title over
 	   count over the rack triangle, all stacked in the root's column. flex-shrink: 0 keeps the rows from
 	   being squished to fit, and the column header keeps the text from overflowing the board's width. *@
-	<div style="font-size: 90px; font-weight: 700; margin-bottom: 9px; flex-shrink: 0;">
+	<div style="font-size: 90px; font-weight: 700; margin-bottom: 9px; flex-shrink: 0; white-space: nowrap;">
 		@(watching ? "WATCHING" : "PINS")
 	</div>
-	<div style="font-size: 63px; color: rgba(255,255,255,0.7); margin-bottom: 30px; flex-shrink: 0;">
+	<div style="font-size: 63px; color: rgba(255,255,255,0.7); margin-bottom: 30px; flex-shrink: 0; white-space: nowrap;">
 		@(10 - down) UP / @down DOWN
 	</div>
 

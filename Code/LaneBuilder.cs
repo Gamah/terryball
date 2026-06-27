@@ -462,13 +462,15 @@ public sealed class LaneBuilder : Component
 	private void BuildBackstopReadout( float frontX, float laneHalf, float wallTopZ, float D )
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
-		// Tall PORTRAIT canvas: header + count line stacked over the four-row rack triangle. The content
-		// runs taller than a 760×1000 board, so justify-content:center overflowed it and clipped the PINS
-		// title off the top and the head pin off the bottom — give it real vertical headroom so the whole
-		// stack fits with margin to spare. Width is unchanged (and worldW with it), so the circle world-size
-		// — which the look depends on — stays exactly as it is; only the board gets taller.
-		var panelPx = new Vector2( 760f, 1320f );
-		var worldW = laneHalf * 2f * 1.6f;                 // wider than the lane so it reads BIG
+		// PORTRAIT canvas: header + count line stacked over the four-row rack triangle. CRITICAL: a
+		// WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2 — the old 760×1320
+		// board only gave the UI ~380×660 css px, which the ~648×880 content overflowed on BOTH axes
+		// (back row clipped to its middle pins, title + head pin clipped off top/bottom). Size the
+		// canvas to ~2× the content so it fits with margin. worldW scales by the SAME factor as
+		// panelPx.x, so `scale` (and therefore the circle world-size we like) is unchanged — only the
+		// canvas grew. The board ends up ~2.9× the lane width, big and legible from the approach.
+		var panelPx = new Vector2( 1400f, 1900f );
+		var worldW = laneHalf * 2f * 1.6f * (1400f / 760f); // same px:world ratio as the old board → same circle size
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
 		// Float it clear above the backstop AND lift it well overhead so it stops sinking into the back
