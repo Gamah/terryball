@@ -755,6 +755,7 @@ public sealed class LaneBuilder : Component
 		// One position + outward-normal ring per fine sample (normal = profile tangent rotated -90°).
 		var ringPos = new Vector3[fineRings][];
 		var ringNrm = new Vector3[fineRings][];
+		var ringTan = new Vector3[fineRings][];
 		for ( var i = 0; i < fineRings; i++ )
 		{
 			var dz = (i < fineRings - 1 ? fz[i + 1] : fz[i]) - (i > 0 ? fz[i - 1] : fz[i]);
@@ -763,6 +764,7 @@ public sealed class LaneBuilder : Component
 
 			ringPos[i] = new Vector3[radial];
 			ringNrm[i] = new Vector3[radial];
+			ringTan[i] = new Vector3[radial];
 			for ( var j = 0; j < radial; j++ )
 			{
 				var a = j / (float)radial * MathF.PI * 2f;
@@ -770,6 +772,10 @@ public sealed class LaneBuilder : Component
 				var s = MathF.Sin( a );
 				ringPos[i][j] = new Vector3( fr[i] * c, fr[i] * s, fz[i] );
 				ringNrm[i][j] = new Vector3( nPlane.x * c, nPlane.x * s, nPlane.y ).Normal;
+				// Circumferential tangent (dPos/dθ). A real, non-zero tangent is REQUIRED: the lit
+				// shader builds its TBN from it, and a zero tangent makes that basis NaN — which is
+				// what left the pins unlit / unable to take a shadow.
+				ringTan[i][j] = new Vector3( -s, c, 0f );
 			}
 		}
 
@@ -788,9 +794,9 @@ public sealed class LaneBuilder : Component
 			var baseI = red ? redCount : whiteCount;
 
 			for ( var j = 0; j < radial; j++ )
-				vb.Add( new Vertex( ringPos[i][j], ringNrm[i][j], Vector3.Zero, new Vector4( j / (float)radial, ts[i], 0f, 0f ) ) );
+				vb.Add( new Vertex( ringPos[i][j], ringNrm[i][j], ringTan[i][j], new Vector4( j / (float)radial, ts[i], 0f, 0f ) ) );
 			for ( var j = 0; j < radial; j++ )
-				vb.Add( new Vertex( ringPos[i + 1][j], ringNrm[i + 1][j], Vector3.Zero, new Vector4( j / (float)radial, ts[i + 1], 0f, 0f ) ) );
+				vb.Add( new Vertex( ringPos[i + 1][j], ringNrm[i + 1][j], ringTan[i + 1][j], new Vector4( j / (float)radial, ts[i + 1], 0f, 0f ) ) );
 
 			for ( var j = 0; j < radial; j++ )
 			{
@@ -849,12 +855,15 @@ public sealed class LaneBuilder : Component
 	private static int AddCap( VertexBuffer vb, Vector3[] ring, float zc, int radial, int firstIndex, bool faceDown )
 	{
 		var normal = faceDown ? Vector3.Down : Vector3.Up;
+		// A flat cap lies in the XY plane, so +X is a valid in-plane tangent (perpendicular to the
+		// up/down normal). Non-zero tangents keep the lit shader's TBN basis from going NaN.
+		var tangent = Vector3.Forward;
 		var centerIdx = firstIndex;
-		vb.Add( new Vertex( new Vector3( 0f, 0f, zc ), normal, Vector3.Zero, new Vector4( 0.5f, 0.5f, 0f, 0f ) ) );
+		vb.Add( new Vertex( new Vector3( 0f, 0f, zc ), normal, tangent, new Vector4( 0.5f, 0.5f, 0f, 0f ) ) );
 
 		var ringStart = firstIndex + 1;
 		for ( var j = 0; j < radial; j++ )
-			vb.Add( new Vertex( ring[j], normal, Vector3.Zero, new Vector4( j / (float)radial, 0f, 0f, 0f ) ) );
+			vb.Add( new Vertex( ring[j], normal, tangent, new Vector4( j / (float)radial, 0f, 0f, 0f ) ) );
 
 		for ( var j = 0; j < radial; j++ )
 		{

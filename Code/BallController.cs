@@ -288,7 +288,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		// DEBUG: trace the coast through the rack every physics step — speed vs position, so we can see
 		// whether the ball steps down at each pin contact or sails through unaffected.
-		if ( ControlsLocked && _body.IsValid() )
+		if ( ControlsLocked && _body.IsValid() && (Director?.LogPinCrash ?? false) )
 		{
 			var v = _body.Velocity;
 			Log.Info( $"[terryball][coast] x={WorldPosition.x:F0} y={WorldPosition.y:F0} spd={v.Length:F0} " +
@@ -353,6 +353,8 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	private void LogPinContact( string phase, Collision c )
 	{
+		if ( !(Director?.LogPinCrash ?? false) ) return; // gated behind the director's Debug checkbox
+
 		var other = c.Other.GameObject;
 		if ( !other.IsValid() || !other.Name.StartsWith( "Pin" ) ) return;
 
