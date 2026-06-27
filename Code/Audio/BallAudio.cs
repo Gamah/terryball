@@ -42,6 +42,12 @@ public sealed class BallAudio : Component
 	/// full speed we sit near the top of the typical range; below full speed the whumps space out.
 	/// </summary>
 	[Property, Group( "Roll" )] public float RollWhumpRate { get; set; } = 5.5f;
+	/// <summary>Seconds for the whump rate to spin up from 0 (at the throw) to match speed — a normal
+	/// shot runs the lane in ~2.5s, so the ball is "revving up" for most of that travel.</summary>
+	[Property, Group( "Roll" )] public float RollSpinUpTime { get; set; } = 2.5f;
+	/// <summary>Seconds for the whump rate to fall to match a drop in speed — aggressive, so a stall
+	/// or slowdown decelerates the whumps far faster than they spun up.</summary>
+	[Property, Group( "Roll" )] public float RollSpinDownTime { get; set; } = 0.4f;
 
 	private const int SR = 44100;
 
@@ -61,7 +67,8 @@ public sealed class BallAudio : Component
 	private float _lp1, _lp2;     // two-pole lowpass state (deep rumble)
 	private float _amSmoothed = 1f;
 	private float _amPhase;
-	private float _whumpPhase;     // per-revolution "whump" cycle, advanced by speed
+	private float _whumpPhase;     // per-revolution "whump" cycle, advanced by spin rate
+	private float _spinRate01;     // ramped spin: 0 at throw, climbs to match speed, falls fast on slowdown
 	private uint _rng = 0x1234567u;
 
 	protected override void OnEnabled()
@@ -157,6 +164,14 @@ public sealed class BallAudio : Component
 		// The roll only sounds AFTER the ball crosses the foul line (the throw), until it resets back
 		// behind the line. Before the throw — on the approach — it stays silent.
 		float speed01 = _thrown ? (_ball.Velocity.Length / Math.Max( 1f, RollSpeedRef )).Clamp( 0f, 1f ) : 0f;
+
+		// Whump RATE doesn't follow speed directly: it ramps from 0 at the throw up to the speed target
+		// over a normal shot (the ball revving up off the release), then drops fast if the ball slows.
+		float spinTarget = _thrown ? speed01 : 0f;
+		float spinSecs = spinTarget > _spinRate01 ? RollSpinUpTime : RollSpinDownTime;
+		float spinStep = Time.Delta / MathF.Max( 0.01f, spinSecs );
+		_spinRate01 += Math.Clamp( spinTarget - _spinRate01, -spinStep, spinStep );
+
 		float amp = speed01 * RollVolume * Volume;
 		if ( amp <= 0.0005f )
 		{
@@ -171,7 +186,7 @@ public sealed class BallAudio : Component
 		float amInc = (24f + steer01 * 26f) / SR;       // wobble rate, faster while steering
 		// "whump whump whump": one amplitude pulse per ball revolution. Spin rate tracks speed, so the
 		// whumps speed up and slow down with the ball — based on velocity, not a real rotation read.
-		float whumpInc = speed01 * RollWhumpRate / SR;
+		float whumpInc = _spinRate01 * RollWhumpRate / SR;
 
 		for ( int n = 0; n < want; n++ )
 		{
