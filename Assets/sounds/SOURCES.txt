@@ -6,10 +6,9 @@ pins/  (pin crash):
   thud0     <- Freesound #128969 "Bowling Ball" by driftworks                 (CC0)
   thud1     <- Freesound #441856 "Bowling ball striking pins" by Yarmonics    (CC0)
 
-ball/  (throw / lane entry one-shot):
+ball/  (throw / lane entry one-shot — single CLEAN ball clip, varied by pitch/volume RNG):
   throw0    <- Freesound #128969 "Bowling Ball" by driftworks                 (CC0)
-  throw1    <- Freesound #593593 "Bowling" by Rehanjo                         (CC0)
-  throw2    <- Freesound #441856 "Bowling ball striking pins" by Yarmonics    (CC0)
+  (no pin-containing recordings here — random selection would play pins on the throw)
 
 The ROLL rumble is synthesised at runtime (Code/Audio/BallAudio.cs), no sample.
 

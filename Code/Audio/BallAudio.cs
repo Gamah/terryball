@@ -21,8 +21,11 @@ public sealed class BallAudio : Component
 	[Property] public float Volume { get; set; } = 1.0f;
 	[Property] public float SoundDistance { get; set; } = 50000f;
 
-	[Property, Group( "Throw" )] public Vector2 ThrowPitchRange { get; set; } = new( 0.92f, 1.08f );
-	[Property, Group( "Throw" )] public int ThrowVariants { get; set; } = 3;
+	[Property, Group( "Throw" )] public Vector2 ThrowPitchRange { get; set; } = new( 0.9f, 1.1f );
+	[Property, Group( "Throw" )] public Vector2 ThrowVolumeRange { get; set; } = new( 0.85f, 1.0f );
+	// One clean ball-only throw clip, varied by pitch/volume RNG. (Don't add more clips unless they're
+	// pin-free — random selection across recordings that contain pin strikes plays pins on the throw.)
+	[Property, Group( "Throw" )] public int ThrowVariants { get; set; } = 1;
 
 	/// <summary>Speed (units/s) treated as "full" roll — speed maps roughly linearly to this.</summary>
 	[Property, Group( "Roll" )] public float RollSpeedRef { get; set; } = 4500f;
@@ -111,8 +114,12 @@ public sealed class BallAudio : Component
 			if ( !_thrown && _prevX < foul && x >= foul )
 			{
 				_thrown = true;
-				var h = Sound.Play( _throw, pos );
-				if ( h.IsValid() ) { h.Volume = Volume; h.Distance = SoundDistance; }
+				var h = Sound.Play( _throw, pos ); // pitch RNG comes from the SoundEvent
+				if ( h.IsValid() )
+				{
+					h.Volume = Volume * (ThrowVolumeRange.x + NextFloat() * (ThrowVolumeRange.y - ThrowVolumeRange.x));
+					h.Distance = SoundDistance;
+				}
 			}
 			else if ( _thrown && x < foul - 50f )
 			{
