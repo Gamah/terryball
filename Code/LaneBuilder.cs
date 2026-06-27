@@ -90,7 +90,9 @@ public sealed class LaneBuilder : Component
 	/// make ball+pin move together (ball plows, pin doesn't fly). Keep high; the steamroll was a
 	/// contact/CCD bug, not this. Drives pin-ball and pin-pin liveliness.</summary>
 	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.3f;
-	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 0.95f, 0.95f, 0.95f, 1f );
+	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 1f, 1f, 1f, 1f );
+	/// <summary>The two trim stripes ringing the pin's neck.</summary>
+	[Property, Group( "Pins" )] public Color PinStripeColor { get; set; } = new Color( 0.78f, 0.07f, 0.09f, 1f );
 	/// <summary>Multiplier on the pins' SCALE-CORRECT gravity. The lane is ~10.7× bigger than world
 	/// gravity expects, so 1 here = a real 1g AT THIS SCALE — real-bowling fall speed and friction.
 	/// The data forced this: at world-normal gravity even a 0.9 mph ball clears 7 pins, because a
@@ -133,6 +135,8 @@ public sealed class LaneBuilder : Component
 	private bool _built;
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private Model _arrowModel; // shared by the seven targeting arrows
+	private Material _pinMat;       // glossy white pin body
+	private Material _pinStripeMat; // red neck stripes (same shader, red tint)
 	private float _pinGravityScale = 1f; // resolved per-pin GravityScale (scale-correct × feel knob)
 
 	/// <summary>A pin and the spot it was racked on, for the director's "is it still standing?"
@@ -458,16 +462,18 @@ public sealed class LaneBuilder : Component
 	private void BuildBackstopReadout( float frontX, float laneHalf, float wallTopZ, float D )
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
-		// Match the PORTRAIT aspect of the corner PinStatusOverlay (header stacked over the four-row rack
-		// triangle ≈ 0.76 wide:tall). A landscape canvas squeezed that content vertically and clipped the
-		// bottom row; a matching aspect gives the same shape, just blown up, with headroom to spare.
-		var panelPx = new Vector2( 760f, 1000f );
+		// Tall PORTRAIT canvas: header + count line stacked over the four-row rack triangle. The content
+		// runs taller than a 760×1000 board, so justify-content:center overflowed it and clipped the PINS
+		// title off the top and the head pin off the bottom — give it real vertical headroom so the whole
+		// stack fits with margin to spare. Width is unchanged (and worldW with it), so the circle world-size
+		// — which the look depends on — stays exactly as it is; only the board gets taller.
+		var panelPx = new Vector2( 760f, 1320f );
 		var worldW = laneHalf * 2f * 1.6f;                 // wider than the lane so it reads BIG
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
 		// Float it clear above the backstop AND lift it well overhead so it stops sinking into the back
 		// drop/wall — it should hang high, fully legible from the approach.
-		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D + 450f;
+		var centerZ = wallTopZ + worldH * 0.5f + 0.2f * D + 700f;
 
 		// Dark bezel slab just behind the panel for contrast against the alley.
 		var bezelThk = 0.1f * D;
@@ -689,83 +695,149 @@ public sealed class LaneBuilder : Component
 		return go;
 	}
 
+	// The two red neck stripes, as height fractions (t) up the pin. Only the RENDER mesh is split
+	// on these — collision still uses the coarse PinSilhouette, so mass/inertia are untouched.
+	private static readonly (float lo, float hi)[] PinStripeBands = { (0.69f, 0.73f), (0.78f, 0.82f) };
+
+	// Diameter (as a fraction of the belly) at an arbitrary height t, linearly interpolated along
+	// PinSilhouette — lets the render mesh insert extra rings at the stripe edges.
+	private static float DiaAt( float t )
+	{
+		var s = PinSilhouette;
+		if ( t <= s[0].t ) return s[0].dia;
+		for ( var i = 1; i < s.Length; i++ )
+			if ( t <= s[i].t )
+			{
+				var f = (t - s[i - 1].t) / (s[i].t - s[i - 1].t);
+				return s[i - 1].dia + (s[i].dia - s[i - 1].dia) * f;
+			}
+		return s[^1].dia;
+	}
+
+	// The pins' glossy-white body material and the red-tinted copy for the stripes. Both ride the
+	// complex shader (same as white.vmat) with the roughness pulled down for a slight sheen; colour
+	// lives on the material (g_vColorTint), so the two submeshes can differ under one ModelRenderer.
+	private void EnsurePinMaterials()
+	{
+		if ( _pinMat is not null ) return;
+		var baseMat = Material.Load( "materials/default/white.vmat" );
+		_pinMat = baseMat.CreateCopy();
+		_pinMat.Set( "g_flRoughnessScaleFactor", 0.45f ); // < 0.5 default → a soft plastic sheen
+		_pinMat.Set( "g_flMinRoughness", 0.05f );
+		_pinStripeMat = baseMat.CreateCopy();
+		_pinStripeMat.Set( "g_flRoughnessScaleFactor", 0.45f );
+		_pinStripeMat.Set( "g_flMinRoughness", 0.05f );
+		_pinStripeMat.Set( "g_vColorTint", PinStripeColor );
+	}
+
 	// Build the shared pin Model by revolving PinSilhouette around the vertical axis: a smooth
-	// render mesh, plus one convex-hull frustum per profile slab for simulatable collision (a
-	// single hull can't capture the concave neck, but a stack of convex slabs can).
+	// render mesh (split white body + red stripes), plus one convex-hull frustum per profile slab
+	// for simulatable collision (a single hull can't capture the concave neck, but a stack can).
 	private Model BuildPinModel( float u )
 	{
+		EnsurePinMaterials();
+
 		var height = PinHeightInches * u;
 		var bellyRadius = PinWidthInches * u * 0.5f; // belly diameter is the profile's "1.0"
 		const int radial = 24;                       // segments around the circumference
 
-		var rings = PinSilhouette.Length;
-		var z = new float[rings];
-		var r = new float[rings];
-		for ( var i = 0; i < rings; i++ )
-		{
-			z[i] = PinSilhouette[i].t * height;
-			r[i] = PinSilhouette[i].dia * bellyRadius;
-		}
+		// --- Render profile: the silhouette resampled with extra rings at each stripe edge, so the
+		//     two red bands can be peeled off onto their own material. Finer than the collision rings. ---
+		var ts = PinSilhouette.Select( p => p.t ).ToList();
+		foreach ( var band in PinStripeBands ) { ts.Add( band.lo ); ts.Add( band.hi ); }
+		ts = ts.Distinct().OrderBy( x => x ).ToList();
+		var fineRings = ts.Count;
 
-		var vb = new VertexBuffer();
-		vb.Init( true );
+		var fz = new float[fineRings];
+		var fr = new float[fineRings];
+		for ( var i = 0; i < fineRings; i++ ) { fz[i] = ts[i] * height; fr[i] = DiaAt( ts[i] ) * bellyRadius; }
 
-		// Side surface: one vertex ring per profile sample, normals from the profile slope.
-		var ringPos = new List<Vector3>[rings];
-		for ( var i = 0; i < rings; i++ )
+		// One position + outward-normal ring per fine sample (normal = profile tangent rotated -90°).
+		var ringPos = new Vector3[fineRings][];
+		var ringNrm = new Vector3[fineRings][];
+		for ( var i = 0; i < fineRings; i++ )
 		{
-			// Outward normal in the (radius, z) plane = profile tangent rotated -90°.
-			var dz = (i < rings - 1 ? z[i + 1] : z[i]) - (i > 0 ? z[i - 1] : z[i]);
-			var dr = (i < rings - 1 ? r[i + 1] : r[i]) - (i > 0 ? r[i - 1] : r[i]);
+			var dz = (i < fineRings - 1 ? fz[i + 1] : fz[i]) - (i > 0 ? fz[i - 1] : fz[i]);
+			var dr = (i < fineRings - 1 ? fr[i + 1] : fr[i]) - (i > 0 ? fr[i - 1] : fr[i]);
 			var nPlane = new Vector2( dz, -dr ).Normal; // (radial, axial)
 
-			ringPos[i] = new List<Vector3>( radial );
+			ringPos[i] = new Vector3[radial];
+			ringNrm[i] = new Vector3[radial];
 			for ( var j = 0; j < radial; j++ )
 			{
 				var a = j / (float)radial * MathF.PI * 2f;
 				var c = MathF.Cos( a );
 				var s = MathF.Sin( a );
-				var pos = new Vector3( r[i] * c, r[i] * s, z[i] );
-				var normal = new Vector3( nPlane.x * c, nPlane.x * s, nPlane.y ).Normal;
-				vb.Add( new Vertex( pos, normal, Vector3.Zero, new Vector4( j / (float)radial, PinSilhouette[i].t, 0f, 0f ) ) );
-				ringPos[i].Add( pos );
+				ringPos[i][j] = new Vector3( fr[i] * c, fr[i] * s, fz[i] );
+				ringNrm[i][j] = new Vector3( nPlane.x * c, nPlane.x * s, nPlane.y ).Normal;
 			}
 		}
 
-		// Side triangles between consecutive rings. (If pins ever render inside-out, swap the
-		// winding here — the lighting uses the explicit normals above, so only culling cares.)
-		for ( var i = 0; i < rings - 1; i++ )
+		// White body and red stripes go to separate vertex buffers (= separate submeshes/materials).
+		// Each slab appends its own two rings so a slab can be assigned a colour independently; the
+		// smooth per-ring normals keep the seams invisible.
+		var vbWhite = new VertexBuffer(); vbWhite.Init( true );
+		var vbRed = new VertexBuffer(); vbRed.Init( true );
+		var whiteCount = 0; var redCount = 0;
+
+		for ( var i = 0; i < fineRings - 1; i++ )
 		{
+			var mid = (ts[i] + ts[i + 1]) * 0.5f;
+			var red = PinStripeBands.Any( b => mid >= b.lo && mid <= b.hi );
+			var vb = red ? vbRed : vbWhite;
+			var baseI = red ? redCount : whiteCount;
+
+			for ( var j = 0; j < radial; j++ )
+				vb.Add( new Vertex( ringPos[i][j], ringNrm[i][j], Vector3.Zero, new Vector4( j / (float)radial, ts[i], 0f, 0f ) ) );
+			for ( var j = 0; j < radial; j++ )
+				vb.Add( new Vertex( ringPos[i + 1][j], ringNrm[i + 1][j], Vector3.Zero, new Vector4( j / (float)radial, ts[i + 1], 0f, 0f ) ) );
+
 			for ( var j = 0; j < radial; j++ )
 			{
 				var jn = (j + 1) % radial;
-				var a = i * radial + j;
-				var b = i * radial + jn;
-				var cc = (i + 1) * radial + j;
-				var d = (i + 1) * radial + jn;
-				vb.AddRawIndex( a ); vb.AddRawIndex( cc ); vb.AddRawIndex( b );
-				vb.AddRawIndex( b ); vb.AddRawIndex( cc ); vb.AddRawIndex( d );
+				var a = baseI + j;
+				var b = baseI + jn;
+				var cc = baseI + radial + j;
+				var d = baseI + radial + jn;
+				// Outward-facing winding (the old build was inside-out — backface culling ate the
+				// outer surface and you saw straight through the pin / its open underside).
+				vb.AddRawIndex( a ); vb.AddRawIndex( b ); vb.AddRawIndex( cc );
+				vb.AddRawIndex( b ); vb.AddRawIndex( d ); vb.AddRawIndex( cc );
 			}
+
+			if ( red ) redCount += radial * 2; else whiteCount += radial * 2;
 		}
 
-		// Bottom and top caps (fans to a centre vertex) so the pin reads as a closed solid.
-		// (VertexBuffer's vertex list is internal, so track the running count ourselves.)
-		var vertCount = rings * radial;
-		vertCount += AddCap( vb, ringPos[0], z[0], radial, vertCount, faceDown: true );
-		AddCap( vb, ringPos[rings - 1], z[rings - 1], radial, vertCount, faceDown: false );
+		// Bottom and top caps close the solid; both ride the white body buffer.
+		whiteCount += AddCap( vbWhite, ringPos[0], fz[0], radial, whiteCount, faceDown: true );
+		AddCap( vbWhite, ringPos[fineRings - 1], fz[fineRings - 1], radial, whiteCount, faceDown: false );
 
-		var mesh = new Mesh( Material.Load( "materials/default/white.vmat" ) );
-		mesh.CreateBuffers( vb );
+		var meshWhite = new Mesh( _pinMat );
+		meshWhite.CreateBuffers( vbWhite );
+		var meshRed = new Mesh( _pinStripeMat );
+		meshRed.CreateBuffers( vbRed );
 
-		// Collision: a convex hull per slab (both rings of positions). Convex per slab handles
-		// the concave neck a single hull would fill in; the stack closes the whole solid.
 		var builder = new ModelBuilder();
-		builder.AddMesh( mesh );
+		builder.AddMesh( meshWhite );
+		builder.AddMesh( meshRed );
+
+		// Collision: a convex hull per COARSE silhouette slab. Convex per slab handles the concave
+		// neck a single hull would fill in; the stack closes the whole solid. (Unchanged by the
+		// render-mesh stripe split, so mass + inertia stay exactly as tuned.)
+		var rings = PinSilhouette.Length;
 		for ( var i = 0; i < rings - 1; i++ )
 		{
 			var hull = new List<Vector3>( radial * 2 );
-			hull.AddRange( ringPos[i] );
-			hull.AddRange( ringPos[i + 1] );
+			for ( var k = i; k <= i + 1; k++ )
+			{
+				var rr = PinSilhouette[k].dia * bellyRadius;
+				var zz = PinSilhouette[k].t * height;
+				for ( var j = 0; j < radial; j++ )
+				{
+					var a = j / (float)radial * MathF.PI * 2f;
+					hull.Add( new Vector3( rr * MathF.Cos( a ), rr * MathF.Sin( a ), zz ) );
+				}
+			}
 			builder.AddCollisionHull( hull );
 		}
 		builder.WithMass( PinMass );
@@ -774,7 +846,7 @@ public sealed class LaneBuilder : Component
 
 	// Adds a fan cap over <paramref name="ring"/> centred on the axis, with its first vertex at
 	// absolute index <paramref name="firstIndex"/>; returns how many vertices it added.
-	private static int AddCap( VertexBuffer vb, List<Vector3> ring, float zc, int radial, int firstIndex, bool faceDown )
+	private static int AddCap( VertexBuffer vb, Vector3[] ring, float zc, int radial, int firstIndex, bool faceDown )
 	{
 		var normal = faceDown ? Vector3.Down : Vector3.Up;
 		var centerIdx = firstIndex;
@@ -788,9 +860,9 @@ public sealed class LaneBuilder : Component
 		{
 			var a = ringStart + j;
 			var b = ringStart + (j + 1) % radial;
-			// Wind so the visible face points the way the normal does.
-			if ( faceDown ) { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( a ); vb.AddRawIndex( b ); }
-			else { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( b ); vb.AddRawIndex( a ); }
+			// Wind so the visible face points the way the normal does (outward, matching the sides).
+			if ( faceDown ) { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( b ); vb.AddRawIndex( a ); }
+			else { vb.AddRawIndex( centerIdx ); vb.AddRawIndex( a ); vb.AddRawIndex( b ); }
 		}
 
 		return 1 + radial;

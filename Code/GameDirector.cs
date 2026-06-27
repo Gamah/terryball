@@ -973,6 +973,26 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	public List<PlayerView> BuildScoreView()
 	{
 		var views = new List<PlayerView>();
+
+		// Lobby: there's no locked roster yet (RosterNames is published on START), so show who has
+		// JOINED right now — read straight off the synced per-avatar Joined/DisplayName so the host and
+		// every client list the same bowlers, ordered by owner id for a stable order. Empty cards; the
+		// real scorecard takes over once the host presses START.
+		if ( Phase != GamePhase.Playing )
+		{
+			var joined = Scene.GetAllComponents<TerryAvatar>()
+				.Where( a => a.IsValid() && a.Joined )
+				.OrderBy( a => a.GameObject.Network.Owner?.Id.ToString() ?? "" );
+			foreach ( var a in joined )
+			{
+				var frames = new List<FrameView>( 10 );
+				for ( var fr = 0; fr < 10; fr++ )
+					frames.Add( new FrameView { Balls = BallMarks( new List<int>(), fr == 9 ) } );
+				views.Add( new PlayerView { Name = a.DisplayName, Frames = frames } );
+			}
+			return views;
+		}
+
 		var over = GameComplete;
 		for ( var pi = 0; pi < RosterNames.Count; pi++ )
 		{

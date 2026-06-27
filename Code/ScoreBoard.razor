@@ -95,6 +95,7 @@
 		hash.Add( director.GameOver );
 		foreach ( var player in director.BuildScoreView() )
 		{
+			hash.Add( player.Name );
 			hash.Add( player.Active );
 			hash.Add( player.Total );
 			foreach ( var frame in player.Frames )
