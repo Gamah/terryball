@@ -34,6 +34,12 @@ public sealed class TerryAvatar : Component
 	/// <summary>Currently up — riding the ball, not walking. The director sets exactly one true.</summary>
 	[Sync( SyncFlags.FromHost )] public bool Bowling { get; set; }
 
+	/// <summary>While this avatar is the active bowler, its OWNER publishes its live camera transform
+	/// here so every settee monitor mirrors the bowler's actual eye view (see LaneMonitorCamera) rather
+	/// than a static chase. Only meaningful while <see cref="Bowling"/>.</summary>
+	[Sync] public Vector3 BowlCamPos { get; set; }
+	[Sync] public Rotation BowlCamRot { get; set; } = Rotation.Identity;
+
 	private PlayerController _player;
 	private GameObject _body;
 	private bool _wasBowling;   // edge-detect the end of our turn, to walk us back to the settee
@@ -120,6 +126,17 @@ public sealed class TerryAvatar : Component
 			// owner-authoritative, so we move ourselves rather than the host yanking us.
 			if ( _wasBowling && !Bowling )
 				ReturnToSettee();
+
+			// While we're up, publish our live camera transform so every settee monitor mirrors our view.
+			if ( Bowling )
+			{
+				var cam = Scene.Camera;
+				if ( cam.IsValid() )
+				{
+					BowlCamPos = cam.WorldPosition;
+					BowlCamRot = cam.WorldRotation;
+				}
+			}
 
 			UpdateControlsStation();
 		}

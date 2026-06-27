@@ -8,14 +8,15 @@ namespace Terryball;
 /// active ball down-lane and renders to <see cref="Feed"/> (a render-target texture); the
 /// <c>MonitorFeed</c> panel paints that texture onto the in-world screen.
 ///
-/// It runs on EVERY client as a local re-render of the LOCAL ball — which is the bowler's real ball
-/// on their machine and the streamed copy on spectators — so every settee shows the bowler's-eye
-/// view without streaming any video. (A chase cam, not a literal mirror of the bowler's look angles.)
+/// It runs on EVERY client. While someone's up it MIRRORS the active bowler's real camera (their owner
+/// publishes the transform on their avatar, <see cref="TerryAvatar.BowlCamPos"/>), so every settee shows
+/// the bowler's actual eye view — panning and pitching with their aim — without streaming any video.
+/// Between turns it falls back to a chase framing of the local ball.
 /// </summary>
 public sealed class LaneMonitorCamera : Component
 {
-	[Property] public int Width { get; set; } = 1280;
-	[Property] public int Height { get; set; } = 720;
+	[Property] public int Width { get; set; } = 1920;
+	[Property] public int Height { get; set; } = 1080;
 	[Property] public float Back { get; set; } = 700f;  // how far behind the ball the cam sits (units)
 	[Property] public float Up { get; set; } = 260f;    // and how far above
 	[Property] public float Fov { get; set; } = 70f;
@@ -50,6 +51,20 @@ public sealed class LaneMonitorCamera : Component
 	protected override void OnUpdate()
 	{
 		if ( !_cam.IsValid() ) return;
+
+		// Mirror the active bowler's REAL camera, if someone's up: their owner publishes its transform on
+		// their avatar (TerryAvatar.BowlCamPos/Rot), so every settee monitor shows the bowler's eye view —
+		// it pans/pitches with their aim and follows their throw, not a fixed chase. Identical on host and
+		// spectator because both read the same synced transform.
+		var bowler = Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && a.Bowling );
+		if ( bowler is not null )
+		{
+			_cam.WorldPosition = bowler.BowlCamPos;
+			_cam.WorldRotation = bowler.BowlCamRot;
+			return;
+		}
+
+		// Nobody up (lobby / between turns): fall back to a chase framing of the local ball.
 		if ( !_ball.IsValid() || !_lane.IsValid() )
 		{
 			var lane = Lane.Of( this );

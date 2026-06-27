@@ -146,6 +146,7 @@ public sealed class LaneBuilder : Component
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private PinImpactAudio _pinAudio; // shared procedural-crash bank; pins route collisions here
 	private Model _arrowModel; // shared by the seven targeting arrows
+	private readonly List<ModelRenderer> _arrowRenderers = new(); // re-skinned in OnStart (see note there)
 	private Material _pinMat;       // glossy white pin body
 	private Material _pinStripeMat; // red neck stripes (same shader, red tint)
 	private float _pinGravityScale = 1f; // resolved per-pin GravityScale (scale-correct × feel knob)
@@ -429,6 +430,17 @@ public sealed class LaneBuilder : Component
 		Components.GetOrCreate<LaneMonitorCamera>();
 	}
 
+	/// <summary>Re-assign the procedural arrow model to its renderers here, in OnStart. Assigning a
+	/// runtime ModelBuilder model to a ModelRenderer during OnEnabled renders fine on the host but shows
+	/// the purple ERROR model on a joining CLIENT (the pin model dodges this only because it's assigned
+	/// in Pin.OnStart). Setting it again one lifecycle step later, after the client's scene join settles,
+	/// fixes it. Host-harmless (it's the same model).</summary>
+	protected override void OnStart()
+	{
+		foreach ( var mr in _arrowRenderers )
+			if ( mr.IsValid() ) mr.Model = _arrowModel;
+	}
+
 	/// <summary>
 	/// The bowlers' settee: the seating area on the floor (z = 0) behind the lane, between the ball
 	/// spawn and the foot of the ramp. Lays down a carpeted riser, two bench seats facing the lane,
@@ -674,6 +686,7 @@ public sealed class LaneBuilder : Component
 		var mr = go.Components.GetOrCreate<ModelRenderer>();
 		mr.Model = _arrowModel;
 		mr.Tint = ArrowColor;
+		_arrowRenderers.Add( mr ); // re-assigned in OnStart — see the OnStart note
 	}
 
 	// A flat isosceles triangle in the XY plane with its apex toward +x (down-lane, toward the
