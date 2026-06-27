@@ -46,7 +46,7 @@
               "PinSpacingInches": 12,
               "PinWidthInches": 5,
               "PinHeightInches": 15,
-              "PinMass": 2.5,
+              "PinMass": 1.23,
               "PinFriction": 0.15,
               "PinColor": "0.95,0.95,0.95,1"
             }
