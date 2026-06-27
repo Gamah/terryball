@@ -33,8 +33,12 @@ public sealed class PinImpactAudio : Component
 	[Property] public Vector2 PitchRange { get; set; } = new( 0.82f, 0.94f );
 	[Property] public float SoundDistance { get; set; } = 50000f;
 
-	/// <summary>Most impacts to start in a single frame — caps a 10-pin scatter's burst.</summary>
-	[Property] public int MaxImpactsPerFrame { get; set; } = 10;
+	/// <summary>Most impacts to start in a single frame — caps a 10-pin scatter's burst. Ball↔pin
+	/// hits are exempt (see ReportImpact), so this only throttles clack/deck chatter.</summary>
+	[Property] public int MaxImpactsPerFrame { get; set; } = 16;
+
+	/// <summary>Log every contact and every play/skip decision, to diagnose missing hits.</summary>
+	[Property] public bool Debug { get; set; }
 
 	/// <summary>A new impact within this time AND <see cref="CoalesceRadius"/> of a recent one is
 	/// dropped — the many micro-contacts of a scatter collapse into distinct clacks, not a buzz.</summary>
@@ -79,13 +83,20 @@ public sealed class PinImpactAudio : Component
 		};
 	}
 
-	/// <summary>Funnelled here by a pin's listener. <paramref name="onStructure"/> is true when the
-	/// pin hit something that isn't another pin (the ball, the deck, the backstop, the pit) — that's
-	/// the low thud; pin-on-pin is the wood clack.</summary>
-	public void ReportImpact( Vector3 worldPos, float normalSpeed, bool onStructure )
+	/// <summary>What a pin struck — the three read very differently.</summary>
+	public enum ContactKind { Pin, Ball, Structure }
+
+	/// <summary>Funnelled here by a pin's listener. <see cref="ContactKind"/> picks the voicing:
+	/// pin↔pin = wood clack; ball↔pin = the pocket smash (prominent clack + low boom); pin↔deck/
+	/// backstop = low thud.</summary>
+	public void ReportImpact( Vector3 worldPos, float normalSpeed, ContactKind kind )
 	{
 		if ( !_ready ) return;
-		if ( normalSpeed < MinNormalSpeed ) return;
+		if ( normalSpeed < MinNormalSpeed )
+		{
+			if ( Debug ) Log.Info( $"[pinaudio] skip {kind} normalSpeed={normalSpeed:F0} < min {MinNormalSpeed}" );
+			return;
+		}
 
 		// reset the per-frame budget when a new frame starts
 		if ( Time.Now != _lastFrameTime )
@@ -93,24 +104,46 @@ public sealed class PinImpactAudio : Component
 			_lastFrameTime = Time.Now;
 			_playsThisFrame = 0;
 		}
-		if ( _playsThisFrame >= MaxImpactsPerFrame ) return;
-		if ( IsCoalesced( worldPos ) ) return;
+
+		// The ball striking the pins is THE moment of the throw — never let the burst cap or coalesce
+		// cull it. Only pin↔pin and pin↔deck chatter is subject to those.
+		bool important = kind == ContactKind.Ball;
+		if ( !important )
+		{
+			if ( _playsThisFrame >= MaxImpactsPerFrame )
+			{
+				if ( Debug ) Log.Info( $"[pinaudio] skip {kind} — frame cap {MaxImpactsPerFrame}" );
+				return;
+			}
+			if ( IsCoalesced( worldPos ) )
+			{
+				if ( Debug ) Log.Info( $"[pinaudio] skip {kind} — coalesced" );
+				return;
+			}
+		}
 
 		float strength = Math.Clamp(
 			(normalSpeed - MinNormalSpeed) / Math.Max( 1f, LoudNormalSpeed - MinNormalSpeed ), 0f, 1f );
 		// ease so soft taps aren't silent and hard hits don't all pin to full
 		float amplitude = MathF.Sqrt( strength ) * Volume;
 
-		if ( onStructure )
+		switch ( kind )
 		{
-			Play( _thud, worldPos, amplitude );
-			// a hard ball-into-pocket cracks as well as booms — layer a clack on top
-			if ( strength > 0.5f ) Play( _clack, worldPos, amplitude * 0.7f );
+			case ContactKind.Ball:
+				// pocket smash: the wood cracks AND the low body booms; bias loud, it's the headline hit
+				Play( _clack, worldPos, MathF.Max( 0.6f, amplitude ) );
+				Play( _thud, worldPos, MathF.Max( 0.5f, amplitude ) );
+				break;
+			case ContactKind.Structure:
+				Play( _thud, worldPos, amplitude );
+				if ( strength > 0.6f ) Play( _clack, worldPos, amplitude * 0.6f ); // hard deck slam cracks too
+				break;
+			default: // Pin
+				Play( _clack, worldPos, amplitude );
+				break;
 		}
-		else
-		{
-			Play( _clack, worldPos, amplitude );
-		}
+
+		if ( Debug ) Log.Info( $"[pinaudio] PLAY {kind} normalSpeed={normalSpeed:F0} amp={amplitude:F2}" );
 
 		_playsThisFrame++;
 		_recent.Add( (Time.Now, worldPos) );
@@ -163,16 +196,31 @@ public sealed class PinImpactListener : Component, Component.ICollisionListener
 	public void OnCollisionStart( Collision c )
 	{
 		if ( !Bank.IsValid() ) return;
-		if ( Time.Now < _nextAllowed ) return;
 
 		var other = c.Other.GameObject;
-		bool otherIsPin = other.IsValid() && other.Components.Get<PinImpactListener>() is not null;
+		PinImpactAudio.ContactKind kind;
+		if ( other.IsValid() && other.Components.Get<PinImpactListener>() is not null )
+			kind = PinImpactAudio.ContactKind.Pin;
+		else if ( other.IsValid() && other.Components.Get<BallController>() is not null )
+			kind = PinImpactAudio.ContactKind.Ball; // the ball striking the rack — the headline hit
+		else
+			kind = PinImpactAudio.ContactKind.Structure; // deck, backstop, gutter, pit
+
+		if ( Bank.Debug )
+			Log.Info( $"[pinaudio] contact {GameObject.Name} <- {kind} ({other?.Name}) " +
+				$"normalSpeed={c.Contact.NormalSpeed:F0} impulse={c.Contact.Impulse:F0}" );
+
+		// The ball hit is never gated: it's the moment of the throw. Pin/deck chatter gets a cooldown
+		// so one jostle doesn't re-trigger every physics step.
+		if ( kind != PinImpactAudio.ContactKind.Ball )
+		{
+			if ( Time.Now < _nextAllowed ) return;
+			_nextAllowed = Time.Now + Cooldown;
+		}
 
 		// Pin-on-pin fires this callback on BOTH pins for the one contact. We deliberately DON'T pick a
-		// single side here — if that side were on cooldown (e.g. the ball-struck pin) the clack would
-		// be dropped entirely. Instead both report, and the bank coalesces the duplicate by position +
-		// time, so whichever side isn't on cooldown still voices it.
-		_nextAllowed = Time.Now + Cooldown;
-		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, onStructure: !otherIsPin );
+		// single side — if that side were on cooldown the clack would be dropped; instead both report
+		// and the bank coalesces the duplicate by position + time.
+		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, kind );
 	}
 }
