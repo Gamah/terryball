@@ -64,13 +64,16 @@ public static class PinSynth
 	public static readonly Recipe PinOnPin = new(
 		new[]
 		{
-			new Mode( 380f,  1.00f, 0.055f ),
-			new Mode( 720f,  0.80f, 0.038f ),
-			new Mode( 1500f, 0.55f, 0.018f ),
-			new Mode( 2600f, 0.30f, 0.010f ),
-			new Mode( 4200f, 0.15f, 0.006f ),
+			// Energy sits in the MIDS (the wood "crack"), not a single dominant low resonance — a
+			// lone low mode rings like a hollow jug. Decays are short so nothing reads as a pitch.
+			new Mode( 540f,  0.45f, 0.020f ),
+			new Mode( 980f,  0.70f, 0.018f ),
+			new Mode( 1650f, 1.00f, 0.013f ), // dominant crack
+			new Mode( 2700f, 0.75f, 0.009f ),
+			new Mode( 4300f, 0.45f, 0.005f ),
+			new Mode( 6400f, 0.22f, 0.003f ), // bright snap of the contact
 		},
-		noiseSeconds: 0.011f, noiseGain: 1.0f, noiseCutoff01: 0.55f );
+		noiseSeconds: 0.006f, noiseGain: 0.9f, noiseCutoff01: 0.85f );
 
 	// Pin against the lane bed / deck / gutter: a duller, shorter thud — lower body, faster decay,
 	// darker strike noise.

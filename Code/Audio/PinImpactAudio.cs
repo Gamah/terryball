@@ -42,7 +42,7 @@ public sealed class PinImpactAudio : Component
 	/// <summary>Most impacts to start in a single frame — caps a 10-pin scatter's burst.</summary>
 	[Property] public int MaxImpactsPerFrame { get; set; } = 8;
 
-	/// <summary>Most one-shots sounding at once (each ~0.2s); the oldest is stolen past this.</summary>
+	/// <summary>Most one-shots sounding at once (each ~1s with the room tail); oldest stolen past this.</summary>
 	[Property] public int MaxConcurrent { get; set; } = 16;
 
 	/// <summary>A new impact within this time AND <see cref="CoalesceRadius"/> of a recent one is
@@ -53,9 +53,21 @@ public sealed class PinImpactAudio : Component
 	// Bake variation knobs (Prebaked mode only).
 	[Property] public int PrebakedVariations { get; set; } = 8;
 
+	/// <summary>Bake an alley room tail into each clack. The dry synth alone is bare/hollow; a room
+	/// gives it the "crashing in a big hall" body. Independent of any scene geometry.</summary>
+	[Property, Group( "Reverb" )] public bool EnableReverb { get; set; } = true;
+	[Property, Group( "Reverb" ), Range( 0f, 0.97f )] public float ReverbRoomSize { get; set; } = 0.88f;
+	[Property, Group( "Reverb" ), Range( 0f, 1f )] public float ReverbDamping { get; set; } = 0.35f;
+	[Property, Group( "Reverb" ), Range( 0f, 1f )] public float ReverbWet { get; set; } = 0.32f;
+	[Property, Group( "Reverb" )] public float ReverbTailSeconds { get; set; } = 0.7f;
+
 	// One scratch buffer feeds every Live impact: WriteData copies into the native ring synchronously,
-	// so we can refill and reuse it immediately. 0.35s at 44.1k is the longest tail we ever render.
-	private short[] _scratch;
+	// so we can refill and reuse it immediately. _dry holds the raw synth; _wet holds it plus the room
+	// tail (longer, so it needs more room).
+	private const float MaxDrySeconds = 0.35f;
+	private short[] _dry;
+	private short[] _wet;
+	private PinReverb _reverb;
 
 	// Prebaked banks: a handful of pre-rendered clacks per material, picked at random per hit.
 	private List<(short[] buf, int len)> _bakedPin;
@@ -70,15 +82,26 @@ public sealed class PinImpactAudio : Component
 
 	protected override void OnEnabled()
 	{
-		int maxSamples = (int)(0.35f * PinSynth.SampleRate);
-		_scratch = new short[maxSamples];
+		int dryMax = (int)(MaxDrySeconds * PinSynth.SampleRate);
+		int wetMax = dryMax + (int)((ReverbTailSeconds + 0.1f) * PinSynth.SampleRate);
+		_dry = new short[dryMax];
+		_wet = new short[wetMax];
+		_reverb = new PinReverb();
 
 		if ( Mode == SourceMode.Prebaked )
 		{
-			_bakedPin = Bake( PinSynth.PinOnPin, maxSamples );
-			_bakedStructure = Bake( PinSynth.PinOnStructure, maxSamples );
+			_bakedPin = Bake( PinSynth.PinOnPin, wetMax );
+			_bakedStructure = Bake( PinSynth.PinOnStructure, wetMax );
 		}
 	}
+
+	private PinReverb.Settings ReverbSettings => new()
+	{
+		RoomSize = ReverbRoomSize,
+		Damping = ReverbDamping,
+		Wet = ReverbWet,
+		TailSeconds = ReverbTailSeconds,
+	};
 
 	protected override void OnDisabled()
 	{
@@ -87,18 +110,31 @@ public sealed class PinImpactAudio : Component
 		_recent.Clear();
 	}
 
-	private List<(short[] buf, int len)> Bake( in PinSynth.Recipe recipe, int maxSamples )
+	private List<(short[] buf, int len)> Bake( in PinSynth.Recipe recipe, int wetMax )
 	{
-		// The SAME render call the live path uses — just run once, ahead of time, into kept buffers.
+		// The SAME render (and reverb) the live path uses — just run once, into kept buffers.
 		var list = new List<(short[], int)>( PrebakedVariations );
 		for ( int i = 0; i < PrebakedVariations; i++ )
 		{
-			var buf = new short[maxSamples];
+			var buf = new short[wetMax];
 			float pitch = 0.9f + i / (float)Math.Max( 1, PrebakedVariations - 1 ) * 0.25f;
-			int len = PinSynth.Render( recipe, 1.0f, pitch, seed: i * 374761393 + 17, buf );
+			int dryLen = PinSynth.Render( recipe, 1.0f, pitch, seed: i * 374761393 + 17, _dry );
+			int len = WetLength( dryLen, buf );
 			list.Add( (buf, len) );
 		}
 		return list;
+	}
+
+	// Run the dry render in _dry through the reverb into dest, or just copy it dry. Returns length.
+	private int WetLength( int dryLen, short[] dest )
+	{
+		if ( !EnableReverb || ReverbWet <= 0f )
+		{
+			int n = Math.Min( dryLen, dest.Length );
+			Array.Copy( _dry, dest, n );
+			return n;
+		}
+		return _reverb.Process( _dry, dryLen, ReverbSettings, dest );
 	}
 
 	/// <summary>Funnelled here by a pin's listener. <paramref name="onStructure"/> picks the duller
@@ -126,8 +162,9 @@ public sealed class PinImpactAudio : Component
 		if ( Mode == SourceMode.Live )
 		{
 			var recipe = onStructure ? PinSynth.PinOnStructure : PinSynth.PinOnPin;
-			int len = PinSynth.Render( recipe, amplitude, pitch, seed, _scratch );
-			PlayPcm( worldPos, _scratch, len, 1f, 1f );
+			int dryLen = PinSynth.Render( recipe, amplitude, pitch, seed, _dry );
+			int len = WetLength( dryLen, _wet );
+			PlayPcm( worldPos, _wet, len, 1f, 1f );
 		}
 		else
 		{
