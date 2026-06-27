@@ -1,7 +1,6 @@
 using Sandbox;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 
 namespace Terryball;
@@ -115,7 +114,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	/// <summary>Bit n (1–10) set = pin n reads as down. The single per-client source every pin readout
 	/// draws from: the active bowler fills it from its authoritative physics (<see cref="Score"/>), and
-	/// every spectator fills it from the bowler's stream (<see cref="ApplyStreamedThrow"/>), so all four
+	/// every spectator derives it from the replicated rack (<see cref="EvaluateDownBits"/>), so all four
 	/// pin surfaces agree on every machine even though only the bowler simulates the pins.</summary>
 	public int PinDownBits { get; private set; }
 
@@ -160,7 +159,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	// --- Approach-B throw networking (the active bowler is authoritative for their own turn) -------
 	private readonly List<int> _localBalls = new(); // bowler-side: the balls thrown THIS frame, for the rules
 	private int _servedTurn = -1;    // the TurnSerial we last began a turn for (-1 = none yet this client)
-	private float _lastStreamAt;     // throttle for the transform stream
+	private bool _ballNetReady;      // host: have we tagged the networked ball Takeover yet?
 	private TerryAvatar _localAvatar;
 	private TerryAvatar LocalAvatar =>
 		(_localAvatar.IsValid() ? _localAvatar : (_localAvatar = Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy )));
@@ -381,6 +380,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			if ( av.IsValid() ) av.Bowling = false;
 
 		if ( _camera.IsValid() ) _camera.Watching = false;
+		HostReclaimThrowOwnership(); // take the ball + rack back before the host re-racks/parks them
 		FullRack();
 		PlaceBallHome();
 		PublishScores();
@@ -446,6 +446,18 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
 		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
 
+		// Host: bring the shared, networked rack online (once the lane is built) and flag the ball
+		// Takeover so the active bowler can grab it for their turn. Both are idempotent.
+		if ( Networking.IsHost )
+		{
+			_lane.HostSpawnPins();
+			if ( !_ballNetReady && _ball.GameObject.Network.Active )
+			{
+				_ball.GameObject.Network.SetOwnerTransfer( OwnerTransfer.Takeover );
+				_ballNetReady = true;
+			}
+		}
+
 		// Host keyboard P was a quick START/STOP toggle for solo testing. Commented out for now.
 		// if ( Networking.IsHost && Input.Keyboard.Pressed( "P" ) )
 		// {
@@ -456,9 +468,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		if ( Phase != GamePhase.Playing )
 			return;
 
-		// Approach B: whoever is UP runs their whole throw on their OWN authoritative local ball + pins
-		// and streams the result; everyone else (spectators) just plays back the stream onto their
-		// local copies (ApplyStreamedThrow slams the transforms + kills velocity so they don't drift).
+		// Whoever is UP owns the lane's one shared networked ball + rack and runs the whole throw on
+		// their machine; the engine replicates the transforms to everyone else (spectators), so there's
+		// no hand-rolled stream — the bowler just plays, the watchers just watch.
 		var bowling = LocalIsBowling;
 
 		// Escape hatch: G lets the bowler bail out of the ball (the HUD shows a button too). Works even
@@ -475,11 +487,15 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		}
 
 		if ( !bowling )
-			return; // spectator — the stream drives our view; nothing to simulate here
+		{
+			// Spectator: the bowler owns the one shared rack + ball, so the engine replicates them to
+			// us automatically. We just derive the live down-mask off those replicated pins so our pin
+			// panels read the same leave as the bowler's.
+			PinDownBits = EvaluateDownBits();
+			return;
+		}
 
-		// We're the bowler: live physics, run the lifecycle, and stream transforms to the watchers.
-		StreamTransforms();
-
+		// We're the bowler: we own the rack + ball, so live physics here replicates to everyone.
 		Probe();
 		Score();
 
@@ -733,6 +749,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		State = RoundState.Rolling;
 		if ( _camera.IsValid() ) _camera.Watching = false;
 		_ball.ControlsLocked = true; // park the ball; STOP returns everyone to the lobby
+		HostReclaimThrowOwnership(); // own the ball + rack so the host can park/hold them on the final board
 		PlaceBallHome();
 
 		// Everyone exits the ball and is back to walking; the final board stays up until STOP.
@@ -763,77 +780,64 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_sweptPins.Clear();
 		_ballStartDown = 0;
 		PinDownBits = 0;
-		FullRack();      // fresh deck on our authoritative local pins
+		TakeThrowOwnership(); // grab the shared ball + rack so OUR physics drives this turn
+		FullRack();      // fresh deck on the pins we now own
 		BeginRolling();  // ball home, controls live, camera on the ball
 	}
 
-	// Bowler → everyone: push our live ball + pin transforms (throttled ~20 Hz) so spectators watch.
-	private void StreamTransforms()
+	// Assume ownership of the lane's networked ball + ten pins (they're tagged Takeover), so this
+	// machine simulates the throw and the engine replicates it to every spectator. No-op outside a
+	// live session (editor/solo before a lobby) — the objects are plain local ones there.
+	private void TakeThrowOwnership()
 	{
-		if ( Time.Now - _lastStreamAt < 0.05f ) return;
-		_lastStreamAt = Time.Now;
-		LocalAvatar?.StreamThrow( EncodeThrow(), PinDownBits );
+		if ( !Networking.IsActive ) return;
+		if ( _ball.IsValid() && _ball.GameObject.Network.Active && !_ball.GameObject.Network.IsOwner )
+			_ball.GameObject.Network.TakeOwnership();
+		foreach ( var p in _lane.Pins )
+			if ( p.Object.IsValid() && p.Object.Network.Active && !p.Object.Network.IsOwner )
+				p.Object.Network.TakeOwnership();
 	}
 
-	// Flatten ball + 10 pins to "x,y,z,qx,qy,qz,qw,…" (invariant culture). Ball first, then pins in
-	// _lane.Pins order — which is identical on every client, since LaneBuilder builds them the same.
-	private string EncodeThrow()
+	// HOST: pull the ball + rack back to the host between/after turns (lobby, game over), so the host
+	// can park the ball and re-rack on objects it owns rather than fighting the last bowler's ownership.
+	private void HostReclaimThrowOwnership()
 	{
-		var vals = new List<float>( 7 * 11 );
-		void Add( Vector3 p, Rotation r )
-		{
-			vals.Add( p.x ); vals.Add( p.y ); vals.Add( p.z );
-			vals.Add( r.x ); vals.Add( r.y ); vals.Add( r.z ); vals.Add( r.w );
-		}
-		Add( _ball.WorldPosition, _ball.WorldRotation );
+		if ( !Networking.IsHost ) return;
+		if ( _ball.IsValid() && _ball.GameObject.Network.Active && !_ball.GameObject.Network.IsOwner )
+			_ball.GameObject.Network.TakeOwnership();
+		foreach ( var p in _lane.Pins )
+			if ( p.Object.IsValid() && p.Object.Network.Active && !p.Object.Network.IsOwner )
+				p.Object.Network.TakeOwnership();
+	}
+
+	/// <summary>Derive the down-mask from the lane's (replicated) pins, the same test <see cref="Score"/>
+	/// uses — for the spectator panels, which don't run the authoritative scoring pass. A pin reads down
+	/// if it's swept off the deck (disabled) or tipped/shoved past the thresholds.</summary>
+	private int EvaluateDownBits()
+	{
+		if ( !_lane.IsValid() ) return PinDownBits;
+		var cosTilt = MathF.Cos( MathX.DegreeToRadian( TiltThresholdDegrees ) );
+		var maxOffset = DisplacementThresholdInches * _lane.UnitsPerInch;
+		var maxOffsetSq = maxOffset * maxOffset;
+
+		var bits = 0;
 		foreach ( var p in _lane.Pins )
 		{
-			var ok = p.Object.IsValid();
-			Add( ok ? p.Object.WorldPosition : Vector3.Zero, ok ? p.Object.WorldRotation : Rotation.Identity );
+			bool down;
+			if ( !p.Object.IsValid() || !p.Object.Enabled )
+			{
+				down = true; // swept off the deck (disabled by the bowler, replicated to us)
+			}
+			else
+			{
+				var tilted = p.Object.WorldRotation.Up.Dot( Vector3.Up ) < cosTilt;
+				var offsetSq = (p.Object.WorldPosition - p.Home).WithZ( 0f ).LengthSquared;
+				down = tilted || offsetSq > maxOffsetSq;
+			}
+			if ( down ) bits |= 1 << p.Number;
 		}
-		return string.Join( ",", vals.Select( v => v.ToString( "F3", CultureInfo.InvariantCulture ) ) );
+		return bits;
 	}
-
-	/// <summary>Spectator side (called from the bowler's StreamThrow RPC): slam our frozen local ball +
-	/// pins to the streamed transforms and adopt the streamed down-mask, so we watch the throw.</summary>
-	public void ApplyStreamedThrow( string data, int downMask )
-	{
-		PinDownBits = downMask;
-		if ( !_lane.IsValid() || !_ball.IsValid() || string.IsNullOrEmpty( data ) ) return;
-
-		var f = data.Split( ',' );
-		if ( f.Length < 7 * 11 ) return;
-
-		var i = 0;
-		Vector3 NextPos() { var v = new Vector3( P( f[i] ), P( f[i + 1] ), P( f[i + 2] ) ); i += 3; return v; }
-		Rotation NextRot() { var r = new Rotation( P( f[i] ), P( f[i + 1] ), P( f[i + 2] ), P( f[i + 3] ) ); i += 4; return r; }
-
-		PinThere( _ball.GameObject, NextPos(), NextRot() );
-		foreach ( var p in _lane.Pins )
-		{
-			var pos = NextPos();
-			var rot = NextRot();
-			if ( p.Object.IsValid() ) PinThere( p.Object, pos, rot );
-		}
-	}
-
-	// Slam an object to a streamed transform and kill its velocity, so our local (un-driven) physics
-	// doesn't carry it off between the ~20 Hz stream packets.
-	private static void PinThere( GameObject go, Vector3 pos, Rotation rot )
-	{
-		if ( !go.IsValid() ) return;
-		go.WorldPosition = pos;
-		go.WorldRotation = rot;
-		var rb = go.Components.Get<Rigidbody>();
-		if ( rb.IsValid() )
-		{
-			rb.Velocity = Vector3.Zero;
-			rb.AngularVelocity = Vector3.Zero;
-		}
-	}
-
-	private static float P( string s )
-		=> float.TryParse( s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v ) ? v : 0f;
 
 	/// <summary>Host side (called from the bowler's ReportBall RPC): book a settled ball's pinfall onto
 	/// the active player's card, reflect the leave on the host's own panels, and rotate when the

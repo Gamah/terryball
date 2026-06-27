@@ -19,7 +19,8 @@ namespace Terryball;
 ///
 /// Throw networking (approach B — the bowler is authoritative for their own turn):
 ///   <see cref="ReportBall"/>  — bowler → host: a settled ball's pinfall + whether the turn's done.
-///   <see cref="StreamThrow"/> — bowler → everyone: ball + pin transforms, so spectators see it.
+///   (the throw itself isn't streamed here — the bowler owns the lane's networked ball + rack and the
+///   engine replicates them, so spectators just watch the shared objects.)
 /// </summary>
 public sealed class TerryAvatar : Component
 {
@@ -242,21 +243,4 @@ public sealed class TerryAvatar : Component
 	public void RequestLeaveBall()
 		=> Director?.HostLeaveBall( Network.Owner );
 
-	/// <summary>Bowler → everyone: stream the live ball + pin transforms (and current down-mask) so
-	/// spectators watch the throw on their frozen local copies. Unreliable + throttled; a dropped
-	/// packet just means one skipped frame. Encoded as a flat comma-separated float list.</summary>
-	[Rpc.Broadcast( NetFlags.Unreliable )]
-	public void StreamThrow( string data, int downMask )
-	{
-		// Only apply on clients who AREN'T the bowler — the bowler has the real physics.
-		if ( !IsProxy ) return;
-
-		// And ONLY if this stream is from the player who's actually up. The outgoing bowler's last
-		// (unreliable) packets can land just after the next bowler has racked a fresh deck — without this
-		// they'd stomp those reset pins back to the previous leave, so the new turn starts mid-rack.
-		var dir = Director;
-		if ( !dir.IsValid() || GameObject.Network.Owner?.Id != dir.ActiveBowlerId ) return;
-
-		dir.ApplyStreamedThrow( data, downMask );
-	}
 }

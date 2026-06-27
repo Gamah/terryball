@@ -57,6 +57,7 @@
           "Name": "Ball",
           "Position": "0,0,100",
           "Enabled": true,
+          "NetworkMode": 1,
           "Components": [
             {
               "__type": "Terryball.BallController",
