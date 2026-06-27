@@ -335,14 +335,20 @@ public sealed class LaneBuilder : Component
 		MakeBox( "BufferRight", new Vector3( sideCx, bufferCy, H * 0.5f ),
 			new Vector3( sideLenX, bufferW, H ), BufferColor );
 
-		// ---- Pit: a recessed floor behind the pins so there's no instant falloff, then a back wall.
-		var pitTop = H - pitD;
-		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitTop * 0.5f ),
-			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitTop ), PitColor,
-			elasticity: BackstopElasticity, friction: BackstopFriction );
+		// ---- Pit: a recessed catch behind the pins, then a dead back wall. The floor is a real dead
+		// SLAB whose top sits pitD below the deck — but never below the building floor (z = 0), which
+		// the ball can't pass anyway. (Earlier this was a box of HEIGHT H − pitD; once pitD exceeded the
+		// platform height that went negative, giving an inverted collider that flung the ball off the
+		// back wall. Building a slab + clamping the floor to z ≥ 0 keeps it valid at any depth.)
+		var pitThk = 12f * u;
+		var pitFloorTopZ = MathF.Max( H - pitD, 0f );
 		var backThk = 12f * u;
-		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (H + backWallH) * 0.5f ),
-			new Vector3( backThk, platformHalf * 2f, H + backWallH ), BarrierColor,
+		var pitBottomZ = pitFloorTopZ - pitThk; // floor slab + back wall both reach down to here
+		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitFloorTopZ - pitThk * 0.5f ),
+			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitThk ), PitColor,
+			elasticity: BackstopElasticity, friction: BackstopFriction );
+		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (pitBottomZ + H + backWallH) * 0.5f ),
+			new Vector3( backThk, platformHalf * 2f, (H + backWallH) - pitBottomZ ), BarrierColor,
 			elasticity: BackstopElasticity, friction: BackstopFriction );
 
 		// ---- Backstop readout: a LARGE, lane-width pin board floating above the back wall, facing
