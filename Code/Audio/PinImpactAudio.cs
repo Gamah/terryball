@@ -19,8 +19,9 @@ namespace Terryball;
 /// </summary>
 public sealed class PinImpactAudio : Component
 {
-	/// <summary>Closing speed (units/s) below which an impact is inaudible chatter and skipped.</summary>
-	[Property] public float MinNormalSpeed { get; set; } = 40f;
+	/// <summary>Closing speed (units/s) below which an impact is inaudible chatter and skipped. Low,
+	/// so gentle 1-2 pin taps still clack — only true settling jitter falls under it.</summary>
+	[Property] public float MinNormalSpeed { get; set; } = 12f;
 
 	/// <summary>Closing speed mapped to full volume. Anything faster just clamps.</summary>
 	[Property] public float LoudNormalSpeed { get; set; } = 600f;
@@ -29,7 +30,7 @@ public sealed class PinImpactAudio : Component
 
 	/// <summary>Per-play pitch spread (the recordings are at one pitch; this stops repeats sounding
 	/// identical). The lane is ~17k units long, so the falloff is generous on purpose.</summary>
-	[Property] public Vector2 PitchRange { get; set; } = new( 0.9f, 1.1f );
+	[Property] public Vector2 PitchRange { get; set; } = new( 0.82f, 0.94f );
 	[Property] public float SoundDistance { get; set; } = 50000f;
 
 	/// <summary>Most impacts to start in a single frame — caps a 10-pin scatter's burst.</summary>
@@ -167,11 +168,10 @@ public sealed class PinImpactListener : Component, Component.ICollisionListener
 		var other = c.Other.GameObject;
 		bool otherIsPin = other.IsValid() && other.Components.Get<PinImpactListener>() is not null;
 
-		// Pin-on-pin fires this callback on BOTH pins for the one contact. Let only one side voice it
-		// (deterministic by id) so we don't double-clack.
-		if ( otherIsPin && GameObject.GetHashCode() > other.GetHashCode() )
-			return;
-
+		// Pin-on-pin fires this callback on BOTH pins for the one contact. We deliberately DON'T pick a
+		// single side here — if that side were on cooldown (e.g. the ball-struck pin) the clack would
+		// be dropped entirely. Instead both report, and the bank coalesces the duplicate by position +
+		// time, so whichever side isn't on cooldown still voices it.
 		_nextAllowed = Time.Now + Cooldown;
 		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, onStructure: !otherIsPin );
 	}
