@@ -39,6 +39,11 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// move together (ball barely slows = plows). So keep this high; the steamroll was a contact/CCD
 	/// problem, not restitution.</summary>
 	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.3f;
+	/// <summary>Pit catch strength: once the ball passes the back of the pin deck it's over the pit, and
+	/// its speed bleeds at this rate (per-second exponential decay). A deterministic "cushion" so the
+	/// ball dumps its energy and settles in the pit instead of pinging off the dead back wall and
+	/// rocketing back up the lane — independent of any collision/restitution quirk. 0 = off.</summary>
+	[Property, Group( "Ball" )] public float PitDamping { get; set; } = 6f;
 	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
 	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
 	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the
@@ -308,6 +313,17 @@ public sealed class BallController : Component, Component.ICollisionListener
 		_vel += accel * dt;
 		_dir = (_dir + _vel * dt).Normal;
 		_vel -= _vel.Dot( _dir ) * _dir; // keep velocity tangent to the sphere
+
+		// Pit catch: once the ball is behind the pin deck (out over the pit) bleed its speed hard, so it
+		// dumps energy into the cushion and settles instead of ricocheting off the dead back wall and
+		// flying back up the lane. Frame-rate-independent exponential decay; only post-throw (coasting).
+		var lane = Lane.Of( this )?.Builder;
+		if ( PitDamping > 0f && ControlsLocked && lane.IsValid() && WorldPosition.x > lane.PinDeckEndWorldX )
+		{
+			var k = MathF.Exp( -PitDamping * dt );
+			_body.Velocity *= k;
+			_body.AngularVelocity *= k;
+		}
 
 		// Keep the body awake while input is held or it's still moving.
 		if ( hasInput || _body.Velocity.LengthSquared > 1f )

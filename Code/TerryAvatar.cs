@@ -19,7 +19,8 @@ namespace Terryball;
 ///
 /// Throw networking (approach B — the bowler is authoritative for their own turn):
 ///   <see cref="ReportBall"/>  — bowler → host: a settled ball's pinfall + whether the turn's done.
-///   <see cref="StreamThrow"/> — bowler → everyone: ball + pin transforms, so spectators see it.
+///   (the throw itself isn't streamed here — the bowler owns the lane's networked ball + rack and the
+///   engine replicates them, so spectators just watch the shared objects.)
 /// </summary>
 public sealed class TerryAvatar : Component
 {
@@ -32,6 +33,12 @@ public sealed class TerryAvatar : Component
 
 	/// <summary>Currently up — riding the ball, not walking. The director sets exactly one true.</summary>
 	[Sync( SyncFlags.FromHost )] public bool Bowling { get; set; }
+
+	/// <summary>While this avatar is the active bowler, its OWNER publishes its live camera transform
+	/// here so every settee monitor mirrors the bowler's actual eye view (see LaneMonitorCamera) rather
+	/// than a static chase. Only meaningful while <see cref="Bowling"/>.</summary>
+	[Sync] public Vector3 BowlCamPos { get; set; }
+	[Sync] public Rotation BowlCamRot { get; set; } = Rotation.Identity;
 
 	private PlayerController _player;
 	private GameObject _body;
@@ -119,6 +126,17 @@ public sealed class TerryAvatar : Component
 			// owner-authoritative, so we move ourselves rather than the host yanking us.
 			if ( _wasBowling && !Bowling )
 				ReturnToSettee();
+
+			// While we're up, publish our live camera transform so every settee monitor mirrors our view.
+			if ( Bowling )
+			{
+				var cam = Scene.Camera;
+				if ( cam.IsValid() )
+				{
+					BowlCamPos = cam.WorldPosition;
+					BowlCamRot = cam.WorldRotation;
+				}
+			}
 
 			UpdateControlsStation();
 		}
@@ -242,21 +260,4 @@ public sealed class TerryAvatar : Component
 	public void RequestLeaveBall()
 		=> Director?.HostLeaveBall( Network.Owner );
 
-	/// <summary>Bowler → everyone: stream the live ball + pin transforms (and current down-mask) so
-	/// spectators watch the throw on their frozen local copies. Unreliable + throttled; a dropped
-	/// packet just means one skipped frame. Encoded as a flat comma-separated float list.</summary>
-	[Rpc.Broadcast( NetFlags.Unreliable )]
-	public void StreamThrow( string data, int downMask )
-	{
-		// Only apply on clients who AREN'T the bowler — the bowler has the real physics.
-		if ( !IsProxy ) return;
-
-		// And ONLY if this stream is from the player who's actually up. The outgoing bowler's last
-		// (unreliable) packets can land just after the next bowler has racked a fresh deck — without this
-		// they'd stomp those reset pins back to the previous leave, so the new turn starts mid-rack.
-		var dir = Director;
-		if ( !dir.IsValid() || GameObject.Network.Owner?.Id != dir.ActiveBowlerId ) return;
-
-		dir.ApplyStreamedThrow( data, downMask );
-	}
 }

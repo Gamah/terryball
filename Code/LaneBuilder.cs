@@ -41,6 +41,16 @@ public sealed class LaneBuilder : Component
 	/// bed. (Was cranked to 0.9 as an overshoot; walked back with the rest of the restitution pass.)</summary>
 	[Property, Group( "Lane" )] public float LaneElasticity { get; set; } = 0.3f;
 
+	/// <summary>Restitution of the PIT FLOOR and BACK WALL only — the catch zone behind the pins.
+	/// Near-dead so the ball dumps its energy instead of rebounding off a bouncy wall back into the
+	/// rack. Real pits hang a cushion/curtain for exactly this; here it's a dead, grippy surface.</summary>
+	[Property, Group( "Pit" )] public float BackstopElasticity { get; set; } = 0.02f;
+	/// <summary>Friction of the pit floor and back wall. Deliberately LOW: a heavily-revved ball jammed
+	/// into the floor↔wall corner of a high-friction pit grips and launches itself back up the lane.
+	/// A real pit cushion kills the ball by being dead (low elasticity), not grippy — so we keep this
+	/// slick and let the near-zero restitution do the absorbing.</summary>
+	[Property, Group( "Pit" )] public float BackstopFriction { get; set; } = 0.2f;
+
 	/// <summary>Distance (real inches) the throw line sits in FRONT of the head pin — the gate
 	/// where modern alleys capture ball speed and, here, where control is handed to physics so you
 	/// can watch the hit. 60" = 5 ft, in the 3–7 ft range asked for.</summary>
@@ -64,7 +74,7 @@ public sealed class LaneBuilder : Component
 
 	[Property, Group( "Pit" )] public float PinDeckTailInches { get; set; } = 6f;   // lane surface past the back row
 	[Property, Group( "Pit" )] public float PitLengthInches { get; set; } = 36f;
-	[Property, Group( "Pit" )] public float PitDepthInches { get; set; } = 10f;
+	[Property, Group( "Pit" )] public float PitDepthInches { get; set; } = 24f;
 	[Property, Group( "Pit" )] public float BackWallHeightInches { get; set; } = 40f;
 	[Property, Group( "Pit" )] public Color PitColor { get; set; } = new Color( 0.08f, 0.08f, 0.09f, 1f );
 
@@ -136,6 +146,7 @@ public sealed class LaneBuilder : Component
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private PinImpactAudio _pinAudio; // shared procedural-crash bank; pins route collisions here
 	private Model _arrowModel; // shared by the seven targeting arrows
+	private readonly List<ModelRenderer> _arrowRenderers = new(); // re-skinned in OnStart (see note there)
 	private Material _pinMat;       // glossy white pin body
 	private Material _pinStripeMat; // red neck stripes (same shader, red tint)
 	private float _pinGravityScale = 1f; // resolved per-pin GravityScale (scale-correct × feel knob)
@@ -144,9 +155,40 @@ public sealed class LaneBuilder : Component
 	/// scoring and for re-racking after a throw.</summary>
 	public readonly record struct PinPlacement( int Number, GameObject Object, Vector3 Home );
 
-	private readonly List<PinPlacement> _pins = new();
-	/// <summary>The ten pins with their home spots, exposed for the round director.</summary>
-	public IReadOnlyList<PinPlacement> Pins => _pins;
+	// The pins are now NETWORKED objects (see Pin.cs): the host spawns them, the engine replicates them.
+	// So this lane doesn't own a private list — it RESOLVES its pins live from the Pin components in its
+	// own subtree, ordered by number. _pinSpots is just the rack layout the host spawns from.
+	private readonly List<(int Number, Vector3 Home)> _pinSpots = new();
+	// The lane's live Pin components, registered by each Pin on start. A registry (not a scene scan) so
+	// SWEPT pins — disabled GameObjects, which a scene-wide component query skips — stay visible to the
+	// director and get re-racked. Every client maintains its own as the networked pins replicate in.
+	private readonly List<Pin> _pinComponents = new();
+
+	/// <summary>True once the host has spawned this lane's ten networked pins.</summary>
+	public bool PinsSpawned { get; private set; }
+
+	/// <summary>A <see cref="Pin"/> registers itself here on start (and unregisters on destroy) so the
+	/// director can address it by number even while it's swept off the deck (disabled).</summary>
+	public void RegisterPin( Pin pin )
+	{
+		if ( pin.IsValid() && !_pinComponents.Contains( pin ) ) _pinComponents.Add( pin );
+	}
+	public void UnregisterPin( Pin pin ) => _pinComponents.Remove( pin );
+
+	/// <summary>The ten pins with their home spots, ordered by number — identical on every client.
+	/// Returns a fresh list (includes swept/disabled pins) so a caller can safely re-query mid-iteration.</summary>
+	public IReadOnlyList<PinPlacement> Pins
+	{
+		get
+		{
+			var view = new List<PinPlacement>( _pinComponents.Count );
+			foreach ( var pin in _pinComponents )
+				if ( pin.IsValid() )
+					view.Add( new PinPlacement( pin.Number, pin.GameObject, pin.Home ) );
+			view.Sort( static ( a, b ) => a.Number.CompareTo( b.Number ) );
+			return view;
+		}
+	}
 
 	/// <summary>Units-per-inch the lane was built at — lets the director express its thresholds in
 	/// real inches and scale them the same way every dimension here is scaled.</summary>
@@ -294,13 +336,21 @@ public sealed class LaneBuilder : Component
 		MakeBox( "BufferRight", new Vector3( sideCx, bufferCy, H * 0.5f ),
 			new Vector3( sideLenX, bufferW, H ), BufferColor );
 
-		// ---- Pit: a recessed floor behind the pins so there's no instant falloff, then a back wall.
-		var pitTop = H - pitD;
-		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitTop * 0.5f ),
-			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitTop ), PitColor );
+		// ---- Pit: a recessed catch behind the pins, then a dead back wall. The floor is a real dead
+		// SLAB whose top sits pitD below the deck — but never below the building floor (z = 0), which
+		// the ball can't pass anyway. (Earlier this was a box of HEIGHT H − pitD; once pitD exceeded the
+		// platform height that went negative, giving an inverted collider that flung the ball off the
+		// back wall. Building a slab + clamping the floor to z ≥ 0 keeps it valid at any depth.)
+		var pitThk = 12f * u;
+		var pitFloorTopZ = MathF.Max( H - pitD, 0f );
 		var backThk = 12f * u;
-		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (H + backWallH) * 0.5f ),
-			new Vector3( backThk, platformHalf * 2f, H + backWallH ), BarrierColor );
+		var pitBottomZ = pitFloorTopZ - pitThk; // floor slab + back wall both reach down to here
+		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitFloorTopZ - pitThk * 0.5f ),
+			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitThk ), PitColor,
+			elasticity: BackstopElasticity, friction: BackstopFriction );
+		MakeBox( "BackWall", new Vector3( pitEndX + backThk * 0.5f, 0f, (pitBottomZ + H + backWallH) * 0.5f ),
+			new Vector3( backThk, platformHalf * 2f, (H + backWallH) - pitBottomZ ), BarrierColor,
+			elasticity: BackstopElasticity, friction: BackstopFriction );
 
 		// ---- Backstop readout: a LARGE, lane-width pin board floating above the back wall, facing
 		// back at the bowler. Same director data as the corner overlay, blown up so the leave reads
@@ -353,6 +403,10 @@ public sealed class LaneBuilder : Component
 		// 1/2/3/4 stepping away, each centred across the lane.
 		_pinModel = BuildPinModel( u );
 		_pinAudio = Components.GetOrCreate<PinImpactAudio>(); // one bank for the lane; pins funnel here
+		// Compute the rack layout (WORLD home spots — the director respots/scores in world space). Built
+		// on EVERY client so the model/audio/scale are ready when the networked pins replicate in, but the
+		// pin OBJECTS themselves are spawned once by the host (HostSpawnPins).
+		_pinSpots.Clear();
 		var n = 1;
 		for ( var r = 0; r < 4; r++ )
 		{
@@ -361,9 +415,7 @@ public sealed class LaneBuilder : Component
 			{
 				var py = (i - r * 0.5f) * pinSpace;
 				var home = new Vector3( px, py, H ); // base sits on the platform top (lane-local)
-				var pin = MakePin( $"Pin{n}", home );
-				// Store the WORLD home spot — the director respots/scores pins in world space.
-				_pins.Add( new PinPlacement( n, pin, pin.WorldPosition ) );
+				_pinSpots.Add( (n, ToWorld( home )) );
 				n++;
 			}
 		}
@@ -376,6 +428,16 @@ public sealed class LaneBuilder : Component
 		// texture). Built locally on every client — it's a re-render of the local ball, which is the
 		// bowler's real ball or the streamed copy spectators see.
 		Components.GetOrCreate<LaneMonitorCamera>();
+	}
+
+	/// <summary>FIRST assignment of the procedural arrow model to its renderers — in OnStart, with the
+	/// renderers left null in OnEnabled. A runtime ModelBuilder model assigned during OnEnabled shows the
+	/// purple ERROR model on a joining CLIENT; a fresh null->model assignment in OnStart renders correctly
+	/// (the same trick the pins use via Pin.OnStart/ConfigurePin). Host-harmless.</summary>
+	protected override void OnStart()
+	{
+		foreach ( var mr in _arrowRenderers )
+			if ( mr.IsValid() ) mr.Model = _arrowModel;
 	}
 
 	/// <summary>
@@ -580,7 +642,8 @@ public sealed class LaneBuilder : Component
 	// A rotation, if given, is applied to the root so the collider tilts with the visual (ramp).
 	// Positions are LANE-LOCAL (relative to this builder's GameObject = the lane root): the whole lane
 	// rides its root transform, so a second lane is just the same subtree dropped at another spot.
-	private void MakeBox( string name, Vector3 localPos, Vector3 size, Color tint, Rotation? rot = null )
+	private void MakeBox( string name, Vector3 localPos, Vector3 size, Color tint, Rotation? rot = null,
+		float? elasticity = null, float? friction = null )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.LocalPosition = localPos;
@@ -588,7 +651,8 @@ public sealed class LaneBuilder : Component
 
 		var col = go.Components.GetOrCreate<BoxCollider>();
 		col.Scale = size;
-		col.Elasticity = LaneElasticity; // bouncy deck/walls so pins ricochet (cranked for chaos)
+		col.Elasticity = elasticity ?? LaneElasticity; // bouncy deck/walls so pins ricochet (cranked for chaos)
+		if ( friction.HasValue ) col.Friction = friction.Value;
 
 		var visual = new GameObject( true, name + "Visual" ) { Parent = go };
 		var mr = visual.Components.GetOrCreate<ModelRenderer>();
@@ -619,8 +683,12 @@ public sealed class LaneBuilder : Component
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.LocalPosition = localPos;
 		var mr = go.Components.GetOrCreate<ModelRenderer>();
-		mr.Model = _arrowModel;
 		mr.Tint = ArrowColor;
+		// NB: the model is set in OnStart, NOT here. Assigning the procedural model now (OnEnabled) leaves
+		// a client renderer showing the ERROR model, and re-setting the SAME reference later is a no-op
+		// (the setter short-circuits). Leaving it null here so OnStart's assign is a real null->model
+		// change — exactly how the pins (ConfigurePin) dodge it.
+		_arrowRenderers.Add( mr );
 	}
 
 	// A flat isosceles triangle in the XY plane with its apex toward +x (down-lane, toward the
@@ -678,20 +746,53 @@ public sealed class LaneBuilder : Component
 	// A pin instance: Rigidbody + ModelRenderer + ModelCollider, all pointing at the one shared
 	// lathed pin Model. The ModelCollider's convex hulls feed the Rigidbody's mass build, so the
 	// inertia tensor and CoM come from the true pin solid.
-	private GameObject MakePin( string name, Vector3 localPos )
+	/// <summary>HOST ONLY: spawn this lane's ten pins as networked objects on their home spots, once.
+	/// Each is parented into the lane subtree (so <c>Lane.Of</c> resolves it), tagged Takeover so the
+	/// active bowler can assume ownership for their turn, and network-spawned host-owned. The render/
+	/// collision mesh + physics are attached per-client in <see cref="ConfigurePin"/> (the procedural
+	/// model can't replicate). Idempotent — guarded by <see cref="PinsSpawned"/>.</summary>
+	public void HostSpawnPins()
 	{
-		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		go.LocalPosition = localPos;
+		if ( PinsSpawned || !Networking.IsHost ) return;
+		if ( !_built ) OnEnabled();
+		if ( _pinSpots.Count == 0 ) return;
+
+		foreach ( var (number, home) in _pinSpots )
+		{
+			// Root-spawned (NOT parented into the lane): a networked object under a non-networked scene
+			// parent fails to replicate to late-joiners. The Pin finds its lane via Lane.Local instead.
+			var go = new GameObject( true, $"Pin{number}" ) { Flags = GameObjectFlags.NotSaved };
+			go.WorldPosition = home;
+			go.NetworkMode = NetworkMode.Object;
+
+			var pin = go.Components.Create<Pin>();
+			pin.Number = number;
+			pin.Home = home;
+
+			go.Network.SetOwnerTransfer( OwnerTransfer.Takeover ); // the bowler grabs the rack for their turn
+			go.NetworkSpawn(); // host-owned to start; replicates to every client
+		}
+		PinsSpawned = true;
+	}
+
+	/// <summary>Attach the lane's local procedural mesh + the pin's physics/audio to a (possibly just-
+	/// replicated) pin. Runs on EVERY client from <see cref="Pin.OnStart"/>: it re-skins proxy pins off
+	/// the ERROR model and arms the collider/rigidbody so a pin is ready the instant its owner simulates.</summary>
+	public void ConfigurePin( Pin pin )
+	{
+		if ( !pin.IsValid() ) return;
+		if ( !_built ) OnEnabled();
+		var go = pin.GameObject;
 
 		// Rigidbody first; MassOverride after the collider (adding the shape rebuilds mass from
 		// volume via BuildMass, which would otherwise clobber the override).
 		var rb = go.Components.GetOrCreate<Rigidbody>();
 
-		var mr = go.Components.Create<ModelRenderer>();
-		mr.Model = _pinModel;
+		var mr = go.Components.GetOrCreate<ModelRenderer>();
+		mr.Model = _pinModel; // the procedural lathe — null on a fresh proxy, so set it here
 		mr.Tint = PinColor;
 
-		var col = go.Components.Create<ModelCollider>();
+		var col = go.Components.GetOrCreate<ModelCollider>();
 		col.Model = _pinModel;
 		col.Friction = PinFriction; // smooth plastic-coated pin slides & scatters
 		col.Elasticity = PinElasticity; // springy maple — pins launch & cartwheel off ball and each other
@@ -709,9 +810,7 @@ public sealed class LaneBuilder : Component
 		rb.RigidbodyFlags |= RigidbodyFlags.DisableCollisionSounds;
 
 		// Procedural crash audio: this listener routes the pin's collisions to the shared bank.
-		go.Components.Create<PinImpactListener>().Bank = _pinAudio;
-
-		return go;
+		go.Components.GetOrCreate<PinImpactListener>().Bank = _pinAudio;
 	}
 
 	// The two red neck stripes, as height fractions (t) up the pin. Only the RENDER mesh is split
