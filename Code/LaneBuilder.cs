@@ -430,11 +430,10 @@ public sealed class LaneBuilder : Component
 		Components.GetOrCreate<LaneMonitorCamera>();
 	}
 
-	/// <summary>Re-assign the procedural arrow model to its renderers here, in OnStart. Assigning a
-	/// runtime ModelBuilder model to a ModelRenderer during OnEnabled renders fine on the host but shows
-	/// the purple ERROR model on a joining CLIENT (the pin model dodges this only because it's assigned
-	/// in Pin.OnStart). Setting it again one lifecycle step later, after the client's scene join settles,
-	/// fixes it. Host-harmless (it's the same model).</summary>
+	/// <summary>FIRST assignment of the procedural arrow model to its renderers — in OnStart, with the
+	/// renderers left null in OnEnabled. A runtime ModelBuilder model assigned during OnEnabled shows the
+	/// purple ERROR model on a joining CLIENT; a fresh null->model assignment in OnStart renders correctly
+	/// (the same trick the pins use via Pin.OnStart/ConfigurePin). Host-harmless.</summary>
 	protected override void OnStart()
 	{
 		foreach ( var mr in _arrowRenderers )
@@ -684,9 +683,12 @@ public sealed class LaneBuilder : Component
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.LocalPosition = localPos;
 		var mr = go.Components.GetOrCreate<ModelRenderer>();
-		mr.Model = _arrowModel;
 		mr.Tint = ArrowColor;
-		_arrowRenderers.Add( mr ); // re-assigned in OnStart — see the OnStart note
+		// NB: the model is set in OnStart, NOT here. Assigning the procedural model now (OnEnabled) leaves
+		// a client renderer showing the ERROR model, and re-setting the SAME reference later is a no-op
+		// (the setter short-circuits). Leaving it null here so OnStart's assign is a real null->model
+		// change — exactly how the pins (ConfigurePin) dodge it.
+		_arrowRenderers.Add( mr );
 	}
 
 	// A flat isosceles triangle in the XY plane with its apex toward +x (down-lane, toward the
