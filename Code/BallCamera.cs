@@ -52,12 +52,14 @@ public sealed class BallCamera : Component
 
 	protected override void OnUpdate()
 	{
-		// Only ride the ball when the local player is the bowler who's up ON THIS LANE. Otherwise this
-		// client is walking its Terry around the settee, and its PlayerController owns the camera — so
-		// we bow out entirely and don't fight it for Scene.Camera.
+		// Only ride the ball when the local player is actually scooped INSIDE it on THIS lane. Otherwise —
+		// walking the settee, OR the bowler mid-crane (claw flying out to fetch them) — the PlayerController
+		// owns the camera and keeps it on their own Terry, so we bow out and don't fight for Scene.Camera.
 		var lane = Lane.Of( this );
 		var director = lane?.Director;
-		if ( director is not null && !director.LocalIsBowling ) return;
+		var localAv = TerryAvatar.Local( Scene );
+		var inBall = director is not null && director.LocalIsBowling && (localAv?.Carried ?? false);
+		if ( director is not null && !inBall ) return;
 
 		if ( !_ball.IsValid() )
 		{

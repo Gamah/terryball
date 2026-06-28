@@ -142,12 +142,12 @@ public sealed class TerryAvatar : Component
 
 	protected override void OnUpdate()
 	{
-		// Hand the screen + control to the ball while this player is up. Suspend their walk/camera
-		// controller for the whole turn (Bowling), but only HIDE the walking body once the crane has
-		// actually scooped them IN (Carried) — until then it's still sitting on the settee being flown
-		// toward. Applied on every client so both the suspend and the body↔ball swap are seen by all.
+		// Both the walk/camera controller AND the visible body hand off to the ball only once the crane has
+		// actually scooped this player IN (Carried). Until then — including the whole pickup flight — they
+		// stay walking on the settee, so their camera stays on their own Terry (not the empty claw) and
+		// they watch the ball come to fetch them. Applied on every client so the swap is seen by all.
 		if ( _player.IsValid() )
-			_player.Enabled = !Bowling;
+			_player.Enabled = !Carried;
 		if ( _body.IsValid() )
 			_body.Enabled = !Carried;
 

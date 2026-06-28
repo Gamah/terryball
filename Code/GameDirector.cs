@@ -66,7 +66,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// even if it's somehow still upright.</summary>
 	[Property] public float DisplacementThresholdInches { get; set; } = 4f;
 
-	public enum RoundState { Rolling, Watching, Craning }
+	// Spent = the throw has settled and been booked; we're idle until the next ball/turn is set up (so the
+	// pit-resting ball never re-arms watch-mode). Craning = the claw is flying the ball.
+	public enum RoundState { Rolling, Watching, Craning, Spent }
 	public RoundState State { get; private set; } = RoundState.Rolling;
 
 	/// <summary>Seconds the crane (claw) takes for ONE leg of a trip — the ball arcs run-up→bowler on the
@@ -171,13 +173,19 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		(_localAvatar.IsValid() ? _localAvatar : (_localAvatar = Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy )));
 
 	// --- Crane (claw) transport state (bowler-side) ------------------------------------
-	// The active bowler flies the ball kinematically to fetch/return their player. A trip is two legs:
-	// leg 0 run-up→spot (outbound), then the scoop/drop, then leg 1 spot→run-up (return).
-	private enum CraneJob { None, Pickup, Dropoff }
+	// The active bowler flies the ball kinematically to fetch/return their player, always starting from
+	// wherever the ball currently sits (it's never reset to the start between turns):
+	//   Pickup  — fly to the bowler's seat, scoop them IN, then fly to the lane start to roll (2 legs).
+	//   Return  — already in the ball (solo, or a 2nd/3rd ball): fly straight up out of the pit to the
+	//             lane start and roll (1 leg). This is the "ball return".
+	//   Dropoff — fly to the bowler's seat and set them down; the ball stays there for the next pickup to
+	//             fly on from (1 leg). Only between DIFFERENT bowlers.
+	private enum CraneJob { None, Pickup, Return, Dropoff }
 	private CraneJob _craneJob;
-	private int _craneLeg;        // 0 = outbound, 1 = return
+	private bool _ballCraned;     // ball currently in kinematic crane mode (collider on ⟺ rolling)
+	private int _craneLeg;        // 0 = outbound, 1 = the fly-to-start (pickup only)
 	private float _craneT;        // 0..1 progress within the current leg
-	private Vector3 _craneFrom, _craneTo, _craneSpot;
+	private Vector3 _craneFrom, _craneTo;
 	private Vector3 _grabPos;     // where the claw grabbed us this turn
 	private bool _grabOnSettee;   // ...and whether that was on the settee (else we drop at the middle)
 	private Vector3 _dropSpot;    // where to set us back down at turn's end
@@ -480,8 +488,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		if ( Phase != GamePhase.Playing )
 		{
-			// STOP / disconnect / game-end mid-flight: bail the crane so the ball doesn't stay collider-off.
-			if ( _craneJob != CraneJob.None ) AbortCrane();
+			// STOP / disconnect / game-end: restore the ball's physics if a crane left it kinematic.
+			if ( _craneJob != CraneJob.None || _ballCraned ) AbortCrane();
 			return;
 		}
 
@@ -505,8 +513,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		if ( !bowling )
 		{
-			// We just stopped being the bowler mid-crane (G-bail / the turn was yanked): abort it so the
-			// ball isn't left collider-off (the host reclaims + parks it anyway).
+			// We just stopped being the bowler mid-FLIGHT (G-bail / the turn was yanked): abort so the ball
+			// isn't left collider-off. (A clean end-of-turn leaves _craneJob None — a Dropoff parks the ball
+			// frozen on purpose, which is fine on this now-spectating client.)
 			if ( _craneJob != CraneJob.None ) AbortCrane();
 
 			// Spectator: the bowler owns the one shared rack + ball, so the engine replicates them to
@@ -689,11 +698,21 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		if ( turnDone )
 		{
-			// Crane us back to our seat, THEN tell the host to rotate (UpdateCrane sends EndTurn). The ball
-			// is sitting in the pit by the settee now, so fly it straight from there — no teleport jump.
-			StartCrane( CraneJob.Dropoff, from: _ball.WorldPosition, spot: CraneRest( _dropSpot ) );
+			// Solo: stay in the ball frame after frame — no settee round-trip. Just end the turn; the host
+			// rotates (same player, next frame) and our next BeginTurn flies us back up out of the pit to
+			// roll. Multiplayer: the next bowler is always someone else, so crane us back to our seat and
+			// set us down (FinishDrop then sends EndTurn).
+			if ( RosterNames.Count <= 1 )
+			{
+				State = RoundState.Spent;  // idle in the pit until our next turn flies us back up
+				LocalAvatar?.EndTurn();
+			}
+			else
+			{
+				StartCrane( CraneJob.Dropoff );
+			}
 		}
-		// Not done: DecideLocal already set up our next ball (ContinueFrame → BeginRolling), still in-ball.
+		// Not done: DecideLocal already set up our next ball (ContinueFrame → Return crane), still in-ball.
 	}
 
 	// Bowling's flow control for OUR turn, on OUR local ball list. Returns true if the turn is over
@@ -764,7 +783,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		if ( !Networking.IsHost ) return;
 		HostReclaimThrowOwnership();
 		FullRack();
-		PlaceBallHome();
+		// No PlaceBallHome: the ball isn't reset to the start between turns. It sits where the last crane
+		// left it (the pit, or the previous bowler's seat) and the next bowler's pickup flies it on.
 	}
 
 	// Stay in the same frame for another ball. fresh=true racks a clean deck (10th-frame bonus
@@ -781,7 +801,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			SweepAndRespot();
 			_ballStartDown = _sweptPins.Count; // everything still down is now swept off the deck
 		}
-		BeginRolling();
+		// We're still in the ball — the ball comes up out of the backstop and flies back to the start, then
+		// rolls (no teleport-reset to the run-up).
+		StartCrane( CraneJob.Return );
 	}
 
 	private void EndGame()
@@ -812,28 +834,34 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	}
 
 	// --- Crane (claw) transport ---------------------------------------------------------
-	// The active bowler flies the ball kinematically between the run-up and their seat. A trip is two legs
-	// (out to the spot, then back home); leg 0's arrival scoops/drops the player. The ball rides the
-	// camera the whole way (Watching off), so the bowler watches the claw fetch/return them.
+	// The active bowler flies the ball kinematically from wherever it sits to the relevant spot. The camera
+	// is NOT forced onto the ball here — it follows the player (it's on the ball only while they're actually
+	// scooped IN), so a pickup is watched from their Terry as the claw comes to fetch them.
 
 	// Centre the ball would rest at to sit ON the floor over a player at footSpot (their feet), so the
 	// scoop/drop looks like the ball swallowing them rather than burying its centre at their feet.
 	private Vector3 CraneRest( Vector3 footSpot )
 		=> footSpot + Vector3.Up * (_ball.IsValid() ? _ball.Radius : 100f);
 
-	private void StartCrane( CraneJob job, Vector3 from, Vector3 spot )
+	// Start a crane trip from the ball's current position. The leg-0 target depends on the job; Pickup adds
+	// a 2nd leg (seat→start) after the scoop.
+	private void StartCrane( CraneJob job )
 	{
 		_craneJob = job;
 		_craneLeg = 0;
 		_craneT = 0f;
-		_craneSpot = spot;
-		_craneFrom = from;
-		_craneTo = spot;
+		_craneFrom = _ball.WorldPosition;
+		_craneTo = job switch
+		{
+			CraneJob.Pickup => CraneRest( _grabPos ),  // out to fetch the bowler
+			CraneJob.Dropoff => CraneRest( _dropSpot ), // out to set the bowler down
+			_ => _ballHome,                             // Return: straight up to the lane start
+		};
 		State = RoundState.Craning;
 		_ball.ControlsLocked = true;
-		if ( _camera.IsValid() ) _camera.Watching = false; // ride the ball over, not the pin-deck vantage
+		if ( _camera.IsValid() ) _camera.Watching = false;
 		_ball.SetCraneMode( true );
-		_ball.CraneMoveTo( from );
+		_ballCraned = true;
 	}
 
 	private void UpdateCrane()
@@ -846,46 +874,57 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		if ( _craneT < 1f ) return;
 
-		if ( _craneLeg == 0 )
+		switch ( _craneJob )
 		{
-			// Reached the bowler's spot: scoop them in (pickup) or set them down (dropoff), then fly home.
-			if ( _craneJob == CraneJob.Pickup )
-				LocalAvatar?.ScoopIntoBall();
-			else
-				LocalAvatar?.DropAtReturnSpot();
+			case CraneJob.Pickup:
+				if ( _craneLeg == 0 )
+				{
+					LocalAvatar?.ScoopIntoBall();   // body → ball, camera → ball
+					_craneLeg = 1;
+					_craneT = 0f;
+					_craneFrom = _craneTo;
+					_craneTo = _ballHome;           // now fly to the lane start to roll
+				}
+				else FinishRoll();
+				break;
 
-			_craneLeg = 1;
-			_craneT = 0f;
-			_craneFrom = _craneSpot;
-			_craneTo = _ballHome;
-			return;
-		}
+			case CraneJob.Return:
+				FinishRoll();                       // already in the ball — straight to rolling
+				break;
 
-		// Return leg done — the ball is home. Restore physics and finish the trip.
-		var job = _craneJob;
-		_craneJob = CraneJob.None;
-		_ball.SetCraneMode( false );
-		_ball.CraneMoveTo( _ballHome );
-
-		if ( job == CraneJob.Pickup )
-		{
-			BeginRolling(); // controls live, camera on the ball — go bowl
-		}
-		else
-		{
-			// Dropoff done: park the ball and tell the host our turn's over so it rotates to the next bowler.
-			_ball.ControlsLocked = true;
-			State = RoundState.Rolling;
-			LocalAvatar?.EndTurn();
+			case CraneJob.Dropoff:
+				LocalAvatar?.DropAtReturnSpot();    // ball → body at the seat, camera → their Terry
+				FinishDrop();
+				break;
 		}
 	}
 
-	// STOP / disconnect / game-end interrupted a crane: drop the job and restore the ball's physics so it
-	// isn't left collider-off in mid-air (the host then reclaims + parks it as usual).
+	// A flight that ends at the lane start: restore physics and roll.
+	private void FinishRoll()
+	{
+		_craneJob = CraneJob.None;
+		_ball.SetCraneMode( false );
+		_ballCraned = false;
+		BeginRolling();
+	}
+
+	// A dropoff flight that ends at the bowler's seat: leave the ball frozen-kinematic right there (the next
+	// bowler's pickup flies it on — no reset to the start) and tell the host our turn's over.
+	private void FinishDrop()
+	{
+		_craneJob = CraneJob.None;     // _ballCraned stays true: the ball is parked frozen at the seat
+		_ball.ControlsLocked = true;
+		State = RoundState.Spent;
+		LocalAvatar?.EndTurn();
+	}
+
+	// STOP / disconnect / game-end interrupted a crane (or left the ball parked frozen after a dropoff):
+	// restore the ball's physics so it isn't stuck collider-off (the host then reclaims + parks it).
 	private void AbortCrane()
 	{
 		_craneJob = CraneJob.None;
-		if ( _ball.IsValid() ) _ball.SetCraneMode( false );
+		if ( _ballCraned && _ball.IsValid() ) _ball.SetCraneMode( false );
+		_ballCraned = false;
 		if ( State == RoundState.Craning ) State = RoundState.Rolling;
 	}
 
@@ -902,17 +941,25 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		PinDownBits = 0;
 		TakeThrowOwnership(); // grab the shared ball + rack so OUR physics drives this turn
 
-		// Note where the claw is grabbing us from. We get set back down on this exact spot at turn's end —
-		// unless we were grabbed off the settee (e.g. stood up at the lane station after pressing START),
-		// in which case we're dropped at the settee middle instead.
 		var av = LocalAvatar;
+		if ( av.IsValid() && av.Carried )
+		{
+			// Already in the ball (solo, frame after frame): no fetch — fly the ball up out of the pit to
+			// the start and roll. Keep the grab/drop spot from when we were first picked up.
+			StartCrane( CraneJob.Return );
+			return;
+		}
+
+		// Fresh pickup: note where the claw is grabbing us from. We get set back down on this exact spot at
+		// turn's end — unless we were grabbed off the settee (e.g. stood up at the lane station after
+		// pressing START), in which case we're dropped at the settee middle instead.
 		_grabPos = av.IsValid() ? av.WorldPosition : (_lane.IsValid() ? _lane.SetteeFloorCenter : _ballHome);
 		_grabOnSettee = _lane.IsValid() && _lane.IsOnSettee( _grabPos );
 		_dropSpot = _grabOnSettee ? _grabPos : (_lane.IsValid() ? _lane.SetteeFloorCenter : _grabPos);
 		av?.SetReturnSpot( _dropSpot );
 
-		// Crane out and fetch us; UpdateCrane hands off to BeginRolling once we're scooped in and home.
-		StartCrane( CraneJob.Pickup, from: _ballHome, spot: CraneRest( _grabPos ) );
+		// Fly out from wherever the ball sits, fetch us, then on to the lane start to roll.
+		StartCrane( CraneJob.Pickup );
 	}
 
 	// Assume ownership of the lane's networked ball + ten pins (they're tagged Takeover), so this
