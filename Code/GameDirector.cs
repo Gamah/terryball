@@ -84,6 +84,14 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	[Property, Group( "Crane" )] public float CraneLiftSeconds { get; set; } = 0.5f;
 	/// <summary>Beat (seconds) the ball hovers at the top before it starts travelling.</summary>
 	[Property, Group( "Crane" )] public float CraneHoverSeconds { get; set; } = 0.4f;
+	/// <summary>How high (units) above a player the claw hovers before it sinks to scoop them (and rises
+	/// back to after a scoop/drop).</summary>
+	[Property, Group( "Crane" )] public float CraneAboveHeight { get; set; } = 450f;
+	/// <summary>The noticeable beat (seconds) the ball holds directly above a player both before sinking
+	/// onto them and after rising back off — the claw-game "lining up / lifting clear" pause.</summary>
+	[Property, Group( "Crane" )] public float CraneAbovePauseSeconds { get; set; } = 0.55f;
+	/// <summary>Seconds for the vertical sink onto a player (and the matching rise back up).</summary>
+	[Property, Group( "Crane" )] public float CraneSinkSeconds { get; set; } = 0.6f;
 	/// <summary>Extra height (units) the travel bulges up mid-leg, on top of the float-up, so the claw
 	/// sails well OVER the rack on its way to the settee behind the pins.</summary>
 	[Property, Group( "Crane" )] public float CraneArcHeight { get; set; } = 260f;
@@ -190,16 +198,31 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	//             lane start and roll (1 leg). This is the "ball return".
 	//   Dropoff — fly to the bowler's seat and set them down; the ball stays there for the next pickup to
 	//             fly on from (1 leg). Only between DIFFERENT bowlers.
-	// Each trip floats up out of rest, hovers a beat, then travels (at a capped speed) to the target.
+	// A crane trip is a scripted list of steps (float up, hover, travel, pause above, sink, scoop, …) run in
+	// order — see BuildCraneSteps for each job's choreography.
 	private enum CraneJob { None, Pickup, Return, Dropoff }
-	private enum CranePhase { Lift, Hover, Travel }
+	private enum CraneStepKind
+	{
+		Move,    // vertical/short lerp to Pos over Seconds (lift, sink, rise)
+		Travel,  // lerp to Pos at the capped speed, with a rack-clearing bulge
+		Wait,    // hold position for Seconds (hover / above-pause)
+		Scoop,   // instant: body → ball
+		Drop,    // instant: ball → body at the seat
+		Roll,    // instant: end the trip, restore physics, roll
+		EndDrop, // instant: end the trip parked frozen at the seat, hand off to the host
+	}
+	private struct CraneStep
+	{
+		public CraneStepKind Kind;
+		public Vector3 Pos;
+		public float Seconds;
+	}
 	private CraneJob _craneJob;
-	private CranePhase _cranePhase;
 	private bool _ballCraned;     // ball currently in kinematic crane mode (collider on ⟺ rolling)
-	private int _craneLeg;        // 0 = outbound, 1 = the fly-to-start (pickup only)
-	private float _craneElapsed;  // seconds into the current phase/leg
-	private float _craneDuration; // length (seconds) of the current lift/travel
-	private Vector3 _craneFrom, _craneTo, _craneLiftTop;
+	private readonly List<CraneStep> _craneSteps = new();
+	private int _craneStep;
+	private float _craneStepElapsed, _craneStepDuration;
+	private Vector3 _craneStepFrom;
 	private Vector3 _grabPos;     // where the claw grabbed us this turn
 	private bool _grabOnSettee;   // ...and whether that was on the settee (else we drop at the middle)
 	private Vector3 _dropSpot;    // where to set us back down at turn's end
@@ -857,103 +880,120 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private Vector3 CraneRest( Vector3 footSpot )
 		=> footSpot + Vector3.Up * (_ball.IsValid() ? _ball.Radius : 100f);
 
-	// Start a crane trip from the ball's current position: float up, hover, then travel to the leg target.
-	// Pickup adds a 2nd travel leg (seat→start) after the scoop.
-	private void StartCrane( CraneJob job )
-	{
-		_craneJob = job;
-		_craneLeg = 0;
-		_craneFrom = _ball.WorldPosition;
-		_craneLiftTop = _craneFrom + Vector3.Up * CraneLiftHeight;
-		_craneTo = LegTarget( 0 );
-		_cranePhase = CranePhase.Lift;
-		_craneElapsed = 0f;
-		_craneDuration = MathF.Max( 0.05f, CraneLiftSeconds );
-		State = RoundState.Craning;
-		_ball.ControlsLocked = true;
-		if ( _camera.IsValid() ) _camera.Watching = false;
-		_ball.SetCraneMode( true );
-		_ballCraned = true;
-	}
-
-	// Where the current leg is headed. Pickup: leg 0 = the bowler's seat, leg 1 = the lane start.
-	private Vector3 LegTarget( int leg ) => _craneJob switch
-	{
-		CraneJob.Pickup => leg == 0 ? CraneRest( _grabPos ) : _ballHome,
-		CraneJob.Dropoff => CraneRest( _dropSpot ),
-		_ => _ballHome, // Return
-	};
+	// A point the claw hovers at, directly above a player, before sinking / after rising.
+	private Vector3 CraneAbove( Vector3 footSpot ) => CraneRest( footSpot ) + Vector3.Up * CraneAboveHeight;
 
 	// Travel time for a leg: distance ÷ the speed cap, but never less than the short-hop floor.
 	private float TravelSeconds( Vector3 a, Vector3 b )
 		=> MathF.Max( CraneMinTravelSeconds, (b - a).Length / (CraneSpeed > 1f ? CraneSpeed : 1f) );
 
-	private void UpdateCrane()
+	private void Step( CraneStepKind kind, Vector3 pos = default, float seconds = 0f )
+		=> _craneSteps.Add( new CraneStep { Kind = kind, Pos = pos, Seconds = seconds } );
+
+	// Lay out a trip's choreography. The ball always moves from wherever it currently sits.
+	private void BuildCraneSteps( CraneJob job )
 	{
-		_craneElapsed += Time.Delta;
+		_craneSteps.Clear();
+		var lift = _ball.WorldPosition + Vector3.Up * CraneLiftHeight;
 
-		switch ( _cranePhase )
-		{
-			case CranePhase.Lift:
-			{
-				var t = (_craneDuration > 0f ? _craneElapsed / _craneDuration : 1f).Clamp( 0f, 1f );
-				_ball.CraneMoveTo( Vector3.Lerp( _craneFrom, _craneLiftTop, t ) );
-				if ( t >= 1f ) { _cranePhase = CranePhase.Hover; _craneElapsed = 0f; }
-				break;
-			}
-
-			case CranePhase.Hover:
-			{
-				_ball.CraneMoveTo( _craneLiftTop );
-				if ( _craneElapsed >= CraneHoverSeconds )
-				{
-					_cranePhase = CranePhase.Travel;
-					_craneElapsed = 0f;
-					_craneFrom = _craneLiftTop;                 // set off from the hover point
-					_craneDuration = TravelSeconds( _craneFrom, _craneTo );
-				}
-				break;
-			}
-
-			case CranePhase.Travel:
-			{
-				var t = (_craneDuration > 0f ? _craneElapsed / _craneDuration : 1f).Clamp( 0f, 1f );
-				// Linear travel (so the speed cap holds) with a vertical bulge to clear the rack.
-				var pos = Vector3.Lerp( _craneFrom, _craneTo, t ) + Vector3.Up * CraneArcHeight * MathF.Sin( t * MathF.PI );
-				_ball.CraneMoveTo( pos );
-				if ( t >= 1f ) ArriveLeg();
-				break;
-			}
-		}
-	}
-
-	// A travel leg reached its target — scoop / drop / hand on to the next leg.
-	private void ArriveLeg()
-	{
-		switch ( _craneJob )
+		switch ( job )
 		{
 			case CraneJob.Pickup:
-				if ( _craneLeg == 0 )
-				{
-					LocalAvatar?.ScoopIntoBall();   // body → ball, camera → ball
-					_craneLeg = 1;
-					_craneFrom = _craneTo;          // from the seat...
-					_craneTo = LegTarget( 1 );      // ...on to the lane start (no extra lift; the arc carries it)
-					_craneElapsed = 0f;
-					_craneDuration = TravelSeconds( _craneFrom, _craneTo );
-				}
-				else FinishRoll();
-				break;
-
-			case CraneJob.Return:
-				FinishRoll();                       // already in the ball — straight to rolling
+				// Ball is parked (start / previous seat) — fly to ABOVE us, line up, sink on, lift clear,
+				// then carry us to the lane start.
+				Step( CraneStepKind.Travel, CraneAbove( _grabPos ) );
+				Step( CraneStepKind.Wait, seconds: CraneAbovePauseSeconds );
+				Step( CraneStepKind.Move, CraneRest( _grabPos ), CraneSinkSeconds );
+				Step( CraneStepKind.Scoop );
+				Step( CraneStepKind.Move, CraneAbove( _grabPos ), CraneSinkSeconds );
+				Step( CraneStepKind.Wait, seconds: CraneAbovePauseSeconds );
+				Step( CraneStepKind.Travel, _ballHome );
+				Step( CraneStepKind.Roll );
 				break;
 
 			case CraneJob.Dropoff:
-				LocalAvatar?.DropAtReturnSpot();    // ball → body at the seat, camera → their Terry
-				FinishDrop();
+				// Post-throw in the pit — float up, hover, fly to ABOVE our seat, line up, sink us down,
+				// lift clear, then hand off.
+				Step( CraneStepKind.Move, lift, CraneLiftSeconds );
+				Step( CraneStepKind.Wait, seconds: CraneHoverSeconds );
+				Step( CraneStepKind.Travel, CraneAbove( _dropSpot ) );
+				Step( CraneStepKind.Wait, seconds: CraneAbovePauseSeconds );
+				Step( CraneStepKind.Move, CraneRest( _dropSpot ), CraneSinkSeconds );
+				Step( CraneStepKind.Drop );
+				Step( CraneStepKind.Move, CraneAbove( _dropSpot ), CraneSinkSeconds );
+				Step( CraneStepKind.Wait, seconds: CraneAbovePauseSeconds );
+				Step( CraneStepKind.EndDrop );
+				break;
+
+			default: // Return — already in the ball: float up out of the pit, hover, fly to the start, roll.
+				Step( CraneStepKind.Move, lift, CraneLiftSeconds );
+				Step( CraneStepKind.Wait, seconds: CraneHoverSeconds );
+				Step( CraneStepKind.Travel, _ballHome );
+				Step( CraneStepKind.Roll );
 				break;
 		}
+	}
+
+	private void StartCrane( CraneJob job )
+	{
+		_craneJob = job;
+		State = RoundState.Craning;
+		_ball.ControlsLocked = true;
+		if ( _camera.IsValid() ) _camera.Watching = false;
+		_ball.SetCraneMode( true );
+		_ballCraned = true;
+
+		BuildCraneSteps( job );
+		BeginStep( 0 );
+	}
+
+	// Enter step i. Timed steps (Move/Travel/Wait) set up their duration; instant steps act and chain on.
+	private void BeginStep( int i )
+	{
+		_craneStep = i;
+		if ( i < 0 || i >= _craneSteps.Count ) return;
+
+		var s = _craneSteps[i];
+		_craneStepElapsed = 0f;
+		_craneStepFrom = _ball.WorldPosition;
+
+		switch ( s.Kind )
+		{
+			case CraneStepKind.Move: _craneStepDuration = MathF.Max( 0.05f, s.Seconds ); break;
+			case CraneStepKind.Travel: _craneStepDuration = TravelSeconds( _craneStepFrom, s.Pos ); break;
+			case CraneStepKind.Wait: _craneStepDuration = MathF.Max( 0f, s.Seconds ); break;
+
+			case CraneStepKind.Scoop: LocalAvatar?.ScoopIntoBall(); BeginStep( i + 1 ); break; // body → ball
+			case CraneStepKind.Drop: LocalAvatar?.DropAtReturnSpot(); BeginStep( i + 1 ); break; // ball → body
+			case CraneStepKind.Roll: FinishRoll(); break;
+			case CraneStepKind.EndDrop: FinishDrop(); break;
+		}
+	}
+
+	private void UpdateCrane()
+	{
+		if ( _craneStep < 0 || _craneStep >= _craneSteps.Count ) return;
+		var s = _craneSteps[_craneStep];
+
+		_craneStepElapsed += Time.Delta;
+		var t = (_craneStepDuration > 0f ? _craneStepElapsed / _craneStepDuration : 1f).Clamp( 0f, 1f );
+
+		switch ( s.Kind )
+		{
+			case CraneStepKind.Move:
+				_ball.CraneMoveTo( Vector3.Lerp( _craneStepFrom, s.Pos, t ) );
+				break;
+			case CraneStepKind.Travel:
+				// Linear (so the speed cap holds) with a vertical bulge to clear the rack.
+				_ball.CraneMoveTo( Vector3.Lerp( _craneStepFrom, s.Pos, t )
+					+ Vector3.Up * CraneArcHeight * MathF.Sin( t * MathF.PI ) );
+				break;
+			case CraneStepKind.Wait:
+				_ball.CraneMoveTo( _craneStepFrom ); // hold above / hover
+				break;
+		}
+
+		if ( t >= 1f ) BeginStep( _craneStep + 1 );
 	}
 
 	// A flight that ends at the lane start: restore physics and roll.
@@ -980,6 +1020,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private void AbortCrane()
 	{
 		_craneJob = CraneJob.None;
+		_craneSteps.Clear();
+		_craneStep = 0;
 		if ( _ballCraned && _ball.IsValid() ) _ball.SetCraneMode( false );
 		_ballCraned = false;
 		if ( State == RoundState.Craning ) State = RoundState.Rolling;
