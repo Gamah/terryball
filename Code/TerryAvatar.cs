@@ -150,6 +150,12 @@ public sealed class TerryAvatar : Component
 			}
 
 			UpdateControlsStation();
+
+			// R: respawn back onto the settee — the escape hatch for a player who's walked off the lane,
+			// fallen through the world, or otherwise got stuck. Not while riding the ball (that's G to
+			// exit) or typing in chat. Teleports to the settee of the lane we're at (else lane 1).
+			if ( !Bowling && !ChatPanel.IsOpen && Input.Keyboard.Pressed( "R" ) )
+				ReturnToSettee();
 		}
 		_wasBowling = Bowling;
 	}
