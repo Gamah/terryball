@@ -3,15 +3,16 @@ using Sandbox;
 namespace Terryball;
 
 /// <summary>
-/// The local player's on-screen HUD — built once per client and NEVER networked. Lives on a
-/// <see cref="NetworkMode"/>.Never scene object (so it's excluded from every snapshot), independent of
-/// how many lanes exist: there is one HUD per player, and it follows whatever lane that player has
-/// joined (the panels resolve their director via <see cref="Lane.ForLocalPlayer"/>).
+/// The local player's on-screen HUD — built once per client and NEVER networked. Spawned by
+/// <see cref="LocalHudSystem"/> (a purely-local GameObjectSystem) on a runtime <see cref="NetworkMode"/>
+/// .Never root object, with no dependency on any networked object. There is one HUD per player,
+/// independent of how many lanes exist, and it follows whatever lane that player has joined (the panels
+/// resolve their director via <see cref="Lane.ForLocalPlayer"/>).
 ///
-/// This replaces the old <c>GameDirector.BuildHud</c>, which created the HUD as a child of the
-/// networked Director — that made the whole subtree (music player, scoreboard, chat) part of the
-/// Director's network snapshot, so the host's mute / music / panel state leaked onto every client.
-/// Building it here, off any networked object, keeps it strictly client-local.
+/// This replaces the old in-Director HUD, which was built as a child of the networked Director — that
+/// made the whole subtree (music player, scoreboard, chat) part of the Director's network snapshot, so
+/// the host's mute / music / panel state leaked onto every client. Building it off any networked object
+/// keeps it strictly client-local.
 /// </summary>
 public sealed class LocalHud : Component
 {

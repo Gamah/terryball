@@ -250,9 +250,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		}
 	}
 
-	// The on-screen HUD is no longer built here. It's a single client-local, NON-networked object
-	// (see LocalHud) so the host's music / panel state can't leak onto clients, and it follows whatever
-	// lane the local player has joined rather than belonging to one director.
+	// The on-screen HUD is built by LocalHudSystem (a purely-local GameObjectSystem), not here — it's a
+	// client-local, non-networked thing that belongs to the player, not to any director.
 
 	// --- Network roster ----------------------------------------------------------------
 	// INetworkListener fires on the HOST. Every player who joins (the local host included) gets a
