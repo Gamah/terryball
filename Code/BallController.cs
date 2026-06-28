@@ -60,10 +60,14 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	/// <summary>Ball speed (u/s) at which Terry switches from running into the Citizen's continuous Roll
 	/// animation. His legs ramp up walk→run over 0..this, maxing out just as he tucks into the roll.</summary>
-	[Property, Group( "Occupant" )] public float RollFullSpeed { get; set; } = 2500f;
+	[Property, Group( "Occupant" )] public float RollFullSpeed { get; set; } = 3600f;
 	/// <summary>Top leg speed (u/s) Terry's run ramps to right before he rolls. The Citizen is ~1 unit/inch,
 	/// so ≈167 u/s reads as a ~9.5 mph run; below it the Auto move-style eases him from a walk into a run.</summary>
 	[Property, Group( "Occupant" )] public float RunTopSpeed { get; set; } = 167f;
+	/// <summary>Animgraph playback multiplier while Terry is rolling. The Roll clip plays at a fixed baked
+	/// cadence, so we drive its speed here — 3 = the roll spins ~3× its default rate. Run/walk ignore this
+	/// (their cadence comes from the fed move speed); it's reset to 1 the moment he's not rolling.</summary>
+	[Property, Group( "Occupant" )] public float RollPlaybackRate { get; set; } = 3f;
 
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
@@ -392,6 +396,11 @@ public sealed class BallController : Component, Component.ICollisionListener
 			_anim.SpecialMove = rolling
 				? CitizenAnimationHelper.SpecialMoveStyle.Roll
 				: CitizenAnimationHelper.SpecialMoveStyle.None;
+
+			// The Roll clip plays at a fixed baked cadence, so speed it up via the renderer's playback rate;
+			// the run/walk get their cadence from the fed move speed, so reset to 1× when not rolling.
+			if ( _terryRenderer.IsValid() )
+				_terryRenderer.PlaybackRate = rolling ? RollPlaybackRate : 1f;
 
 			// Feed his legs a ramped speed (Auto move-style picks walk vs run from it), facing travel so the
 			// run/roll go the way the ball's rolling. Capped at RunTopSpeed (~9.5 mph) right as the roll takes over.
