@@ -709,6 +709,13 @@ public sealed class LaneBuilder : Component
 	private void MakeArrow( string name, Vector3 localPos )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		// Build the arrows purely client-local. Every client builds the lane geometry itself in OnEnabled,
+		// so this GO must NOT replicate: a runtime child of the networked lane root defaults to
+		// NetworkMode.Snapshot and replicates inside the lane's snapshot. The arrow's PROCEDURAL model can't
+		// serialize, so that replicated copy arrives as the purple ERROR model — overlapping the correct one
+		// we build here. NetworkMode.Never kills the replicated copy. (Boards dodge this only because their
+		// model is a loadable asset path; the procedural arrows can't.)
+		go.NetworkMode = NetworkMode.Never;
 		go.LocalPosition = localPos;
 		var mr = go.Components.GetOrCreate<ModelRenderer>();
 		mr.Tint = ArrowColor;
