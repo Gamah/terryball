@@ -58,6 +58,33 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
+	/// <summary>Ball speed — in the SAME bowling-scale mph the HUD shows — at or above which Terry switches
+	/// from running into the Citizen's continuous Roll animation. His legs ramp up walk→run over 0..this,
+	/// maxing out just as he tucks into the roll. Kept in mph so it tracks the gauge regardless of Radius.</summary>
+	[Property, Group( "Occupant" )] public float RollAtMph { get; set; } = 11.5f;
+	/// <summary>Top leg speed (u/s) Terry's run ramps to right before he rolls. The Citizen is ~1 unit/inch,
+	/// so ≈167 u/s reads as a ~9.5 mph run; below it the Auto move-style eases him from a walk into a run.</summary>
+	[Property, Group( "Occupant" )] public float RunTopSpeed { get; set; } = 167f;
+	/// <summary>Animgraph playback multiplier while Terry is rolling. The Roll clip plays at a fixed baked
+	/// cadence, so we drive its speed here.</summary>
+	[Property, Group( "Occupant" )] public float RollPlaybackRate { get; set; } = 5.25f;
+	/// <summary>Animgraph playback multiplier for his legs at the SLOW end (a near-stationary walk). The
+	/// move-speed cadence alone is too slow, so we scale the whole walk→run ramp via the playback rate.</summary>
+	[Property, Group( "Occupant" )] public float WalkPlaybackRate { get; set; } = 0.5f;
+	/// <summary>Animgraph playback multiplier the run ramps UP to right at the roll threshold.</summary>
+	[Property, Group( "Occupant" )] public float RunPlaybackRate { get; set; } = 4.5f;
+	/// <summary>How far toward the roll threshold (0..1) Terry stays at his base WalkPlaybackRate before
+	/// his legs start speeding up. e.g. 0.3 = no speed-up over the first 30% of the run-up, then ramp.</summary>
+	[Property, Group( "Occupant" )] public float WalkRampStart { get; set; } = 0.3f;
+	/// <summary>Seconds to crossfade the run↔roll change. We ease a blend over this window (flipping the
+	/// special-move state at its mid-point and crossfading the playback rate) so the switch isn't a hard
+	/// snap. The Citizen animgraph crossfades the actual pose on its own baked timing.</summary>
+	[Property, Group( "Occupant" )] public float TransitionTime { get; set; } = 0.5f;
+	/// <summary>Playback rate to dip to through the middle of the run↔roll swap. PlaybackRate also scales the
+	/// animgraph's own pose crossfade, so easing to ~1× across the swap lets that crossfade play at its real
+	/// (visible) baked duration instead of being sped up by the fast run/roll cadence rates.</summary>
+	[Property, Group( "Occupant" )] public float TransitionPlaybackRate { get; set; } = 1f;
+
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
 	// wishDir * MaxSpeed with a proportional force at the ball's centre. With no key held the
@@ -88,20 +115,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// line so the throw is committed to physics and you can watch it hit the pins.</summary>
 	public bool ControlsLocked { get; set; }
 
-	// --- Occupant (Terry) visual climb -------------------------------------------------
-	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
-	// "runs" up-slope toward wishDir and gravity settles him back to the bottom.
-
-	/// <summary>How hard input drives Terry up the wall (visual only).</summary>
-	[Property, Group( "Occupant" )] public float RunAccel { get; set; } = 8f;
-	/// <summary>Gravity pull settling Terry toward the bottom while driving (visual only).</summary>
-	[Property, Group( "Occupant" )] public float RestoreAccel { get; set; } = 1f;
-	/// <summary>Damping on Terry's motion along the surface while driving (visual only).</summary>
-	[Property, Group( "Occupant" )] public float Damping { get; set; } = 3f;
-	/// <summary>On release, Terry is pulled back to the bottom hard with near-critical damping
-	/// (≈2·√restore) so he drops back down promptly without overshoot (visual only).</summary>
-	[Property, Group( "Occupant" )] public float ReleaseRestore { get; set; } = 25f;
-	[Property, Group( "Occupant" )] public float ReleaseDamping { get; set; } = 10f;
+	// --- Occupant (Terry) visual ride --------------------------------------------------
+	// Terry rides CENTRED in the ball (purely visual — he doesn't drive it). He runs facing the
+	// ball's travel direction and blends into a tucked forward somersault as it speeds up; see
+	// RollAtMph / RunTopSpeed up top, OnUpdate (anim) and PlaceTerry.
 
 	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
@@ -112,7 +129,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private GameObject _terry;
 	private SkinnedModelRenderer _terryRenderer;
 	private CitizenAnimationHelper _anim;
-	private Vector3 _terryPrevPos;
 
 	// In-ball Terry is dressed in the ACTIVE bowler's avatar so everyone sees who's up riding inside.
 	// Re-dressed (on every client) whenever the spotlight moves to a different bowler.
@@ -124,11 +140,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// each lane's ball answers only to its own director.
 	private GameDirector Director => _director.IsValid() ? _director : (_director = Lane.Of( this )?.Director);
 
-	// Occupant state, in world space: _dir is the unit direction from ball centre to Terry
-	// (starts straight down); _vel is his velocity along the sphere surface.
-	private Vector3 _dir = Vector3.Down;
-	private Vector3 _vel = Vector3.Zero;
+	// Occupant state, in world space: Terry rides CENTRED in the ball (not on the inner wall). _faceDir
+	// is his last meaningful heading (the ball's travel direction); _bodyCentreUp is the feet→torso-centre
+	// offset that hangs his middle on the ball centre.
 	private Vector3 _faceDir = Vector3.Forward; // last meaningful heading (ball travel dir)
+	private float _bodyCentreUp;                // feet→centre height (scaled), so he sits centred in the ball
+	private float _transitionT;                 // seconds left in the current run↔roll transition window
+	private bool _wasRolling;                   // edge-detect the roll state change to open that window
 	private bool _built;
 
 	protected override void OnEnabled()
@@ -184,12 +202,15 @@ public sealed class BallController : Component, Component.ICollisionListener
 		renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );
 		_terryRenderer = renderer;
 
+		// Feet→torso-centre height: the Citizen's origin is at his feet, so half his height is roughly his
+		// middle. We hang him so this point sits on the ball centre and tumble him about it.
+		_bodyCentreUp = (renderer.Model?.Bounds.Size.z ?? 64f) * 0.5f * TerryScale;
+
 		_anim = _terry.Components.GetOrCreate<CitizenAnimationHelper>();
 		_anim.Target = renderer;
 		_anim.IsGrounded = true;
 
 		PlaceTerry();
-		_terryPrevPos = _terry.WorldPosition;
 	}
 
 	// Keep the in-ball Terry wearing whoever is currently up (runs on every client, bowler or
@@ -349,18 +370,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 			SteerEffort01 = (lateral.Length / (MaxSpeed * 0.5f)).Clamp( 0f, 1f );
 		}
 
-		// --- Terry's visual climb (no longer drives the ball) --------------------------
-		// Spherical-pendulum on the inner surface: input pushes Terry up-slope toward wishDir,
-		// gravity's tangential component pulls him to the bottom, damping settles him. A
-		// snappier restore on release drops him back down promptly.
-		var tGrav = Vector3.Down - Vector3.Down.Dot( _dir ) * _dir;
-		var tInput = wish - wish.Dot( _dir ) * _dir;
-		var restore = hasInput ? RestoreAccel : ReleaseRestore;
-		var damp = hasInput ? Damping : ReleaseDamping;
-		var accel = restore * tGrav + RunAccel * tInput - damp * _vel;
-		_vel += accel * dt;
-		_dir = (_dir + _vel * dt).Normal;
-		_vel -= _vel.Dot( _dir ) * _dir; // keep velocity tangent to the sphere
+		// Terry rides CENTRED in the ball now (see PlaceTerry) — the old inner-wall climb is gone.
 
 		// Pit catch: once the ball is behind the pin deck (out over the pit) bleed its speed hard, so it
 		// dumps energy into the cushion and settles instead of ricocheting off the dead back wall and
@@ -393,46 +403,97 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		PlaceTerry();
 
-		// Drive Terry's run animation from how fast he's actually moving through the world
-		// (ball roll + his own climbing), so the legs match the speed you see.
-		if ( _anim.IsValid() && Time.Delta > 0f )
+		// Drive Terry's locomotion from the BALL's speed (he's centred, so he barely moves himself). He
+		// eases from a walk up to a run as the ball speeds up, then tucks into the Citizen's continuous Roll
+		// animation once it's really moving. ramp01 maps 0..rollSpeed → walk..run; past that he rolls.
+		if ( _anim.IsValid() )
 		{
-			var worldVel = (_terry.WorldPosition - _terryPrevPos) / Time.Delta;
-			_anim.WithVelocity( worldVel );
+			var speed = _body.IsValid() ? _body.Velocity.WithZ( 0f ).Length : 0f;
+			// Roll threshold expressed in the HUD's bowling-scale mph, so "11.5 mph and up" means what the
+			// gauge says (and survives a Radius change). Same mph mapping as the ShowSpeed readout below.
+			var rollSpeed = MphToUnits( RollAtMph );
+			var rolling = speed >= rollSpeed;
+			var ramp01 = rollSpeed > 0f ? (speed / rollSpeed).Clamp( 0f, 1f ) : 0f;
+
+			// Flip the roll state the instant the speed crosses the threshold and open a TransitionTime
+			// window. The engine crossfades the pose itself, starting now — we hold the playback rate down
+			// across this window (below) so that crossfade plays at a visible speed instead of being
+			// fast-forwarded by the fast run/roll cadence rate.
+			if ( rolling != _wasRolling )
+			{
+				_transitionT = TransitionTime;
+				_wasRolling = rolling;
+			}
+			_transitionT = MathF.Max( 0f, _transitionT - Time.Delta );
+
+			_anim.SpecialMove = rolling
+				? CitizenAnimationHelper.SpecialMoveStyle.Roll
+				: CitizenAnimationHelper.SpecialMoveStyle.None;
+
+			// Drive playback rate directly: the move-speed cadence alone tops out at a jog (way too slow
+			// against a fast ball). His legs hold at WalkPlaybackRate over the first WalkRampStart of the
+			// run-up, then ramp WalkPlaybackRate→RunPlaybackRate the rest of the way; the settled roll plays
+			// at RollPlaybackRate.
+			if ( _terryRenderer.IsValid() )
+			{
+				var walkT = ((ramp01 - WalkRampStart) / MathF.Max( 1f - WalkRampStart, 0.0001f )).Clamp( 0f, 1f );
+				var runRate = MathX.Lerp( WalkPlaybackRate, RunPlaybackRate, walkT );
+				var settledRate = rolling ? RollPlaybackRate : runRate;
+
+				// PlaybackRate scales the animgraph's OWN pose crossfade too (animNative.Update advances
+				// transitions by delta×rate), so the fast cadence rate would snap the swap. inWindow is 1 at
+				// the start of the transition — when the crossfade fires — and eases to 0 as the window
+				// closes, so we hold the rate down at TransitionPlaybackRate (≈1×) while the pose crossfades,
+				// then ramp back up to the fast settled cadence. Slow window lasts exactly TransitionTime.
+				var inWindow = TransitionTime > 0f ? (_transitionT / TransitionTime).Clamp( 0f, 1f ) : 0f;
+				_terryRenderer.PlaybackRate = MathX.Lerp( settledRate, TransitionPlaybackRate, inWindow );
+			}
+
+			// Feed his legs a ramped speed (Auto move-style picks walk vs run from it), facing travel so the
+			// run/roll go the way the ball's rolling. Capped at RunTopSpeed (~9.5 mph) right as the roll takes over.
+			_anim.WithVelocity( _faceDir * (RunTopSpeed * ramp01) );
 		}
-		_terryPrevPos = _terry.WorldPosition;
 
 		if ( ShowSpeed && _body.IsValid() )
 		{
-			// Speed in units, plus a real-world mph treating the ball's diameter as 8.5".
+			// Speed in units, plus a real-world mph treating the ball's diameter as RealBallInches.
 			var v = _body.Velocity.Length;
-			var inchesPerUnit = RealBallInches / (Radius * 2f);
-			var mph = v * inchesPerUnit / 17.6f; // 1 mph = 17.6 in/s
 			DebugOverlay.Text( WorldPosition + Vector3.Up * (Radius + 90f),
-				$"{mph:F1} mph   ({v:F0} u/s)", 24, TextFlag.Center, Color.White );
+				$"{UnitsToMph( v ):F1} mph   ({v:F0} u/s)", 24, TextFlag.Center, Color.White );
 		}
 	}
 
+	// Bowling-scale mph ↔ units, treating the ball's diameter as RealBallInches (1 mph = 17.6 in/s). The
+	// HUD readout and the roll threshold both go through these so "11.5 mph" means exactly what's on screen.
+	private float UnitsToMph( float units ) => units * (RealBallInches / (Radius * 2f)) / 17.6f;
+	private float MphToUnits( float mph ) => mph * 17.6f * (Radius * 2f) / RealBallInches;
+
+	// Hang Terry CENTRED in the ball, upright, facing the way it's travelling. The run/roll motion is all
+	// in the animation (see OnUpdate) — his root just faces travel and sits on the ball centre.
 	private void PlaceTerry()
 	{
 		if ( !_terry.IsValid() ) return;
 
-		// Terry's origin is at his feet, so plant his feet just inside the shell.
-		var innerR = Radius - 2f;
-		_terry.WorldPosition = WorldPosition + _dir * innerR;
-
-		// Face the direction the ball is actually rolling ("if he can" — keep the last
-		// heading while it's nearly stationary so he doesn't spin). "up" is the inward
-		// normal (-_dir), so he leans into the curve as he climbs.
-		var up = -_dir;
-		var travel = _body.IsValid() ? _body.Velocity : Vector3.Zero;
-		travel -= travel.Dot( up ) * up; // onto his standing plane
+		// Always face the direction the ball is actually rolling ("if he can" — keep the last heading while
+		// it's nearly stationary so he doesn't spin in place). The Citizen's Roll animation rolls forward
+		// along this facing, so facing travel keeps the roll going the right way.
+		var travel = (_body.IsValid() ? _body.Velocity : Vector3.Zero).WithZ( 0f );
 		if ( travel.Length > 5f )
 			_faceDir = travel.Normal;
+		var fwd = _faceDir.Length > 0.001f ? _faceDir.Normal : Vector3.Forward;
 
-		var fwd = _faceDir - _faceDir.Dot( up ) * up;
-		fwd = fwd.Length > 0.001f ? fwd.Normal : Vector3.Forward;
-		_terry.WorldRotation = Rotation.LookAt( fwd, up );
+		_terry.WorldRotation = Rotation.LookAt( fwd, Vector3.Up );
+
+		// Hang his PELVIS on the ball centre, not his feet. His origin is at his feet, but each clip (walk,
+		// run, the curled roll) holds the pelvis a different height above that origin — pinning the feet let
+		// that per-clip difference bob his whole body up/down through the transitions. So we read the pelvis's
+		// current height above the origin and offset by THAT, which cancels the shift and keeps his middle
+		// framed dead-centre regardless of which animation is playing. (Falls back to the static half-height
+		// if the bone isn't resolvable yet.)
+		var pelvisUp = _bodyCentreUp;
+		if ( _terryRenderer.IsValid() && _terryRenderer.TryGetBoneTransformLocal( "pelvis", out var pelvisLocal ) )
+			pelvisUp = pelvisLocal.Position.z * TerryScale;
+		_terry.WorldPosition = WorldPosition - Vector3.Up * pelvisUp;
 	}
 
 	// DEBUG: log every ball↔pin contact and its impulse. This is the crux diagnostic — if the ball
