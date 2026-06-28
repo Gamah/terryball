@@ -1,0 +1,91 @@
+@using System;
+@using System.Linq;
+@using Sandbox;
+@using Sandbox.UI;
+@using Terryball;
+@using Skafinity;
+@inherits PanelComponent
+
+@*
+	Bottom-corner key hints for the background music: N opens the music board, M mutes. Mirrors the
+	chat (T) hint — purely an affordance; the keys themselves are handled by MusicScreen. Reflects the
+	live mute state on the M chip and hides entirely while the board is open (its own controls take
+	over then). pointer-events: none throughout so it never steals the cursor / mouselook.
+*@
+
+<root>
+	@if ( !MusicScreen.IsOpen )
+	{
+		<div class="music-hints">
+			<div class="hint @( Muted ? "muted" : "" )">
+				<div class="key">M</div>
+				<div class="label">@( Muted ? "Muted" : "Mute" )</div>
+			</div>
+			<div class="hint">
+				<div class="key">N</div>
+				<div class="label">Music</div>
+			</div>
+		</div>
+	}
+</root>
+
+<style>
+	root {
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+	}
+
+	.music-hints {
+		position: absolute;
+		right: 16px;
+		bottom: 16px;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 8px;
+		pointer-events: none;
+	}
+
+	.hint {
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+		color: rgba(255, 165, 0, 0.85);
+		text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.8);
+		pointer-events: none;
+	}
+
+	.hint.muted .label {
+		color: rgba(255, 110, 110, 0.95);
+	}
+
+	.hint .label {
+		font-weight: 600;
+	}
+
+	.hint .key {
+		font-size: 13px;
+		font-weight: 700;
+		color: rgba(0, 0, 0, 0.8);
+		background-color: rgba(255, 255, 255, 0.85);
+		padding: 1px 8px;
+		border-radius: 5px;
+	}
+</style>
+
+@code
+{
+	private SkafinityPlayer _player;
+
+	// SkafinityPlayer.Enabled is the music master switch (a 'new' bool distinct from the component's
+	// own Enabled); false = muted, matching the panel's MUTE button.
+	private bool Muted => _player?.Enabled == false;
+
+	protected override void OnUpdate()
+	{
+		_player ??= Scene.GetAllComponents<SkafinityPlayer>().FirstOrDefault();
+	}
+
+	protected override int BuildHash() => HashCode.Combine( MusicScreen.IsOpen, Muted );
+}

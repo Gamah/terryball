@@ -272,9 +272,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// Client-local background music: the Skafinity engine plays on its own; the drop-in panel
 		// starts DISABLED (so its ♪ button never shows over the alley and steals the cursor) and is
 		// driven from the keyboard by MusicScreen — N toggles the board, M mutes. See MusicScreen.
-		_hud.Components.Create<Skafinity.SkafinityPlayer>();
+		var music = _hud.Components.Create<Skafinity.SkafinityPlayer>();
+		music.Volume = 0.25f; // start quiet — background ambience, not the main event
 		_hud.Components.Create<Skafinity.SkafinityMusicPanel>( false );
 		_hud.Components.Create<MusicScreen>();
+		_hud.Components.Create<MusicHud>();
 	}
 
 	// --- Network roster ----------------------------------------------------------------
