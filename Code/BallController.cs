@@ -80,6 +80,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// special-move state at its mid-point and crossfading the playback rate) so the switch isn't a hard
 	/// snap. The Citizen animgraph crossfades the actual pose on its own baked timing.</summary>
 	[Property, Group( "Occupant" )] public float TransitionTime { get; set; } = 0.375f;
+	/// <summary>Playback rate to dip to through the middle of the run↔roll swap. PlaybackRate also scales the
+	/// animgraph's own pose crossfade, so easing to ~1× across the swap lets that crossfade play at its real
+	/// (visible) baked duration instead of being sped up by the fast run/roll cadence rates.</summary>
+	[Property, Group( "Occupant" )] public float TransitionPlaybackRate { get; set; } = 1f;
 
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
@@ -432,7 +436,14 @@ public sealed class BallController : Component, Component.ICollisionListener
 			{
 				var walkT = ((ramp01 - WalkRampStart) / MathF.Max( 1f - WalkRampStart, 0.0001f )).Clamp( 0f, 1f );
 				var runRate = MathX.Lerp( WalkPlaybackRate, RunPlaybackRate, walkT );
-				_terryRenderer.PlaybackRate = MathX.Lerp( runRate, RollPlaybackRate, _rollBlend );
+				var settledRate = MathX.Lerp( runRate, RollPlaybackRate, _rollBlend );
+
+				// PlaybackRate scales the animgraph's OWN run→roll crossfade too (animNative.Update advances
+				// transitions by delta×rate), so a fast rate snaps the pose swap. Ease the rate back toward
+				// TransitionPlaybackRate (≈1×) through the middle of the blend — where the state flips and the
+				// engine crossfades the pose — so that crossfade plays out at its true, visible duration.
+				var swap = (1f - MathF.Abs( _rollBlend - 0.5f ) * 2f).Clamp( 0f, 1f ); // 0 at the ends, 1 mid-swap
+				_terryRenderer.PlaybackRate = MathX.Lerp( settledRate, TransitionPlaybackRate, swap );
 			}
 
 			// Feed his legs a ramped speed (Auto move-style picks walk vs run from it), facing travel so the
