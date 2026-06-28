@@ -79,7 +79,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// <summary>Seconds to crossfade the run↔roll change. We ease a blend over this window (flipping the
 	/// special-move state at its mid-point and crossfading the playback rate) so the switch isn't a hard
 	/// snap. The Citizen animgraph crossfades the actual pose on its own baked timing.</summary>
-	[Property, Group( "Occupant" )] public float TransitionTime { get; set; } = 0.375f;
+	[Property, Group( "Occupant" )] public float TransitionTime { get; set; } = 0.5f;
 	/// <summary>Playback rate to dip to through the middle of the run↔roll swap. PlaybackRate also scales the
 	/// animgraph's own pose crossfade, so easing to ~1× across the swap lets that crossfade play at its real
 	/// (visible) baked duration instead of being sped up by the fast run/roll cadence rates.</summary>
@@ -145,7 +145,8 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// offset that hangs his middle on the ball centre.
 	private Vector3 _faceDir = Vector3.Forward; // last meaningful heading (ball travel dir)
 	private float _bodyCentreUp;                // feet→centre height (scaled), so he sits centred in the ball
-	private float _rollBlend;                   // eased 0..1 run→roll blend, for the TransitionTime crossfade
+	private float _transitionT;                 // seconds left in the current run↔roll transition window
+	private bool _wasRolling;                   // edge-detect the roll state change to open that window
 	private bool _built;
 
 	protected override void OnEnabled()
@@ -414,36 +415,38 @@ public sealed class BallController : Component, Component.ICollisionListener
 			var rolling = speed >= rollSpeed;
 			var ramp01 = rollSpeed > 0f ? (speed / rollSpeed).Clamp( 0f, 1f ) : 0f;
 
-			// Ease a 0..1 blend toward the roll over TransitionTime so the run↔roll change crossfades instead
-			// of snapping the instant we cross the threshold. The animgraph crossfades the actual pose; we
-			// ride the same window to flip the special-move state at the half-way point (hidden mid-blend)
-			// and to crossfade the playback rate.
-			var step = TransitionTime > 0f ? Time.Delta / TransitionTime : 1f;
-			var target = rolling ? 1f : 0f;
-			_rollBlend = _rollBlend < target
-				? MathF.Min( target, _rollBlend + step )
-				: MathF.Max( target, _rollBlend - step );
+			// Flip the roll state the instant the speed crosses the threshold and open a TransitionTime
+			// window. The engine crossfades the pose itself, starting now — we hold the playback rate down
+			// across this window (below) so that crossfade plays at a visible speed instead of being
+			// fast-forwarded by the fast run/roll cadence rate.
+			if ( rolling != _wasRolling )
+			{
+				_transitionT = TransitionTime;
+				_wasRolling = rolling;
+			}
+			_transitionT = MathF.Max( 0f, _transitionT - Time.Delta );
 
-			_anim.SpecialMove = _rollBlend >= 0.5f
+			_anim.SpecialMove = rolling
 				? CitizenAnimationHelper.SpecialMoveStyle.Roll
 				: CitizenAnimationHelper.SpecialMoveStyle.None;
 
 			// Drive playback rate directly: the move-speed cadence alone tops out at a jog (way too slow
 			// against a fast ball). His legs hold at WalkPlaybackRate over the first WalkRampStart of the
-			// run-up, then ramp WalkPlaybackRate→RunPlaybackRate the rest of the way, and finally crossfade
-			// to the fixed RollPlaybackRate across the roll blend window.
+			// run-up, then ramp WalkPlaybackRate→RunPlaybackRate the rest of the way; the settled roll plays
+			// at RollPlaybackRate.
 			if ( _terryRenderer.IsValid() )
 			{
 				var walkT = ((ramp01 - WalkRampStart) / MathF.Max( 1f - WalkRampStart, 0.0001f )).Clamp( 0f, 1f );
 				var runRate = MathX.Lerp( WalkPlaybackRate, RunPlaybackRate, walkT );
-				var settledRate = MathX.Lerp( runRate, RollPlaybackRate, _rollBlend );
+				var settledRate = rolling ? RollPlaybackRate : runRate;
 
-				// PlaybackRate scales the animgraph's OWN run→roll crossfade too (animNative.Update advances
-				// transitions by delta×rate), so a fast rate snaps the pose swap. Ease the rate back toward
-				// TransitionPlaybackRate (≈1×) through the middle of the blend — where the state flips and the
-				// engine crossfades the pose — so that crossfade plays out at its true, visible duration.
-				var swap = (1f - MathF.Abs( _rollBlend - 0.5f ) * 2f).Clamp( 0f, 1f ); // 0 at the ends, 1 mid-swap
-				_terryRenderer.PlaybackRate = MathX.Lerp( settledRate, TransitionPlaybackRate, swap );
+				// PlaybackRate scales the animgraph's OWN pose crossfade too (animNative.Update advances
+				// transitions by delta×rate), so the fast cadence rate would snap the swap. inWindow is 1 at
+				// the start of the transition — when the crossfade fires — and eases to 0 as the window
+				// closes, so we hold the rate down at TransitionPlaybackRate (≈1×) while the pose crossfades,
+				// then ramp back up to the fast settled cadence. Slow window lasts exactly TransitionTime.
+				var inWindow = TransitionTime > 0f ? (_transitionT / TransitionTime).Clamp( 0f, 1f ) : 0f;
+				_terryRenderer.PlaybackRate = MathX.Lerp( settledRate, TransitionPlaybackRate, inWindow );
 			}
 
 			// Feed his legs a ramped speed (Auto move-style picks walk vs run from it), facing travel so the
