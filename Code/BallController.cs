@@ -58,6 +58,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
+	/// <summary>Ball speed (u/s) at which Terry has fully transitioned from running to a tucked roll.
+	/// Below this he blends from an upright run toward a curled somersault as the ball speeds up.</summary>
+	[Property, Group( "Occupant" )] public float RollFullSpeed { get; set; } = 2500f;
+	/// <summary>Somersault rate (deg/s) Terry tumbles at when fully rolled. The glass shell is featureless
+	/// so true ball spin isn't visible anyway — this is a tune-by-feel tumble, not literal rolling.</summary>
+	[Property, Group( "Occupant" )] public float TumbleSpeed { get; set; } = 540f;
+
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
 	// wishDir * MaxSpeed with a proportional force at the ball's centre. With no key held the
@@ -88,20 +95,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// line so the throw is committed to physics and you can watch it hit the pins.</summary>
 	public bool ControlsLocked { get; set; }
 
-	// --- Occupant (Terry) visual climb -------------------------------------------------
-	// Terry riding the inner wall is purely visual now — it no longer drives the ball. He
-	// "runs" up-slope toward wishDir and gravity settles him back to the bottom.
-
-	/// <summary>How hard input drives Terry up the wall (visual only).</summary>
-	[Property, Group( "Occupant" )] public float RunAccel { get; set; } = 8f;
-	/// <summary>Gravity pull settling Terry toward the bottom while driving (visual only).</summary>
-	[Property, Group( "Occupant" )] public float RestoreAccel { get; set; } = 1f;
-	/// <summary>Damping on Terry's motion along the surface while driving (visual only).</summary>
-	[Property, Group( "Occupant" )] public float Damping { get; set; } = 3f;
-	/// <summary>On release, Terry is pulled back to the bottom hard with near-critical damping
-	/// (≈2·√restore) so he drops back down promptly without overshoot (visual only).</summary>
-	[Property, Group( "Occupant" )] public float ReleaseRestore { get; set; } = 25f;
-	[Property, Group( "Occupant" )] public float ReleaseDamping { get; set; } = 10f;
+	// --- Occupant (Terry) visual ride --------------------------------------------------
+	// Terry rides CENTRED in the ball (purely visual — he doesn't drive it). He runs facing the
+	// ball's travel direction and blends into a tucked forward somersault as it speeds up; see
+	// RollFullSpeed / TumbleSpeed up top and PlaceTerry.
 
 	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
@@ -112,7 +109,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private GameObject _terry;
 	private SkinnedModelRenderer _terryRenderer;
 	private CitizenAnimationHelper _anim;
-	private Vector3 _terryPrevPos;
 
 	// In-ball Terry is dressed in the ACTIVE bowler's avatar so everyone sees who's up riding inside.
 	// Re-dressed (on every client) whenever the spotlight moves to a different bowler.
@@ -124,11 +120,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// each lane's ball answers only to its own director.
 	private GameDirector Director => _director.IsValid() ? _director : (_director = Lane.Of( this )?.Director);
 
-	// Occupant state, in world space: _dir is the unit direction from ball centre to Terry
-	// (starts straight down); _vel is his velocity along the sphere surface.
-	private Vector3 _dir = Vector3.Down;
-	private Vector3 _vel = Vector3.Zero;
+	// Occupant state, in world space: Terry rides CENTRED in the ball (not on the inner wall). _faceDir
+	// is his last meaningful heading (the ball's travel direction); _rollAngle accumulates the somersault
+	// he tumbles through as the ball speeds up; _bodyCentreUp is the feet→torso-centre offset used to pivot
+	// his tumble about the ball centre.
 	private Vector3 _faceDir = Vector3.Forward; // last meaningful heading (ball travel dir)
+	private float _rollAngle;                   // accumulated somersault (deg), visual only
+	private float _bodyCentreUp;                // feet→centre height (scaled), so the tumble pivots on centre
 	private bool _built;
 
 	protected override void OnEnabled()
@@ -184,12 +182,15 @@ public sealed class BallController : Component, Component.ICollisionListener
 		renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );
 		_terryRenderer = renderer;
 
+		// Feet→torso-centre height: the Citizen's origin is at his feet, so half his height is roughly his
+		// middle. We hang him so this point sits on the ball centre and tumble him about it.
+		_bodyCentreUp = (renderer.Model?.Bounds.Size.z ?? 64f) * 0.5f * TerryScale;
+
 		_anim = _terry.Components.GetOrCreate<CitizenAnimationHelper>();
 		_anim.Target = renderer;
 		_anim.IsGrounded = true;
 
-		PlaceTerry();
-		_terryPrevPos = _terry.WorldPosition;
+		PlaceTerry( 0f );
 	}
 
 	// Keep the in-ball Terry wearing whoever is currently up (runs on every client, bowler or
@@ -349,18 +350,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 			SteerEffort01 = (lateral.Length / (MaxSpeed * 0.5f)).Clamp( 0f, 1f );
 		}
 
-		// --- Terry's visual climb (no longer drives the ball) --------------------------
-		// Spherical-pendulum on the inner surface: input pushes Terry up-slope toward wishDir,
-		// gravity's tangential component pulls him to the bottom, damping settles him. A
-		// snappier restore on release drops him back down promptly.
-		var tGrav = Vector3.Down - Vector3.Down.Dot( _dir ) * _dir;
-		var tInput = wish - wish.Dot( _dir ) * _dir;
-		var restore = hasInput ? RestoreAccel : ReleaseRestore;
-		var damp = hasInput ? Damping : ReleaseDamping;
-		var accel = restore * tGrav + RunAccel * tInput - damp * _vel;
-		_vel += accel * dt;
-		_dir = (_dir + _vel * dt).Normal;
-		_vel -= _vel.Dot( _dir ) * _dir; // keep velocity tangent to the sphere
+		// Terry rides CENTRED in the ball now (see PlaceTerry) — the old inner-wall climb is gone.
 
 		// Pit catch: once the ball is behind the pin deck (out over the pit) bleed its speed hard, so it
 		// dumps energy into the cushion and settles instead of ricocheting off the dead back wall and
@@ -391,16 +381,23 @@ public sealed class BallController : Component, Component.ICollisionListener
 	{
 		UpdateBowlerDress();
 
-		PlaceTerry();
+		// roll01: 0 = upright running, 1 = fully tucked & tumbling. Driven by the ball's horizontal speed
+		// so Terry transitions from a run to a roll as the ball gets going.
+		var speed = _body.IsValid() ? _body.Velocity.WithZ( 0f ).Length : 0f;
+		var roll01 = RollFullSpeed > 0f ? (speed / RollFullSpeed).Clamp( 0f, 1f ) : 0f;
 
-		// Drive Terry's run animation from how fast he's actually moving through the world
-		// (ball roll + his own climbing), so the legs match the speed you see.
-		if ( _anim.IsValid() && Time.Delta > 0f )
+		// Advance the somersault phase; how much of it actually shows is blended in by roll01 in PlaceTerry.
+		_rollAngle = (_rollAngle + TumbleSpeed * Time.Delta) % 360f;
+
+		PlaceTerry( roll01 );
+
+		// Drive the run animation from the BALL's speed (Terry himself is centred and barely moves), fading
+		// it out as he tucks into the roll, and curl him up via the duck pose on the way.
+		if ( _anim.IsValid() )
 		{
-			var worldVel = (_terry.WorldPosition - _terryPrevPos) / Time.Delta;
-			_anim.WithVelocity( worldVel );
+			_anim.WithVelocity( _faceDir * (speed * (1f - roll01)) );
+			_anim.DuckLevel = roll01;
 		}
-		_terryPrevPos = _terry.WorldPosition;
 
 		if ( ShowSpeed && _body.IsValid() )
 		{
@@ -413,26 +410,29 @@ public sealed class BallController : Component, Component.ICollisionListener
 		}
 	}
 
-	private void PlaceTerry()
+	// Hang Terry CENTRED in the ball, facing the way it's travelling, tumbling forward as roll01 rises.
+	private void PlaceTerry( float roll01 )
 	{
 		if ( !_terry.IsValid() ) return;
 
-		// Terry's origin is at his feet, so plant his feet just inside the shell.
-		var innerR = Radius - 2f;
-		_terry.WorldPosition = WorldPosition + _dir * innerR;
-
-		// Face the direction the ball is actually rolling ("if he can" — keep the last
-		// heading while it's nearly stationary so he doesn't spin). "up" is the inward
-		// normal (-_dir), so he leans into the curve as he climbs.
-		var up = -_dir;
-		var travel = _body.IsValid() ? _body.Velocity : Vector3.Zero;
-		travel -= travel.Dot( up ) * up; // onto his standing plane
+		// Always face the direction the ball is actually rolling ("if he can" — keep the last heading while
+		// it's nearly stationary so he doesn't spin in place).
+		var travel = (_body.IsValid() ? _body.Velocity : Vector3.Zero).WithZ( 0f );
 		if ( travel.Length > 5f )
 			_faceDir = travel.Normal;
+		var fwd = _faceDir.Length > 0.001f ? _faceDir.Normal : Vector3.Forward;
 
-		var fwd = _faceDir - _faceDir.Dot( up ) * up;
-		fwd = fwd.Length > 0.001f ? fwd.Normal : Vector3.Forward;
-		_terry.WorldRotation = Rotation.LookAt( fwd, up );
+		// Upright run vs. tumbling roll: build both and slerp between them by roll01. Slerping the
+		// orientation (not the raw angle) stays continuous across the 360° wrap and snaps cleanly back to
+		// upright as the ball slows — so a slow ball reads as a run, a fast one as a tumbling ball.
+		var rollAxis = fwd.Cross( Vector3.Up ).Normal; // his right-hand side: positive angle pitches forward
+		var baseRot = Rotation.LookAt( fwd, Vector3.Up );
+		var rollRot = Rotation.FromAxis( rollAxis, _rollAngle ) * baseRot;
+		_terry.WorldRotation = Rotation.Slerp( baseRot, rollRot, roll01 );
+
+		// Pivot the tumble about the ball centre: his torso-centre sits on the centre, feet hang below it
+		// (rotated with him, so he rolls around the middle rather than orbiting on a stick).
+		_terry.WorldPosition = WorldPosition - _terry.WorldRotation.Up * _bodyCentreUp;
 	}
 
 	// DEBUG: log every ball↔pin contact and its impulse. This is the crux diagnostic — if the ball
