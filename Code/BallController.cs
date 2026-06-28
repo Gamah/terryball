@@ -72,6 +72,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// cadence alone tops out at a jog, which looks way too slow against a fast ball, so we lerp the
 	/// playback rate from 1× (walk) up to this as the ball accelerates toward the roll.</summary>
 	[Property, Group( "Occupant" )] public float RunPlaybackRate { get; set; } = 3f;
+	/// <summary>Seconds to crossfade the run↔roll change. We ease a blend over this window (flipping the
+	/// special-move state at its mid-point and crossfading the playback rate) so the switch isn't a hard
+	/// snap. The Citizen animgraph crossfades the actual pose on its own baked timing.</summary>
+	[Property, Group( "Occupant" )] public float TransitionTime { get; set; } = 0.15f;
 
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
@@ -133,6 +137,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// offset that hangs his middle on the ball centre.
 	private Vector3 _faceDir = Vector3.Forward; // last meaningful heading (ball travel dir)
 	private float _bodyCentreUp;                // feet→centre height (scaled), so he sits centred in the ball
+	private float _rollBlend;                   // eased 0..1 run→roll blend, for the TransitionTime crossfade
 	private bool _built;
 
 	protected override void OnEnabled()
@@ -401,15 +406,28 @@ public sealed class BallController : Component, Component.ICollisionListener
 			var rolling = speed >= rollSpeed;
 			var ramp01 = rollSpeed > 0f ? (speed / rollSpeed).Clamp( 0f, 1f ) : 0f;
 
-			_anim.SpecialMove = rolling
+			// Ease a 0..1 blend toward the roll over TransitionTime so the run↔roll change crossfades instead
+			// of snapping the instant we cross the threshold. The animgraph crossfades the actual pose; we
+			// ride the same window to flip the special-move state at the half-way point (hidden mid-blend)
+			// and to crossfade the playback rate.
+			var step = TransitionTime > 0f ? Time.Delta / TransitionTime : 1f;
+			var target = rolling ? 1f : 0f;
+			_rollBlend = _rollBlend < target
+				? MathF.Min( target, _rollBlend + step )
+				: MathF.Max( target, _rollBlend - step );
+
+			_anim.SpecialMove = _rollBlend >= 0.5f
 				? CitizenAnimationHelper.SpecialMoveStyle.Roll
 				: CitizenAnimationHelper.SpecialMoveStyle.None;
 
 			// Drive playback rate directly: the move-speed cadence alone tops out at a jog (way too slow
-			// against a fast ball), so ramp the run's playback 1×→RunPlaybackRate as the ball speeds up, and
-			// switch to the fixed RollPlaybackRate once he's rolling.
+			// against a fast ball), so ramp the run's playback 1×→RunPlaybackRate as the ball speeds up, then
+			// crossfade to the fixed RollPlaybackRate across the same blend window.
 			if ( _terryRenderer.IsValid() )
-				_terryRenderer.PlaybackRate = rolling ? RollPlaybackRate : MathX.Lerp( 1f, RunPlaybackRate, ramp01 );
+			{
+				var runRate = MathX.Lerp( 1f, RunPlaybackRate, ramp01 );
+				_terryRenderer.PlaybackRate = MathX.Lerp( runRate, RollPlaybackRate, _rollBlend );
+			}
 
 			// Feed his legs a ramped speed (Auto move-style picks walk vs run from it), facing travel so the
 			// run/roll go the way the ball's rolling. Capped at RunTopSpeed (~9.5 mph) right as the roll takes over.
