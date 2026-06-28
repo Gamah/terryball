@@ -79,7 +79,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// <summary>Seconds to crossfade the run↔roll change. We ease a blend over this window (flipping the
 	/// special-move state at its mid-point and crossfading the playback rate) so the switch isn't a hard
 	/// snap. The Citizen animgraph crossfades the actual pose on its own baked timing.</summary>
-	[Property, Group( "Occupant" )] public float TransitionTime { get; set; } = 0.15f;
+	[Property, Group( "Occupant" )] public float TransitionTime { get; set; } = 0.375f;
 
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
