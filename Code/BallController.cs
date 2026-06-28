@@ -58,9 +58,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
-	/// <summary>Ball speed (u/s) at which Terry switches from running into the Citizen's continuous Roll
-	/// animation. His legs ramp up walk→run over 0..this, maxing out just as he tucks into the roll.</summary>
-	[Property, Group( "Occupant" )] public float RollFullSpeed { get; set; } = 3600f;
+	/// <summary>Ball speed — in the SAME bowling-scale mph the HUD shows — at or above which Terry switches
+	/// from running into the Citizen's continuous Roll animation. His legs ramp up walk→run over 0..this,
+	/// maxing out just as he tucks into the roll. Kept in mph so it tracks the gauge regardless of Radius.</summary>
+	[Property, Group( "Occupant" )] public float RollAtMph { get; set; } = 11.5f;
 	/// <summary>Top leg speed (u/s) Terry's run ramps to right before he rolls. The Citizen is ~1 unit/inch,
 	/// so ≈167 u/s reads as a ~9.5 mph run; below it the Auto move-style eases him from a walk into a run.</summary>
 	[Property, Group( "Occupant" )] public float RunTopSpeed { get; set; } = 167f;
@@ -105,7 +106,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// --- Occupant (Terry) visual ride --------------------------------------------------
 	// Terry rides CENTRED in the ball (purely visual — he doesn't drive it). He runs facing the
 	// ball's travel direction and blends into a tucked forward somersault as it speeds up; see
-	// RollFullSpeed / RunTopSpeed up top, OnUpdate (anim) and PlaceTerry.
+	// RollAtMph / RunTopSpeed up top, OnUpdate (anim) and PlaceTerry.
 
 	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
@@ -390,12 +391,15 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		// Drive Terry's locomotion from the BALL's speed (he's centred, so he barely moves himself). He
 		// eases from a walk up to a run as the ball speeds up, then tucks into the Citizen's continuous Roll
-		// animation once it's really moving. ramp01 maps 0..RollFullSpeed → walk..run; past that he rolls.
+		// animation once it's really moving. ramp01 maps 0..rollSpeed → walk..run; past that he rolls.
 		if ( _anim.IsValid() )
 		{
 			var speed = _body.IsValid() ? _body.Velocity.WithZ( 0f ).Length : 0f;
-			var rolling = speed > RollFullSpeed;
-			var ramp01 = RollFullSpeed > 0f ? (speed / RollFullSpeed).Clamp( 0f, 1f ) : 0f;
+			// Roll threshold expressed in the HUD's bowling-scale mph, so "11.5 mph and up" means what the
+			// gauge says (and survives a Radius change). Same mph mapping as the ShowSpeed readout below.
+			var rollSpeed = MphToUnits( RollAtMph );
+			var rolling = speed >= rollSpeed;
+			var ramp01 = rollSpeed > 0f ? (speed / rollSpeed).Clamp( 0f, 1f ) : 0f;
 
 			_anim.SpecialMove = rolling
 				? CitizenAnimationHelper.SpecialMoveStyle.Roll
@@ -414,14 +418,17 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		if ( ShowSpeed && _body.IsValid() )
 		{
-			// Speed in units, plus a real-world mph treating the ball's diameter as 8.5".
+			// Speed in units, plus a real-world mph treating the ball's diameter as RealBallInches.
 			var v = _body.Velocity.Length;
-			var inchesPerUnit = RealBallInches / (Radius * 2f);
-			var mph = v * inchesPerUnit / 17.6f; // 1 mph = 17.6 in/s
 			DebugOverlay.Text( WorldPosition + Vector3.Up * (Radius + 90f),
-				$"{mph:F1} mph   ({v:F0} u/s)", 24, TextFlag.Center, Color.White );
+				$"{UnitsToMph( v ):F1} mph   ({v:F0} u/s)", 24, TextFlag.Center, Color.White );
 		}
 	}
+
+	// Bowling-scale mph ↔ units, treating the ball's diameter as RealBallInches (1 mph = 17.6 in/s). The
+	// HUD readout and the roll threshold both go through these so "11.5 mph" means exactly what's on screen.
+	private float UnitsToMph( float units ) => units * (RealBallInches / (Radius * 2f)) / 17.6f;
+	private float MphToUnits( float mph ) => mph * 17.6f * (Radius * 2f) / RealBallInches;
 
 	// Hang Terry CENTRED in the ball, upright, facing the way it's travelling. The run/roll motion is all
 	// in the animation (see OnUpdate) — his root just faces travel and sits on the ball centre.
@@ -438,8 +445,17 @@ public sealed class BallController : Component, Component.ICollisionListener
 		var fwd = _faceDir.Length > 0.001f ? _faceDir.Normal : Vector3.Forward;
 
 		_terry.WorldRotation = Rotation.LookAt( fwd, Vector3.Up );
-		// Hang his torso-centre on the ball centre (feet below, head above) so he's framed in the middle.
-		_terry.WorldPosition = WorldPosition - Vector3.Up * _bodyCentreUp;
+
+		// Hang his PELVIS on the ball centre, not his feet. His origin is at his feet, but each clip (walk,
+		// run, the curled roll) holds the pelvis a different height above that origin — pinning the feet let
+		// that per-clip difference bob his whole body up/down through the transitions. So we read the pelvis's
+		// current height above the origin and offset by THAT, which cancels the shift and keeps his middle
+		// framed dead-centre regardless of which animation is playing. (Falls back to the static half-height
+		// if the bone isn't resolvable yet.)
+		var pelvisUp = _bodyCentreUp;
+		if ( _terryRenderer.IsValid() && _terryRenderer.TryGetBoneTransformLocal( "pelvis", out var pelvisLocal ) )
+			pelvisUp = pelvisLocal.Position.z * TerryScale;
+		_terry.WorldPosition = WorldPosition - Vector3.Up * pelvisUp;
 	}
 
 	// DEBUG: log every ball↔pin contact and its impulse. This is the crux diagnostic — if the ball
