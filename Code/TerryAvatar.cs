@@ -168,7 +168,7 @@ public sealed class TerryAvatar : Component
 		var spread = (Math.Abs( (Network.Owner?.Id.GetHashCode() ?? 0) ) % 1000) / 1000f; // 0..1, stable
 		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, spread );
 		GameObject.WorldPosition = builder.SetteeFloorCenter + new Vector3( 0f, y, 0f );
-		GameObject.WorldRotation = Rotation.FromYaw( 0f ); // face the lane (+x)
+		GameObject.WorldRotation = builder.SetteeFaceRotation; // face down the lane from the settee
 	}
 
 	// Find the nearest in-range LaneStation and engage/disengage the lane-controls cursor on E.

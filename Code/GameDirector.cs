@@ -285,7 +285,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		var go = new GameObject( true, $"Terry_{channel.DisplayName}" )
 		{
 			WorldPosition = NextSpawnPosition(),
-			WorldRotation = Rotation.FromYaw( 0f ), // face the lane (+x)
+			WorldRotation = _lane.IsValid() ? _lane.SetteeFaceRotation : Rotation.Identity, // face down the lane from the settee
 		};
 
 		var player = go.Components.Create<PlayerController>();
