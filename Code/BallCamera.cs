@@ -37,11 +37,23 @@ public sealed class BallCamera : Component
 	/// reading look. Cleared on reset, so the camera blends back onto the ball.</summary>
 	public bool Watching { get; set; }
 
+	/// <summary>Seconds to ease the camera across the hand-off between the walking-Terry view and the
+	/// in-ball view (the scoop/drop), instead of snapping in one frame.</summary>
+	[Property, Group( "Transition" )] public float TransitionSeconds { get; set; } = 0.45f;
+
 	private BallController _ball;
 	private LaneBuilder _lane;
 	private float _yaw;
 	private float _pitch = 15f;
 	private float _blend; // 0 = on the ball, 1 = pin-deck watch vantage
+
+	// Terry-cam ↔ ball-cam hand-off smoothing. Whoever owns the camera this frame (PlayerController when
+	// walking, this when scooped in) has already written Scene.Camera by OnPreRender; we ease across the
+	// jump that happens the moment ownership flips (Carried edge).
+	private bool _hasApplied, _wasInBall, _blendActive;
+	private float _blendElapsed;
+	private Vector3 _appliedPos, _blendFromPos;
+	private Rotation _appliedRot, _blendFromRot;
 
 	protected override void OnEnabled()
 	{
@@ -99,5 +111,56 @@ public sealed class BallCamera : Component
 
 		WorldPosition = Vector3.Lerp( playPos, watchPos, _blend );
 		WorldRotation = Rotation.Slerp( playRot, watchRot, _blend );
+	}
+
+	// Runs after every OnUpdate (so after whichever component owns the camera this frame has set it), and
+	// every frame regardless of the OnUpdate bow-out above — so it can ease BOTH directions of the hand-off.
+	protected override void OnPreRender()
+	{
+		var targetPos = WorldPosition;
+		var targetRot = WorldRotation;
+
+		var director = Lane.Of( this )?.Director;
+		var localAv = TerryAvatar.Local( Scene );
+		var inBall = director is not null && director.LocalIsBowling && (localAv?.Carried ?? false);
+
+		if ( !_hasApplied )
+		{
+			_appliedPos = targetPos;
+			_appliedRot = targetRot;
+			_wasInBall = inBall;
+			_hasApplied = true;
+		}
+
+		// Ownership just flipped (scoop or drop): start easing from whatever we were actually showing toward
+		// the new owner's view. We hold _blendFrom and chase the LIVE target, so it's robust to which
+		// component happened to update first this frame.
+		if ( inBall != _wasInBall )
+		{
+			_blendActive = true;
+			_blendElapsed = 0f;
+			_blendFromPos = _appliedPos;
+			_blendFromRot = _appliedRot;
+		}
+		_wasInBall = inBall;
+
+		if ( _blendActive )
+		{
+			_blendElapsed += Time.Delta;
+			var dur = MathF.Max( 0.01f, TransitionSeconds );
+			var k = (_blendElapsed / dur).Clamp( 0f, 1f );
+			k = k * k * (3f - 2f * k); // smoothstep
+			_appliedPos = Vector3.Lerp( _blendFromPos, targetPos, k );
+			_appliedRot = Rotation.Slerp( _blendFromRot, targetRot, k );
+			if ( _blendElapsed >= dur ) _blendActive = false;
+		}
+		else
+		{
+			_appliedPos = targetPos;
+			_appliedRot = targetRot;
+		}
+
+		WorldPosition = _appliedPos;
+		WorldRotation = _appliedRot;
 	}
 }
