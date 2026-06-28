@@ -71,11 +71,21 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	public enum RoundState { Rolling, Watching, Craning, Spent }
 	public RoundState State { get; private set; } = RoundState.Rolling;
 
-	/// <summary>Seconds the crane (claw) takes for ONE leg of a trip — the ball arcs run-up→bowler on the
-	/// outbound leg, then bowler→run-up on the return, so a full pickup/dropoff is two of these.</summary>
-	[Property, Group( "Crane" )] public float CraneLegSeconds { get; set; } = 1.3f;
-	/// <summary>Peak height (units) the ball arcs up to mid-leg, so the claw sails OVER the rack instead of
-	/// plowing through it on its way to the settee behind the pins.</summary>
+	/// <summary>Top travel speed (u/s) the claw flies at — a CAP, so a long full-lane trip just takes
+	/// longer rather than blurring across in a fixed time. Duration of a leg = distance ÷ this (floored by
+	/// <see cref="CraneMinTravelSeconds"/>). The lane is ~22k units end to settee, so this is what keeps
+	/// the transport readable instead of a snap.</summary>
+	[Property, Group( "Crane" )] public float CraneSpeed { get; set; } = 12700f;
+	/// <summary>Floor on a travel leg's duration (seconds) so a short hop (seat→seat) isn't instant.</summary>
+	[Property, Group( "Crane" )] public float CraneMinTravelSeconds { get; set; } = 0.45f;
+	/// <summary>How far (units) the ball floats straight UP out of its rest spot before setting off.</summary>
+	[Property, Group( "Crane" )] public float CraneLiftHeight { get; set; } = 500f;
+	/// <summary>Seconds for that float-up.</summary>
+	[Property, Group( "Crane" )] public float CraneLiftSeconds { get; set; } = 0.5f;
+	/// <summary>Beat (seconds) the ball hovers at the top before it starts travelling.</summary>
+	[Property, Group( "Crane" )] public float CraneHoverSeconds { get; set; } = 0.4f;
+	/// <summary>Extra height (units) the travel bulges up mid-leg, on top of the float-up, so the claw
+	/// sails well OVER the rack on its way to the settee behind the pins.</summary>
 	[Property, Group( "Crane" )] public float CraneArcHeight { get; set; } = 260f;
 
 	// --- Multiplayer ownership ----------------------------------------------------------
@@ -180,12 +190,16 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	//             lane start and roll (1 leg). This is the "ball return".
 	//   Dropoff — fly to the bowler's seat and set them down; the ball stays there for the next pickup to
 	//             fly on from (1 leg). Only between DIFFERENT bowlers.
+	// Each trip floats up out of rest, hovers a beat, then travels (at a capped speed) to the target.
 	private enum CraneJob { None, Pickup, Return, Dropoff }
+	private enum CranePhase { Lift, Hover, Travel }
 	private CraneJob _craneJob;
+	private CranePhase _cranePhase;
 	private bool _ballCraned;     // ball currently in kinematic crane mode (collider on ⟺ rolling)
 	private int _craneLeg;        // 0 = outbound, 1 = the fly-to-start (pickup only)
-	private float _craneT;        // 0..1 progress within the current leg
-	private Vector3 _craneFrom, _craneTo;
+	private float _craneElapsed;  // seconds into the current phase/leg
+	private float _craneDuration; // length (seconds) of the current lift/travel
+	private Vector3 _craneFrom, _craneTo, _craneLiftTop;
 	private Vector3 _grabPos;     // where the claw grabbed us this turn
 	private bool _grabOnSettee;   // ...and whether that was on the settee (else we drop at the middle)
 	private Vector3 _dropSpot;    // where to set us back down at turn's end
@@ -843,20 +857,18 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private Vector3 CraneRest( Vector3 footSpot )
 		=> footSpot + Vector3.Up * (_ball.IsValid() ? _ball.Radius : 100f);
 
-	// Start a crane trip from the ball's current position. The leg-0 target depends on the job; Pickup adds
-	// a 2nd leg (seat→start) after the scoop.
+	// Start a crane trip from the ball's current position: float up, hover, then travel to the leg target.
+	// Pickup adds a 2nd travel leg (seat→start) after the scoop.
 	private void StartCrane( CraneJob job )
 	{
 		_craneJob = job;
 		_craneLeg = 0;
-		_craneT = 0f;
 		_craneFrom = _ball.WorldPosition;
-		_craneTo = job switch
-		{
-			CraneJob.Pickup => CraneRest( _grabPos ),  // out to fetch the bowler
-			CraneJob.Dropoff => CraneRest( _dropSpot ), // out to set the bowler down
-			_ => _ballHome,                             // Return: straight up to the lane start
-		};
+		_craneLiftTop = _craneFrom + Vector3.Up * CraneLiftHeight;
+		_craneTo = LegTarget( 0 );
+		_cranePhase = CranePhase.Lift;
+		_craneElapsed = 0f;
+		_craneDuration = MathF.Max( 0.05f, CraneLiftSeconds );
 		State = RoundState.Craning;
 		_ball.ControlsLocked = true;
 		if ( _camera.IsValid() ) _camera.Watching = false;
@@ -864,16 +876,60 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_ballCraned = true;
 	}
 
+	// Where the current leg is headed. Pickup: leg 0 = the bowler's seat, leg 1 = the lane start.
+	private Vector3 LegTarget( int leg ) => _craneJob switch
+	{
+		CraneJob.Pickup => leg == 0 ? CraneRest( _grabPos ) : _ballHome,
+		CraneJob.Dropoff => CraneRest( _dropSpot ),
+		_ => _ballHome, // Return
+	};
+
+	// Travel time for a leg: distance ÷ the speed cap, but never less than the short-hop floor.
+	private float TravelSeconds( Vector3 a, Vector3 b )
+		=> MathF.Max( CraneMinTravelSeconds, (b - a).Length / (CraneSpeed > 1f ? CraneSpeed : 1f) );
+
 	private void UpdateCrane()
 	{
-		var leg = CraneLegSeconds > 0f ? CraneLegSeconds : 1f;
-		_craneT += Time.Delta / leg;
-		var t = _craneT.Clamp( 0f, 1f );
-		var pos = Vector3.Lerp( _craneFrom, _craneTo, t ) + Vector3.Up * CraneArcHeight * MathF.Sin( t * MathF.PI );
-		_ball.CraneMoveTo( pos );
+		_craneElapsed += Time.Delta;
 
-		if ( _craneT < 1f ) return;
+		switch ( _cranePhase )
+		{
+			case CranePhase.Lift:
+			{
+				var t = (_craneDuration > 0f ? _craneElapsed / _craneDuration : 1f).Clamp( 0f, 1f );
+				_ball.CraneMoveTo( Vector3.Lerp( _craneFrom, _craneLiftTop, t ) );
+				if ( t >= 1f ) { _cranePhase = CranePhase.Hover; _craneElapsed = 0f; }
+				break;
+			}
 
+			case CranePhase.Hover:
+			{
+				_ball.CraneMoveTo( _craneLiftTop );
+				if ( _craneElapsed >= CraneHoverSeconds )
+				{
+					_cranePhase = CranePhase.Travel;
+					_craneElapsed = 0f;
+					_craneFrom = _craneLiftTop;                 // set off from the hover point
+					_craneDuration = TravelSeconds( _craneFrom, _craneTo );
+				}
+				break;
+			}
+
+			case CranePhase.Travel:
+			{
+				var t = (_craneDuration > 0f ? _craneElapsed / _craneDuration : 1f).Clamp( 0f, 1f );
+				// Linear travel (so the speed cap holds) with a vertical bulge to clear the rack.
+				var pos = Vector3.Lerp( _craneFrom, _craneTo, t ) + Vector3.Up * CraneArcHeight * MathF.Sin( t * MathF.PI );
+				_ball.CraneMoveTo( pos );
+				if ( t >= 1f ) ArriveLeg();
+				break;
+			}
+		}
+	}
+
+	// A travel leg reached its target — scoop / drop / hand on to the next leg.
+	private void ArriveLeg()
+	{
 		switch ( _craneJob )
 		{
 			case CraneJob.Pickup:
@@ -881,9 +937,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				{
 					LocalAvatar?.ScoopIntoBall();   // body → ball, camera → ball
 					_craneLeg = 1;
-					_craneT = 0f;
-					_craneFrom = _craneTo;
-					_craneTo = _ballHome;           // now fly to the lane start to roll
+					_craneFrom = _craneTo;          // from the seat...
+					_craneTo = LegTarget( 1 );      // ...on to the lane start (no extra lift; the arc carries it)
+					_craneElapsed = 0f;
+					_craneDuration = TravelSeconds( _craneFrom, _craneTo );
 				}
 				else FinishRoll();
 				break;
