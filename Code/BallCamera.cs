@@ -50,6 +50,7 @@ public sealed class BallCamera : Component
 	// Terry-cam ↔ ball-cam hand-off smoothing. Whoever owns the camera this frame (PlayerController when
 	// walking, this when scooped in) has already written Scene.Camera by OnPreRender; we ease across the
 	// jump that happens the moment ownership flips (Carried edge).
+	private bool _wasInBallUpdate;   // rising-edge tracker in OnUpdate, for adopting the view direction
 	private bool _hasApplied, _wasInBall, _blendActive;
 	private float _blendElapsed;
 	private Vector3 _appliedPos, _blendFromPos;
@@ -71,6 +72,18 @@ public sealed class BallCamera : Component
 		var director = lane?.Director;
 		var localAv = TerryAvatar.Local( Scene );
 		var inBall = director is not null && director.LocalIsBowling && (localAv?.Carried ?? false);
+
+		// Just got scooped in: adopt the walking camera's current aim so the ball-cam picks up pointing
+		// exactly where Terry was looking (no swing). The camera still holds that pose now — PlayerController
+		// is suspended this frame and we haven't driven it yet.
+		if ( inBall && !_wasInBallUpdate )
+		{
+			var a = WorldRotation.Angles();
+			_yaw = a.yaw;
+			_pitch = a.pitch.Clamp( MinPitch, MaxPitch );
+		}
+		_wasInBallUpdate = inBall;
+
 		if ( director is not null && !inBall ) return;
 
 		if ( !_ball.IsValid() )

@@ -56,6 +56,8 @@ public sealed class TerryAvatar : Component
 	private PlayerController _player;
 	private GameObject _body;
 	private bool _wasBowling;   // edge-detect the end of our turn, to walk us back to the settee
+	private bool _wasCarried;   // edge-detect leaving the ball, to carry the view aim into the walk camera
+	private Rotation _lastInBallCamRot = Rotation.Identity; // ball-cam aim, cached while carried, for the hand-off
 
 	// Where the crane grabbed us (or the settee middle, if we were grabbed off it) — the turn-end drop
 	// AND the R/teleport fallback put us back here. Owner-local; set by the director at pickup.
@@ -159,6 +161,20 @@ public sealed class TerryAvatar : Component
 			if ( !Bowling && Carried )
 				Carried = false;
 
+			// Carry the view aim across the ball→walk hand-off so the camera doesn't swing. While we're in
+			// the ball (BallCamera owns the camera) we remember its aim each frame; the moment we're set
+			// down, hand that aim to PlayerController so it picks up pointing the same way. Caching avoids
+			// reading Scene.Camera on the exit frame, when PlayerController may already have overwritten it.
+			if ( Carried )
+			{
+				var cam = Scene.Camera;
+				if ( cam.IsValid() ) _lastInBallCamRot = cam.WorldRotation;
+			}
+			else if ( _wasCarried && _player.IsValid() )
+			{
+				_player.EyeAngles = _lastInBallCamRot.Angles() with { roll = 0f };
+			}
+
 			// Our turn just ended (handed off to the next bowler, or the game finished): put us back in
 			// the settee, not stranded up at the lane station where we pressed START. The transform is
 			// owner-authoritative, so we move ourselves rather than the host yanking us.
@@ -185,6 +201,7 @@ public sealed class TerryAvatar : Component
 				ReturnToSettee();
 		}
 		_wasBowling = Bowling;
+		_wasCarried = Carried;
 	}
 
 	// Drop us back onto the settee carpet, fanned across its width by a stable per-player offset so
