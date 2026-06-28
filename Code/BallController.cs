@@ -65,9 +65,12 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// so ≈167 u/s reads as a ~9.5 mph run; below it the Auto move-style eases him from a walk into a run.</summary>
 	[Property, Group( "Occupant" )] public float RunTopSpeed { get; set; } = 167f;
 	/// <summary>Animgraph playback multiplier while Terry is rolling. The Roll clip plays at a fixed baked
-	/// cadence, so we drive its speed here — 3 = the roll spins ~3× its default rate. Run/walk ignore this
-	/// (their cadence comes from the fed move speed); it's reset to 1 the moment he's not rolling.</summary>
+	/// cadence, so we drive its speed here — 3 = the roll spins ~3× its default rate.</summary>
 	[Property, Group( "Occupant" )] public float RollPlaybackRate { get; set; } = 3f;
+	/// <summary>Animgraph playback multiplier the run ramps UP to (at the roll threshold). The move-speed
+	/// cadence alone tops out at a jog, which looks way too slow against a fast ball, so we lerp the
+	/// playback rate from 1× (walk) up to this as the ball accelerates toward the roll.</summary>
+	[Property, Group( "Occupant" )] public float RunPlaybackRate { get; set; } = 3f;
 
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
@@ -392,19 +395,20 @@ public sealed class BallController : Component, Component.ICollisionListener
 		{
 			var speed = _body.IsValid() ? _body.Velocity.WithZ( 0f ).Length : 0f;
 			var rolling = speed > RollFullSpeed;
+			var ramp01 = RollFullSpeed > 0f ? (speed / RollFullSpeed).Clamp( 0f, 1f ) : 0f;
 
 			_anim.SpecialMove = rolling
 				? CitizenAnimationHelper.SpecialMoveStyle.Roll
 				: CitizenAnimationHelper.SpecialMoveStyle.None;
 
-			// The Roll clip plays at a fixed baked cadence, so speed it up via the renderer's playback rate;
-			// the run/walk get their cadence from the fed move speed, so reset to 1× when not rolling.
+			// Drive playback rate directly: the move-speed cadence alone tops out at a jog (way too slow
+			// against a fast ball), so ramp the run's playback 1×→RunPlaybackRate as the ball speeds up, and
+			// switch to the fixed RollPlaybackRate once he's rolling.
 			if ( _terryRenderer.IsValid() )
-				_terryRenderer.PlaybackRate = rolling ? RollPlaybackRate : 1f;
+				_terryRenderer.PlaybackRate = rolling ? RollPlaybackRate : MathX.Lerp( 1f, RunPlaybackRate, ramp01 );
 
 			// Feed his legs a ramped speed (Auto move-style picks walk vs run from it), facing travel so the
 			// run/roll go the way the ball's rolling. Capped at RunTopSpeed (~9.5 mph) right as the roll takes over.
-			var ramp01 = RollFullSpeed > 0f ? (speed / RollFullSpeed).Clamp( 0f, 1f ) : 0f;
 			_anim.WithVelocity( _faceDir * (RunTopSpeed * ramp01) );
 		}
 
