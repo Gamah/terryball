@@ -268,6 +268,13 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_hud.Components.Create<LaneControls>();
 		_hud.Components.Create<ChatPanel>();
 		_hud.Components.Create<BowlerHud>();
+
+		// Client-local background music: the Skafinity engine plays on its own; the drop-in panel
+		// starts DISABLED (so its ♪ button never shows over the alley and steals the cursor) and is
+		// driven from the keyboard by MusicScreen — N toggles the board, M mutes. See MusicScreen.
+		_hud.Components.Create<Skafinity.SkafinityPlayer>();
+		_hud.Components.Create<Skafinity.SkafinityMusicPanel>( false );
+		_hud.Components.Create<MusicScreen>();
 	}
 
 	// --- Network roster ----------------------------------------------------------------

@@ -67,9 +67,9 @@ public sealed class BallCamera : Component
 		if ( !_lane.IsValid() )
 			_lane = lane?.Builder;
 
-		// Freeze look input while watching OR while the chat box is open (so typing doesn't spin the
-		// camera); otherwise yaw/pitch follow the mouse as normal.
-		if ( !Watching && !ChatPanel.IsOpen )
+		// Freeze look input while watching OR while the chat box / music board is open (so typing or
+		// clicking the panel doesn't spin the camera); otherwise yaw/pitch follow the mouse as normal.
+		if ( !Watching && !ChatPanel.IsOpen && !MusicScreen.IsOpen )
 		{
 			var look = Input.AnalogLook; // sign + sensitivity already applied
 			_yaw += look.yaw;
