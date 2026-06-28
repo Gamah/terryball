@@ -1,8 +1,25 @@
-# s&box editor state (machine-specific)
+# s&box build output
+.addon/
+bin/
+obj/
+
+# s&box editor state + compiled assets (regenerated from sources on open/compile)
 .sbox/
-/bin/
-/obj/
-*.user
+*_c
+*_d
+Assets/**/*_c
+
 # editor-generated project files (regenerated on open)
 *.csproj
 *.slnx
+**/Properties/launchSettings.json
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
