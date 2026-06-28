@@ -58,12 +58,12 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
 
-	/// <summary>Ball speed (u/s) at which Terry has fully transitioned from running to a tucked roll.
-	/// Below this he blends from an upright run toward a curled somersault as the ball speeds up.</summary>
+	/// <summary>Ball speed (u/s) at which Terry switches from running into the Citizen's continuous Roll
+	/// animation. His legs ramp up walk→run over 0..this, maxing out just as he tucks into the roll.</summary>
 	[Property, Group( "Occupant" )] public float RollFullSpeed { get; set; } = 2500f;
-	/// <summary>Somersault rate (deg/s) Terry tumbles at when fully rolled. The glass shell is featureless
-	/// so true ball spin isn't visible anyway — this is a tune-by-feel tumble, not literal rolling.</summary>
-	[Property, Group( "Occupant" )] public float TumbleSpeed { get; set; } = 540f;
+	/// <summary>Top leg speed (u/s) Terry's run ramps to right before he rolls. The Citizen is ~1 unit/inch,
+	/// so ≈167 u/s reads as a ~9.5 mph run; below it the Auto move-style eases him from a walk into a run.</summary>
+	[Property, Group( "Occupant" )] public float RunTopSpeed { get; set; } = 167f;
 
 	// --- Ball steering (the control scheme) --------------------------------------------
 	// WASD names a target travel direction; we steer the ball's horizontal velocity toward
@@ -98,7 +98,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// --- Occupant (Terry) visual ride --------------------------------------------------
 	// Terry rides CENTRED in the ball (purely visual — he doesn't drive it). He runs facing the
 	// ball's travel direction and blends into a tucked forward somersault as it speeds up; see
-	// RollFullSpeed / TumbleSpeed up top and PlaceTerry.
+	// RollFullSpeed / RunTopSpeed up top, OnUpdate (anim) and PlaceTerry.
 
 	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
@@ -121,12 +121,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private GameDirector Director => _director.IsValid() ? _director : (_director = Lane.Of( this )?.Director);
 
 	// Occupant state, in world space: Terry rides CENTRED in the ball (not on the inner wall). _faceDir
-	// is his last meaningful heading (the ball's travel direction); _rollAngle accumulates the somersault
-	// he tumbles through as the ball speeds up; _bodyCentreUp is the feet→torso-centre offset used to pivot
-	// his tumble about the ball centre.
+	// is his last meaningful heading (the ball's travel direction); _bodyCentreUp is the feet→torso-centre
+	// offset that hangs his middle on the ball centre.
 	private Vector3 _faceDir = Vector3.Forward; // last meaningful heading (ball travel dir)
-	private float _rollAngle;                   // accumulated somersault (deg), visual only
-	private float _bodyCentreUp;                // feet→centre height (scaled), so the tumble pivots on centre
+	private float _bodyCentreUp;                // feet→centre height (scaled), so he sits centred in the ball
 	private bool _built;
 
 	protected override void OnEnabled()
@@ -190,7 +188,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		_anim.Target = renderer;
 		_anim.IsGrounded = true;
 
-		PlaceTerry( 0f );
+		PlaceTerry();
 	}
 
 	// Keep the in-ball Terry wearing whoever is currently up (runs on every client, bowler or
@@ -381,22 +379,24 @@ public sealed class BallController : Component, Component.ICollisionListener
 	{
 		UpdateBowlerDress();
 
-		// roll01: 0 = upright running, 1 = fully tucked & tumbling. Driven by the ball's horizontal speed
-		// so Terry transitions from a run to a roll as the ball gets going.
-		var speed = _body.IsValid() ? _body.Velocity.WithZ( 0f ).Length : 0f;
-		var roll01 = RollFullSpeed > 0f ? (speed / RollFullSpeed).Clamp( 0f, 1f ) : 0f;
+		PlaceTerry();
 
-		// Advance the somersault phase; how much of it actually shows is blended in by roll01 in PlaceTerry.
-		_rollAngle = (_rollAngle + TumbleSpeed * Time.Delta) % 360f;
-
-		PlaceTerry( roll01 );
-
-		// Drive the run animation from the BALL's speed (Terry himself is centred and barely moves), fading
-		// it out as he tucks into the roll, and curl him up via the duck pose on the way.
+		// Drive Terry's locomotion from the BALL's speed (he's centred, so he barely moves himself). He
+		// eases from a walk up to a run as the ball speeds up, then tucks into the Citizen's continuous Roll
+		// animation once it's really moving. ramp01 maps 0..RollFullSpeed → walk..run; past that he rolls.
 		if ( _anim.IsValid() )
 		{
-			_anim.WithVelocity( _faceDir * (speed * (1f - roll01)) );
-			_anim.DuckLevel = roll01;
+			var speed = _body.IsValid() ? _body.Velocity.WithZ( 0f ).Length : 0f;
+			var rolling = speed > RollFullSpeed;
+
+			_anim.SpecialMove = rolling
+				? CitizenAnimationHelper.SpecialMoveStyle.Roll
+				: CitizenAnimationHelper.SpecialMoveStyle.None;
+
+			// Feed his legs a ramped speed (Auto move-style picks walk vs run from it), facing travel so the
+			// run/roll go the way the ball's rolling. Capped at RunTopSpeed (~9.5 mph) right as the roll takes over.
+			var ramp01 = RollFullSpeed > 0f ? (speed / RollFullSpeed).Clamp( 0f, 1f ) : 0f;
+			_anim.WithVelocity( _faceDir * (RunTopSpeed * ramp01) );
 		}
 
 		if ( ShowSpeed && _body.IsValid() )
@@ -410,29 +410,23 @@ public sealed class BallController : Component, Component.ICollisionListener
 		}
 	}
 
-	// Hang Terry CENTRED in the ball, facing the way it's travelling, tumbling forward as roll01 rises.
-	private void PlaceTerry( float roll01 )
+	// Hang Terry CENTRED in the ball, upright, facing the way it's travelling. The run/roll motion is all
+	// in the animation (see OnUpdate) — his root just faces travel and sits on the ball centre.
+	private void PlaceTerry()
 	{
 		if ( !_terry.IsValid() ) return;
 
 		// Always face the direction the ball is actually rolling ("if he can" — keep the last heading while
-		// it's nearly stationary so he doesn't spin in place).
+		// it's nearly stationary so he doesn't spin in place). The Citizen's Roll animation rolls forward
+		// along this facing, so facing travel keeps the roll going the right way.
 		var travel = (_body.IsValid() ? _body.Velocity : Vector3.Zero).WithZ( 0f );
 		if ( travel.Length > 5f )
 			_faceDir = travel.Normal;
 		var fwd = _faceDir.Length > 0.001f ? _faceDir.Normal : Vector3.Forward;
 
-		// Upright run vs. tumbling roll: build both and slerp between them by roll01. Slerping the
-		// orientation (not the raw angle) stays continuous across the 360° wrap and snaps cleanly back to
-		// upright as the ball slows — so a slow ball reads as a run, a fast one as a tumbling ball.
-		var rollAxis = fwd.Cross( Vector3.Up ).Normal; // his right-hand side: positive angle pitches forward
-		var baseRot = Rotation.LookAt( fwd, Vector3.Up );
-		var rollRot = Rotation.FromAxis( rollAxis, _rollAngle ) * baseRot;
-		_terry.WorldRotation = Rotation.Slerp( baseRot, rollRot, roll01 );
-
-		// Pivot the tumble about the ball centre: his torso-centre sits on the centre, feet hang below it
-		// (rotated with him, so he rolls around the middle rather than orbiting on a stick).
-		_terry.WorldPosition = WorldPosition - _terry.WorldRotation.Up * _bodyCentreUp;
+		_terry.WorldRotation = Rotation.LookAt( fwd, Vector3.Up );
+		// Hang his torso-centre on the ball centre (feet below, head above) so he's framed in the middle.
+		_terry.WorldPosition = WorldPosition - Vector3.Up * _bodyCentreUp;
 	}
 
 	// DEBUG: log every ball↔pin contact and its impulse. This is the crux diagnostic — if the ball
