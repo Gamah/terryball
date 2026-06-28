@@ -103,6 +103,13 @@
         <member name="P:Skafinity.SkafinityPlayer.AheadCount">
             <summary>How many upcoming songs to keep pre-generated (built one-per-tick so the fill never stalls a frame).</summary>
         </member>
+        <member name="P:Skafinity.SkafinityPlayer.PcmCacheRadius">
+            <summary>Radius (in songs) of the PCM cache kept around the current index: songs with
+            |n − N| ≤ PcmCacheRadius stay resident so Prev/Next within the window is instant; anything
+            further is pruned and regenerated from its ledger seed on demand. ~10 MB/song at the
+            default 32 kHz stereo / 80 s, so the ±5 default is ~110 MB resident — dial down on
+            constrained targets. The seed ledger (strings only) is never pruned.</summary>
+        </member>
         <member name="P:Skafinity.SkafinityPlayer.ForceInstrument">
             <summary>-1 = RNG; 0=Trumpet 1=Sax 2=Organ 3=Trombone.</summary>
         </member>
@@ -110,13 +117,48 @@
             <summary>Currently-playing song index.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.CurrentVibe">
-            <summary>The effective vibe — the override if set, else the encoded inspector knobs.</summary>
+            <summary>The effective vibe of the *playing* song: its frozen ledger seed when one exists
+            (so a shuffled song reports the vibe you actually hear), else the live knobs/override.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.CurrentSeed">
-            <summary>Shareable seed for the playing song: <c>vibe:tag:n</c>.</summary>
+            <summary>Shareable seed for the playing song: <c>vibe:tag:n</c>. Accurate even under shuffle —
+            it reproduces the exact song playing, because the vibe is the one frozen for this n.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.IsPlaying">
             <summary>True once a stream handle is live and audible.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.IsGenerating">
+            <summary>True while any synthesis is in flight (foreground seek or background look-ahead fill).</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.IsBuffering">
+            <summary>True while playback is stalled waiting on the song you asked to seek to (vs. silent
+            background fill). Pair with <see cref="!:GenerationProgress"/> for a "Generating…" indicator.</summary>
+        </member>
+        <member name="T:Skafinity.SkafinityPlayer.QueueEntry">
+            <summary>One entry in the navigable timeline (see <see cref="M:Skafinity.SkafinityPlayer.Timeline(System.Int32,System.Int32)"/>).</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.N">
+            <summary>Song index in the infinite sequence.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Vibe">
+            <summary>The frozen vibe seed for this song, or "" if it isn't pinned yet (tracks live knobs).</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Genre">
+            <summary>Genre id this song decodes to (see <see cref="P:Skafinity.VibeCodec.Genres"/>).</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Cached">
+            <summary>True if this song's PCM is resident (Prev/Next to it is instant).</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Current">
+            <summary>This song is the one currently playing.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Progress">
+            <summary>0..1 synthesis progress if this song is being generated right now, else -1.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.Timeline(System.Int32,System.Int32)">
+            <summary>Snapshot the timeline around the current song: <paramref name="back"/> history entries
+            (n−back…n−1), the current song, and <paramref name="fwd"/> look-ahead entries (n+1…n+fwd). For
+            the queue view; reflects cached-vs-needs-regenerate and in-flight generation state.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.ConfigureFlat">
             <summary>Make the stream play as flat 2D (SpacialBlend=0, parented to the camera with
@@ -126,9 +168,10 @@
             <summary>The config currently in effect (inspector knobs with any <see cref="P:Skafinity.SkafinityPlayer.Vibe"/> applied).</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.FillAhead(System.Int32)">
-            <summary>Top the look-ahead buffer up to <see cref="P:Skafinity.SkafinityPlayer.AheadCount"/>, generating each song on
-            a worker thread. Fire-and-forget from OnUpdate; <paramref name="seq"/> guards against a
-            sequence restart landing a stale song in the buffer.</summary>
+            <summary>Pre-render the forward window (n+1…n+<see cref="P:Skafinity.SkafinityPlayer.ForwardWindow"/>) into the PCM cache,
+            one song per iteration on a worker thread. Each song is built from its own ledger seed (so the
+            queue is heterogeneous under shuffle, not one repeated vibe). Fire-and-forget from OnUpdate;
+            <paramref name="seq"/> guards against a sequence restart landing a stale song in the cache.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.WriteSongBody(System.Int16[],System.Int32,System.Int32,System.Int32)">
             <summary>Write one pass of interleaved-stereo <paramref name="raw"/> to the stream, given the
@@ -137,9 +180,19 @@
             <paramref name="fadeIn"/> frames. Returns frames written.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.StartSequence">
-            <summary>(Re)start the infinite sequence at the current tag/n. Bumps the sequence token
-            (invalidating any in-flight generation), stops the current handle, then kicks the async
-            (worker-thread) start so the caller never blocks.</summary>
+            <summary>(Re)start the infinite sequence at the current tag/n, rebuilding the timeline from
+            scratch. Bumps the sequence token (invalidating any in-flight generation), clears the seed
+            ledger AND the PCM cache (this is for seed/genre/base-vibe changes that invalidate the frozen
+            line), stops the current handle, then kicks the async start so the caller never blocks. For a
+            navigation that should PRESERVE the timeline (Prev/Next), use <see cref="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32)"/> instead.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32)">
+            <summary>Navigate to song index <paramref name="n"/> while PRESERVING the timeline (ledger +
+            PCM cache). If n's PCM is resident it plays instantly; otherwise playback stalls in a
+            "buffering" state (<see cref="P:Skafinity.SkafinityPlayer.IsBuffering"/>) while it regenerates from n's ledger seed. This
+            is what Prev/Next call — Prev replays the exact earlier songs, Next rolls a fresh genre on
+            demand under shuffle. Restarts the SoundStream (a manual jump breaks the crossfade chain), but
+            does NOT discard the timeline the way <see cref="M:Skafinity.SkafinityPlayer.StartSequence"/> does.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.PlaySeed(System.String)">
             <summary>Play a shareable seed in any of the forms <c>vibe:tag:n</c>, <c>tag:n</c>, or
@@ -150,10 +203,12 @@
             <summary>Set just the seed tag (empty = the default "skafinity" seed). Restarts.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.SetN(System.Int32)">
-            <summary>Jump to song index n in the sequence (clamped ≥ 0). Restarts.</summary>
+            <summary>Jump to song index n in the sequence (clamped ≥ 0), preserving the timeline. Plays
+            cached PCM instantly when in the window, else buffers while regenerating from n's ledger seed.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.StepN(System.Int32)">
-            <summary>Step the song index by <paramref name="delta"/> (e.g. +1 / -1). Restarts.</summary>
+            <summary>Step the song index by <paramref name="delta"/> (e.g. +1 / -1), preserving the
+            timeline so Prev replays the exact earlier songs.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.NextSong">
             <summary>Skip to the next song in the sequence.</summary>
@@ -178,6 +233,11 @@
             full shuffle. Pass <paramref name="restart"/> = false to re-voice without yanking the
             playhead — the caller is then responsible for letting the change take effect (e.g. by
             clearing the look-ahead so upcoming songs regenerate with the new vibe).</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.SetRandomEverySong(System.Boolean)">
+            <summary>Turn shuffle on/off and rebuild the forward timeline from the current song so the
+            change takes immediately: ON freezes a fresh rolled vibe+genre per upcoming n, OFF reverts
+            upcoming songs to the live knobs. History already played keeps whatever it was frozen as.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.SaveCurrentToFile">
             <summary>Write the playing song's raw loop (no fade) to a WAV under FileSystem.Data.
