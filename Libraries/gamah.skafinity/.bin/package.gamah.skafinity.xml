@@ -46,7 +46,7 @@
              <see cref="T:Skafinity.MusicGen"/>) through Web Audio-style scheduling over a <see cref="T:Sandbox.SoundStream"/>.
             
              Drop this <see cref="T:Sandbox.Component"/> on any GameObject. It generates a ~80s loop from the
-             seed <c>tag:n</c>, plays it <see cref="P:Skafinity.SkafinityPlayer.LoopsPerSong"/> times, then equal-power crossfades
+             seed <c>tag:n</c>, plays it through once, then equal-power crossfades
              into the pre-generated next song (<c>tag:n+1</c>), forever. Every generator knob is an
              inspector <c>[Property]</c>; with <see cref="P:Skafinity.SkafinityPlayer.LiveReload"/> on, tweaking one regenerates
              after a short settle so you can dial in a vibe in play mode.
@@ -72,8 +72,9 @@
             <summary>Begin playing automatically in <see cref="M:Skafinity.SkafinityPlayer.OnStart"/>. Off = call <see cref="M:Skafinity.SkafinityPlayer.StartSequence"/> yourself.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.RandomEverySong">
-            <summary>Shuffle mode: re-randomise every knob (incl. genre + volumes) as each new song
-            begins, so the sequence keeps reinventing itself. Off = the seed's vibe stays put.</summary>
+            <summary>Shuffle mode: re-randomise every knob (incl. genre) as each new song begins, so the
+            sequence keeps reinventing itself. Volumes are left alone (a local mix preference). Off = the
+            seed's vibe stays put.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.Tag">
             <summary>Seed tag — any string (a name, a word). Empty falls back to "skafinity".</summary>
@@ -98,9 +99,6 @@
         <member name="P:Skafinity.SkafinityPlayer.Crossfade">
             <summary>Crossfade window (also the first song's fade-in from silence), seconds. The two
             songs only both-audible for <see cref="P:Skafinity.SkafinityPlayer.CrossfadeOverlap"/> of this, centred.</summary>
-        </member>
-        <member name="P:Skafinity.SkafinityPlayer.LoopsPerSong">
-            <summary>How many times each loop plays before crossfading on (2 = play through, loop once, switch).</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.AheadCount">
             <summary>How many upcoming songs to keep pre-generated (built one-per-tick so the fill never stalls a frame).</summary>
@@ -133,11 +131,10 @@
             sequence restart landing a stale song in the buffer.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.WriteSongBody(System.Int16[],System.Int32,System.Int32,System.Int32)">
-            <summary>Write <see cref="P:Skafinity.SkafinityPlayer.LoopsPerSong"/> passes of interleaved-stereo <paramref name="raw"/>
-            to the stream, given the first <paramref name="headConsumed"/> frames of pass 0 were already
-            emitted, holding back the final <paramref name="reserve"/> frames for the next crossfade.
-            Optional fade-in over the first <paramref name="fadeIn"/> frames of pass 0. Returns frames
-            written.</summary>
+            <summary>Write one pass of interleaved-stereo <paramref name="raw"/> to the stream, given the
+            first <paramref name="headConsumed"/> frames were already emitted, holding back the final
+            <paramref name="reserve"/> frames for the next crossfade. Optional fade-in over the first
+            <paramref name="fadeIn"/> frames. Returns frames written.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.StartSequence">
             <summary>(Re)start the infinite sequence at the current tag/n. Bumps the sequence token
