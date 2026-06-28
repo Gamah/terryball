@@ -40,6 +40,13 @@ public sealed class TerryAvatar : Component
 	/// <summary>Currently up — riding the ball, not walking. The director sets exactly one true.</summary>
 	[Sync( SyncFlags.FromHost )] public bool Bowling { get; set; }
 
+	/// <summary>The crane has scooped this bowler INTO the ball: hide their walking body and show the
+	/// in-ball Terry instead. Owner-driven (the bowler runs its own pickup/dropoff crane) and synced so
+	/// every client swaps body↔ball-rider at the same instant. Distinct from <see cref="Bowling"/>, which
+	/// spans the whole turn — between Bowling going true and the claw actually arriving, the walking body
+	/// is still sitting on the settee waiting to be picked up.</summary>
+	[Sync] public bool Carried { get; set; }
+
 	/// <summary>While this avatar is the active bowler, its OWNER publishes its live camera transform
 	/// here so every settee monitor mirrors the bowler's actual eye view (see LaneMonitorCamera) rather
 	/// than a static chase. Only meaningful while <see cref="Bowling"/>.</summary>
@@ -49,6 +56,20 @@ public sealed class TerryAvatar : Component
 	private PlayerController _player;
 	private GameObject _body;
 	private bool _wasBowling;   // edge-detect the end of our turn, to walk us back to the settee
+
+	// Where the crane grabbed us (or the settee middle, if we were grabbed off it) — the turn-end drop
+	// AND the R/teleport fallback put us back here. Owner-local; set by the director at pickup.
+	private Vector3 _returnSpot;
+	private bool _hasReturnSpot;
+
+	/// <summary>Director (owner-side) records the spot the claw should set us back down on.</summary>
+	public void SetReturnSpot( Vector3 worldSpot ) { _returnSpot = worldSpot; _hasReturnSpot = true; }
+
+	/// <summary>Director (owner-side): the claw reached us — scoop us into the ball.</summary>
+	public void ScoopIntoBall() => Carried = true;
+
+	/// <summary>Director (owner-side): the claw reached our seat — set us back down on the recorded spot.</summary>
+	public void DropAtReturnSpot() { Carried = false; ReturnToSettee(); }
 
 	// --- Walk-up lane controls (LOCAL player only) -------------------------------------------
 	// Screen-space buttons can't be clicked while the FPS look-lock traps the cursor, so the local
@@ -121,17 +142,23 @@ public sealed class TerryAvatar : Component
 
 	protected override void OnUpdate()
 	{
-		// Hand the screen + control to the ball while this player is up: suspend their walk/camera
-		// controls and hide the walking body. Applied on every client — the hide must be visible to
-		// all; the control-suspend only actually matters on the owner (proxies don't drive anyway).
+		// Hand the screen + control to the ball while this player is up. Suspend their walk/camera
+		// controller for the whole turn (Bowling), but only HIDE the walking body once the crane has
+		// actually scooped them IN (Carried) — until then it's still sitting on the settee being flown
+		// toward. Applied on every client so both the suspend and the body↔ball swap are seen by all.
 		if ( _player.IsValid() )
 			_player.Enabled = !Bowling;
 		if ( _body.IsValid() )
-			_body.Enabled = !Bowling;
+			_body.Enabled = !Carried;
 
 		// Only the local player drives the walk-up controls (proxies are other people's avatars).
 		if ( !IsProxy )
 		{
+			// Safety: if we're not up, we're not in the ball — never leave a non-bowling avatar stuck
+			// invisible (e.g. STOP/disconnect mid-crane).
+			if ( !Bowling && Carried )
+				Carried = false;
+
 			// Our turn just ended (handed off to the next bowler, or the game finished): put us back in
 			// the settee, not stranded up at the lane station where we pressed START. The transform is
 			// owner-authoritative, so we move ourselves rather than the host yanking us.
@@ -166,6 +193,15 @@ public sealed class TerryAvatar : Component
 	{
 		var builder = ActiveLane?.Builder ?? Lane.Local( Scene )?.Builder;
 		if ( !builder.IsValid() ) return;
+
+		// The crane recorded exactly where to set us down (our grab spot, or the settee middle if we were
+		// grabbed off it). Prefer that so the drop / R-respawn lands on the same place we were taken from.
+		if ( _hasReturnSpot )
+		{
+			GameObject.WorldPosition = _returnSpot;
+			GameObject.WorldRotation = builder.SetteeFaceRotation;
+			return;
+		}
 
 		var half = builder.SetteeHalfWidthUnits;
 		// SetteeHalfWidthUnits is 0 until the lane has actually built its geometry; teleporting then would
@@ -268,12 +304,19 @@ public sealed class TerryAvatar : Component
 		_dressCts?.Cancel();
 	}
 
-	/// <summary>Bowler → host: a settled ball knocked <paramref name="knocked"/> pins, and the bowler's
-	/// own rules say their turn is <paramref name="turnDone"/>. The host books it onto the scorecard
-	/// (and rotates to the next bowler when done). Runs on the host.</summary>
+	/// <summary>Bowler → host: a settled ball knocked <paramref name="knocked"/> pins. The host books it
+	/// onto the scorecard right away (so the board updates the instant the ball settles, not after the
+	/// crane sets us back down). Rotating to the next bowler is a separate step — see <see cref="EndTurn"/>.
+	/// Runs on the host.</summary>
 	[Rpc.Host]
-	public void ReportBall( int knocked, int downMask, bool turnDone )
-		=> Director?.HostBookBall( knocked, downMask, turnDone );
+	public void ReportBall( int knocked, int downMask )
+		=> Director?.HostBookBall( knocked, downMask );
+
+	/// <summary>Bowler → host: our turn is fully over — the dropoff crane has set us back on the settee, so
+	/// the host can now rotate to the next bowler (which reclaims + re-racks the ball). Runs on the host.</summary>
+	[Rpc.Host]
+	public void EndTurn()
+		=> Director?.HostEndTurn( Network.Owner );
 
 	/// <summary>Bowler → host: escape hatch — let me out of the ball. The host ends our turn so the game
 	/// moves on (and we drop back to the settee). For unsticking a director that's wedged mid-turn.</summary>

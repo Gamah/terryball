@@ -108,6 +108,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	[Property, Group( "Debug" )] public float RealBallInches { get; set; } = 8.5f;
 
 	private Rigidbody _body;
+	private SphereCollider _col;
 	private GameObject _terry;
 	private SkinnedModelRenderer _terryRenderer;
 	private CitizenAnimationHelper _anim;
@@ -143,6 +144,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		col.Radius = Radius;
 		col.Friction = Friction;
 		col.Elasticity = Elasticity; // springy hit so the ball deflects off the pins instead of plowing
+		_col = col;
 
 		// Body params go AFTER the collider: adding a collider shape rebuilds mass from
 		// volume (BuildMass), which would otherwise clobber our MassOverride.
@@ -196,9 +198,11 @@ public sealed class BallController : Component, Component.ICollisionListener
 	{
 		var id = Director?.ActiveBowlerId ?? Guid.Empty;
 
-		// An unoccupied ball (nobody up — lobby, between turns, game over) shows no Terry inside.
+		// The Terry only appears once the crane has actually scooped the bowler IN (Carried) — so the
+		// pickup flight is an empty ball, then Terry pops in on the scoop, and pops out again on the drop.
+		// We still dress him off the active-bowler id below, which has him ready before the scoop lands.
 		if ( _terry.IsValid() )
-			_terry.Enabled = id != Guid.Empty;
+			_terry.Enabled = ActiveBowlerCarried( id );
 
 		if ( id != _dressedBowler || !_dressedAny )
 		{
@@ -241,7 +245,51 @@ public sealed class BallController : Component, Component.ICollisionListener
 		}
 	}
 
+	// Is the active bowler's avatar currently scooped into the ball? Drives the in-ball Terry's visibility
+	// so it matches the crane's body↔ball swap on every client (the flag is synced from the bowler).
+	private bool ActiveBowlerCarried( Guid id )
+	{
+		if ( id == Guid.Empty ) return false;
+		foreach ( var a in Scene.GetAllComponents<TerryAvatar>() )
+			if ( a.IsValid() && a.GameObject.Network.Owner?.Id == id )
+				return a.Carried;
+		return false;
+	}
+
 	protected override void OnDisabled() => _dressCts?.Cancel();
+
+	// --- Crane transport (the claw mechanic) -------------------------------------------
+	// Between the run-up and the bowler's seat the director flies the ball kinematically (a claw that
+	// fetches/returns the player). It sails the full length of the lane and over the freshly-set rack, so
+	// we drop the collider + gravity for the trip and the director sets the position each frame.
+
+	/// <summary>Enter/leave crane mode: drop the collider + gravity (so the flight doesn't scatter the
+	/// rack or sag) and kill any residual motion; leaving restores normal physics for the roll.</summary>
+	public void SetCraneMode( bool on )
+	{
+		if ( _col.IsValid() ) _col.Enabled = !on;
+		if ( _body.IsValid() )
+		{
+			_body.Gravity = !on;
+			if ( on )
+			{
+				_body.Velocity = Vector3.Zero;
+				_body.AngularVelocity = Vector3.Zero;
+				_body.Sleeping = false;
+			}
+		}
+	}
+
+	/// <summary>Kinematically place the ball at <paramref name="pos"/> for a crane leg, held dead still.</summary>
+	public void CraneMoveTo( Vector3 pos )
+	{
+		WorldPosition = pos;
+		if ( _body.IsValid() )
+		{
+			_body.Velocity = Vector3.Zero;
+			_body.AngularVelocity = Vector3.Zero;
+		}
+	}
 
 	protected override void OnFixedUpdate()
 	{

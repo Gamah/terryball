@@ -222,6 +222,23 @@ public sealed class LaneBuilder : Component
 	/// it so they don't stack on one spot.</summary>
 	public float SetteeHalfWidthUnits { get; private set; }
 
+	/// <summary>Half the settee's usable DEPTH (units, along the lane axis) — paired with the half-width
+	/// for the on-settee footprint test (<see cref="IsOnSettee"/>).</summary>
+	public float SetteeHalfDepthUnits { get; private set; }
+
+	/// <summary>Is <paramref name="worldPos"/> standing on the settee carpet footprint? The crane sets a
+	/// bowler back down on the exact spot it grabbed them ONLY when that spot was on the settee; a bowler
+	/// grabbed from off it (e.g. up at the lane station after pressing START) is dropped at the middle
+	/// instead. Tested in lane-local space so it's correct at any lane offset/rotation.</summary>
+	public bool IsOnSettee( Vector3 worldPos )
+	{
+		if ( SetteeHalfWidthUnits <= 0f ) return false;
+		var rot = Transform.World.Rotation;
+		var rel = worldPos - SetteeFloorCenter;
+		return MathF.Abs( rel.Dot( rot.Forward ) ) <= SetteeHalfDepthUnits
+			&& MathF.Abs( rel.Dot( rot.Left ) ) <= SetteeHalfWidthUnits;
+	}
+
 	/// <summary>World rotation a walking bowler should face when stood on the settee so they look down
 	/// the lane. The settee now sits behind the pins on the backboard, so they face back up-lane (-x)
 	/// and watch the ball roll toward them. Read by the director/avatar on spawn + return.</summary>
@@ -497,6 +514,7 @@ public sealed class LaneBuilder : Component
 		// Exposed in world space (the director spawns avatars at world positions).
 		SetteeFloorCenter = ToWorld( new Vector3( midX, 0f, baseZ + riser ) );
 		SetteeHalfWidthUnits = halfW;
+		SetteeHalfDepthUnits = depth * 0.5f;
 
 		// Benches down the LEFT and RIGHT edges, facing INWARD (toward the settee centre). Each runs most
 		// of the settee depth with its backrest along the outer (±Y) wall edge.

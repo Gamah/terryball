@@ -66,8 +66,15 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// even if it's somehow still upright.</summary>
 	[Property] public float DisplacementThresholdInches { get; set; } = 4f;
 
-	public enum RoundState { Rolling, Watching }
+	public enum RoundState { Rolling, Watching, Craning }
 	public RoundState State { get; private set; } = RoundState.Rolling;
+
+	/// <summary>Seconds the crane (claw) takes for ONE leg of a trip — the ball arcs run-up→bowler on the
+	/// outbound leg, then bowler→run-up on the return, so a full pickup/dropoff is two of these.</summary>
+	[Property, Group( "Crane" )] public float CraneLegSeconds { get; set; } = 1.3f;
+	/// <summary>Peak height (units) the ball arcs up to mid-leg, so the claw sails OVER the rack instead of
+	/// plowing through it on its way to the settee behind the pins.</summary>
+	[Property, Group( "Crane" )] public float CraneArcHeight { get; set; } = 260f;
 
 	// --- Multiplayer ownership ----------------------------------------------------------
 	// The director is host-authoritative. Exactly one connected player is "up" at a time; the host
@@ -162,6 +169,18 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private TerryAvatar _localAvatar;
 	private TerryAvatar LocalAvatar =>
 		(_localAvatar.IsValid() ? _localAvatar : (_localAvatar = Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy )));
+
+	// --- Crane (claw) transport state (bowler-side) ------------------------------------
+	// The active bowler flies the ball kinematically to fetch/return their player. A trip is two legs:
+	// leg 0 run-up→spot (outbound), then the scoop/drop, then leg 1 spot→run-up (return).
+	private enum CraneJob { None, Pickup, Dropoff }
+	private CraneJob _craneJob;
+	private int _craneLeg;        // 0 = outbound, 1 = return
+	private float _craneT;        // 0..1 progress within the current leg
+	private Vector3 _craneFrom, _craneTo, _craneSpot;
+	private Vector3 _grabPos;     // where the claw grabbed us this turn
+	private bool _grabOnSettee;   // ...and whether that was on the settee (else we drop at the middle)
+	private Vector3 _dropSpot;    // where to set us back down at turn's end
 
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
@@ -460,7 +479,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// }
 
 		if ( Phase != GamePhase.Playing )
+		{
+			// STOP / disconnect / game-end mid-flight: bail the crane so the ball doesn't stay collider-off.
+			if ( _craneJob != CraneJob.None ) AbortCrane();
 			return;
+		}
 
 		// Whoever is UP owns the lane's one shared networked ball + rack and runs the whole throw on
 		// their machine; the engine replicates the transforms to everyone else (spectators), so there's
@@ -482,6 +505,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		if ( !bowling )
 		{
+			// We just stopped being the bowler mid-crane (G-bail / the turn was yanked): abort it so the
+			// ball isn't left collider-off (the host reclaims + parks it anyway).
+			if ( _craneJob != CraneJob.None ) AbortCrane();
+
 			// Spectator: the bowler owns the one shared rack + ball, so the engine replicates them to
 			// us automatically. We just derive the live down-mask off those replicated pins so our pin
 			// panels read the same leave as the bowler's.
@@ -495,6 +522,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		switch ( State )
 		{
+			case RoundState.Craning:
+				// Flying the ball to fetch us (pickup) or set us back down (dropoff). No input, no scoring.
+				UpdateCrane();
+				break;
+
 			case RoundState.Rolling:
 				// Arm watch-mode the moment the ball's centre passes the throw line (unless the
 				// game's already over and the ball is parked). GameComplete is synced, so this is
@@ -653,15 +685,15 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_localBalls.Add( knocked );
 
 		var turnDone = DecideLocal();
-		LocalAvatar?.ReportBall( knocked, PinDownBits, turnDone ); // host books it onto the card
+		LocalAvatar?.ReportBall( knocked, PinDownBits ); // host books it onto the card right away
 
 		if ( turnDone )
 		{
-			// Hand back: park the ball and wait for the host to spotlight the next bowler.
-			_ball.ControlsLocked = true;
-			State = RoundState.Rolling;
-			if ( _camera.IsValid() ) _camera.Watching = false;
+			// Crane us back to our seat, THEN tell the host to rotate (UpdateCrane sends EndTurn). The ball
+			// is sitting in the pit by the settee now, so fly it straight from there — no teleport jump.
+			StartCrane( CraneJob.Dropoff, from: _ball.WorldPosition, spot: CraneRest( _dropSpot ) );
 		}
+		// Not done: DecideLocal already set up our next ball (ContinueFrame → BeginRolling), still in-ball.
 	}
 
 	// Bowling's flow control for OUR turn, on OUR local ball list. Returns true if the turn is over
@@ -779,6 +811,84 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		PlaceBallHome();
 	}
 
+	// --- Crane (claw) transport ---------------------------------------------------------
+	// The active bowler flies the ball kinematically between the run-up and their seat. A trip is two legs
+	// (out to the spot, then back home); leg 0's arrival scoops/drops the player. The ball rides the
+	// camera the whole way (Watching off), so the bowler watches the claw fetch/return them.
+
+	// Centre the ball would rest at to sit ON the floor over a player at footSpot (their feet), so the
+	// scoop/drop looks like the ball swallowing them rather than burying its centre at their feet.
+	private Vector3 CraneRest( Vector3 footSpot )
+		=> footSpot + Vector3.Up * (_ball.IsValid() ? _ball.Radius : 100f);
+
+	private void StartCrane( CraneJob job, Vector3 from, Vector3 spot )
+	{
+		_craneJob = job;
+		_craneLeg = 0;
+		_craneT = 0f;
+		_craneSpot = spot;
+		_craneFrom = from;
+		_craneTo = spot;
+		State = RoundState.Craning;
+		_ball.ControlsLocked = true;
+		if ( _camera.IsValid() ) _camera.Watching = false; // ride the ball over, not the pin-deck vantage
+		_ball.SetCraneMode( true );
+		_ball.CraneMoveTo( from );
+	}
+
+	private void UpdateCrane()
+	{
+		var leg = CraneLegSeconds > 0f ? CraneLegSeconds : 1f;
+		_craneT += Time.Delta / leg;
+		var t = _craneT.Clamp( 0f, 1f );
+		var pos = Vector3.Lerp( _craneFrom, _craneTo, t ) + Vector3.Up * CraneArcHeight * MathF.Sin( t * MathF.PI );
+		_ball.CraneMoveTo( pos );
+
+		if ( _craneT < 1f ) return;
+
+		if ( _craneLeg == 0 )
+		{
+			// Reached the bowler's spot: scoop them in (pickup) or set them down (dropoff), then fly home.
+			if ( _craneJob == CraneJob.Pickup )
+				LocalAvatar?.ScoopIntoBall();
+			else
+				LocalAvatar?.DropAtReturnSpot();
+
+			_craneLeg = 1;
+			_craneT = 0f;
+			_craneFrom = _craneSpot;
+			_craneTo = _ballHome;
+			return;
+		}
+
+		// Return leg done — the ball is home. Restore physics and finish the trip.
+		var job = _craneJob;
+		_craneJob = CraneJob.None;
+		_ball.SetCraneMode( false );
+		_ball.CraneMoveTo( _ballHome );
+
+		if ( job == CraneJob.Pickup )
+		{
+			BeginRolling(); // controls live, camera on the ball — go bowl
+		}
+		else
+		{
+			// Dropoff done: park the ball and tell the host our turn's over so it rotates to the next bowler.
+			_ball.ControlsLocked = true;
+			State = RoundState.Rolling;
+			LocalAvatar?.EndTurn();
+		}
+	}
+
+	// STOP / disconnect / game-end interrupted a crane: drop the job and restore the ball's physics so it
+	// isn't left collider-off in mid-air (the host then reclaims + parks it as usual).
+	private void AbortCrane()
+	{
+		_craneJob = CraneJob.None;
+		if ( _ball.IsValid() ) _ball.SetCraneMode( false );
+		if ( State == RoundState.Craning ) State = RoundState.Rolling;
+	}
+
 	// --- Approach-B throw: the active bowler runs the whole turn on its own physics ----------------
 
 	// We just became the active bowler: grab the shared ball + rack and roll. The host already racked a
@@ -791,7 +901,18 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_ballStartDown = 0;
 		PinDownBits = 0;
 		TakeThrowOwnership(); // grab the shared ball + rack so OUR physics drives this turn
-		BeginRolling();  // ball home, controls live, camera on the ball
+
+		// Note where the claw is grabbing us from. We get set back down on this exact spot at turn's end —
+		// unless we were grabbed off the settee (e.g. stood up at the lane station after pressing START),
+		// in which case we're dropped at the settee middle instead.
+		var av = LocalAvatar;
+		_grabPos = av.IsValid() ? av.WorldPosition : (_lane.IsValid() ? _lane.SetteeFloorCenter : _ballHome);
+		_grabOnSettee = _lane.IsValid() && _lane.IsOnSettee( _grabPos );
+		_dropSpot = _grabOnSettee ? _grabPos : (_lane.IsValid() ? _lane.SetteeFloorCenter : _grabPos);
+		av?.SetReturnSpot( _dropSpot );
+
+		// Crane out and fetch us; UpdateCrane hands off to BeginRolling once we're scooped in and home.
+		StartCrane( CraneJob.Pickup, from: _ballHome, spot: CraneRest( _grabPos ) );
 	}
 
 	// Assume ownership of the lane's networked ball + ten pins (they're tagged Takeover), so this
@@ -851,7 +972,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// <summary>Host side (called from the bowler's ReportBall RPC): book a settled ball's pinfall onto
 	/// the active player's card, reflect the leave on the host's own panels, and rotate when the
 	/// bowler says their turn is done.</summary>
-	public void HostBookBall( int knocked, int downMask, bool turnDone )
+	public void HostBookBall( int knocked, int downMask )
 	{
 		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
 
@@ -859,9 +980,15 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			_players[_current].Frames[_frame].Add( knocked );
 		PinDownBits = downMask;
 		PublishScores();
+	}
 
-		if ( turnDone )
-			AdvanceTurn();
+	/// <summary>Host side (called from the bowler's EndTurn RPC once their dropoff crane has set them back
+	/// on the settee): rotate to the next bowler — which reclaims + re-racks the ball for the pickup.</summary>
+	public void HostEndTurn( Connection caller )
+	{
+		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
+		if ( caller is null || caller.Id != ActiveBowlerId ) return; // only the player who's up can end it
+		AdvanceTurn();
 	}
 
 	/// <summary>Host side (called from the bowler's RequestLeaveBall RPC): the active bowler hit the
