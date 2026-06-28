@@ -155,7 +155,10 @@
 
 @code
 {
-	private GameDirector Director => Lane.Of( this )?.Director;
+	// The HUD is client-local (not under a lane), so the controls act on the lane the local player has
+	// walked up to / joined.
+	private Lane ActiveLane => Lane.ForLocalPlayer( Scene );
+	private GameDirector Director => ActiveLane?.Director;
 
 	// Our own avatar is the one we own (not a proxy). Null briefly before it spawns.
 	private TerryAvatar LocalAvatar =>
@@ -163,8 +166,18 @@
 
 	private bool IsHost => Networking.IsHost;
 
-	private int JoinedCount =>
-		Scene?.GetAllComponents<TerryAvatar>().Count( a => a.IsValid() && a.Joined ) ?? 0;
+	// Count only players joined to THIS lane (the one the local player is at), so the lobby tally is
+	// per-lane with N alleys.
+	private int JoinedCount
+	{
+		get
+		{
+			var laneId = ActiveLane?.GameObject.Id ?? System.Guid.Empty;
+			if ( laneId == System.Guid.Empty ) return 0;
+			return Scene?.GetAllComponents<TerryAvatar>()
+				.Count( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId ) ?? 0;
+		}
+	}
 
 	private List<GameDirector.PlayerView> Players => Director?.BuildScoreView() ?? new();
 
@@ -181,7 +194,21 @@
 	private void ToggleJoin()
 	{
 		var me = LocalAvatar;
-		if ( me is not null ) me.Joined = !me.Joined;
+		if ( me is null ) return;
+		if ( me.Joined )
+		{
+			// Leave: clear both the flag and the lane assignment.
+			me.Joined = false;
+			me.JoinedLaneId = System.Guid.Empty;
+		}
+		else
+		{
+			// Join the lane we're walked up to (the station's lane). No station → nothing to join.
+			var lane = me.ActiveLane;
+			if ( lane is null ) return;
+			me.JoinedLaneId = lane.GameObject.Id;
+			me.Joined = true;
+		}
 	}
 
 	// CLOSE button: hand back to the avatar so it restores look + cursor exactly like pressing E.

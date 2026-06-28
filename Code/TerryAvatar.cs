@@ -31,6 +31,12 @@ public sealed class TerryAvatar : Component
 	/// controlled — each client flips its OWN avatar's flag directly; the host reads it on START.</summary>
 	[Sync] public bool Joined { get; set; }
 
+	/// <summary>The id of the <see cref="Lane"/> this player has joined (its root GameObject id), or
+	/// <see cref="Guid.Empty"/> if not joined. Owner-set from the lane station they pressed JOIN at, and
+	/// host-read so each lane's director only rosters ITS own joiners. This is the per-player lane
+	/// assignment — with N lanes a player picks which lane they're playing on.</summary>
+	[Sync] public Guid JoinedLaneId { get; set; }
+
 	/// <summary>Currently up — riding the ball, not walking. The director sets exactly one true.</summary>
 	[Sync( SyncFlags.FromHost )] public bool Bowling { get; set; }
 
@@ -50,20 +56,25 @@ public sealed class TerryAvatar : Component
 	// controls. Pure local UI state — never networked.
 	private bool _controlsOpen;
 	private bool _nearStation;
+	private Lane _engagedLane;   // (local) the lane whose station we're currently walked up to
 
 	/// <summary>True while this (local) player has the lane-controls panel open and the cursor freed.</summary>
 	public bool ControlsOpen => _controlsOpen;
 	/// <summary>True while this (local) player is standing in a LaneStation's range (show the prompt).</summary>
 	public bool NearStation => _nearStation;
 
+	/// <summary>The lane whose HUD / controls THIS (local) player should see: the lane they've joined if
+	/// any, else the lane of the station they're currently walked up to, else null. The HUD reads this
+	/// (via <see cref="Lane.ForLocalPlayer"/>) so the score/turn board follows the player across lanes.</summary>
+	public Lane ActiveLane => Lane.ById( Scene, JoinedLaneId ) ?? _engagedLane;
+
 	/// <summary>The local player's own (non-proxy) avatar, or null before it spawns.</summary>
 	public static TerryAvatar Local( Scene scene )
 		=> scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
 
-	// The director of the lane this avatar is playing on. With one lane that's the only lane; this is
-	// the seam where N-lane assignment will pick the avatar's chosen lane (avatars aren't inside a Lane
-	// subtree, so this can't be Lane.Of).
-	private GameDirector Director => Lane.Local( Scene )?.Director;
+	// The director of the lane this avatar is playing on — its ActiveLane (avatars live on their own
+	// networked object, not inside a Lane subtree, so this goes by the assigned lane id, not Lane.Of).
+	private GameDirector Director => ActiveLane?.Director;
 
 	private SkinnedModelRenderer _renderer;
 	private CancellationTokenSource _dressCts;
@@ -147,7 +158,7 @@ public sealed class TerryAvatar : Component
 	// returning bowlers don't stack on one spot. The lane builder hands us the seating zone's geometry.
 	private void ReturnToSettee()
 	{
-		var builder = Lane.Local( Scene )?.Builder;
+		var builder = ActiveLane?.Builder ?? Lane.Local( Scene )?.Builder;
 		if ( !builder.IsValid() ) return;
 
 		var half = builder.SetteeHalfWidthUnits;
@@ -173,6 +184,10 @@ public sealed class TerryAvatar : Component
 
 		var station = NearestStation();
 		_nearStation = station is not null;
+		// Remember which lane we're walked up to, so the (joined-or-engaged) ActiveLane drives the HUD
+		// and a JOIN press knows which lane to assign. Keep the last engagement while the panel is open.
+		if ( station is not null )
+			_engagedLane = Lane.Of( station );
 
 		if ( _controlsOpen )
 		{

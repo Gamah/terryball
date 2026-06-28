@@ -23,8 +23,22 @@ public sealed class Lane : Component
 	public static Lane Of( Component c )
 		=> c.IsValid() ? c.GetComponentInParent<Lane>( includeDisabled: true ) : null;
 
-	/// <summary>The lane whose HUD / controls the LOCAL player should see. Today that's simply the only
-	/// lane; this is the single seam where N-lane player→lane assignment will pick among lanes.</summary>
+	/// <summary>The lane whose HUD / controls the LOCAL player should see — the lane the player has
+	/// joined (or is currently walked up to). With N lanes a player moves between them, so this follows
+	/// their own avatar rather than a fixed lane. Falls back to <see cref="Local"/> before an avatar
+	/// exists / when nobody's joined, so the single-lane case "just works".</summary>
+	public static Lane ForLocalPlayer( Scene scene )
+		=> TerryAvatar.Local( scene )?.ActiveLane ?? Local( scene );
+
+	/// <summary>The lane whose root GameObject carries <paramref name="id"/>, or null. How a per-player
+	/// lane assignment (a synced lane id on the avatar) resolves back to the live lane.</summary>
+	public static Lane ById( Scene scene, System.Guid id )
+		=> id == System.Guid.Empty
+			? null
+			: scene?.GetAllComponents<Lane>().FirstOrDefault( l => l.IsValid() && l.GameObject.Id == id );
+
+	/// <summary>The only lane in the scene (the single-lane fallback). Prefer <see cref="ForLocalPlayer"/>
+	/// for anything player-facing so it follows the player across lanes.</summary>
 	public static Lane Local( Scene scene )
 		=> scene?.GetAllComponents<Lane>().FirstOrDefault();
 

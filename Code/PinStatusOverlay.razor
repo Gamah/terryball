@@ -49,7 +49,7 @@
 	// The rack layout (GameDirector.RackRows) and per-pin down state (director.IsPinDown) both live on
 	// the director now, so this corner overlay and the big lane-width board above the backstop draw
 	// from one source and can't disagree.
-	private GameDirector Director => Lane.Of( this )?.Director;
+	private GameDirector Director => Lane.ForLocalPlayer( Scene )?.Director;
 
 	// Rebuild whenever the round state or the set of downed pins changes.
 	protected override int BuildHash()

@@ -83,7 +83,8 @@
 
 @code
 {
-	private GameDirector Director => Lane.Of( this )?.Director;
+	// The HUD is client-local (not under a lane), so it shows the lane the local player has joined.
+	private GameDirector Director => Lane.ForLocalPlayer( Scene )?.Director;
 
 	// Rebuild whenever the marks, totals, current frame or game-over state could have changed.
 	protected override int BuildHash()

@@ -15,8 +15,8 @@ namespace Terryball;
 ///   N — toggle the board open/closed.
 ///   M — mute/unmute the music outright, whether the board is open or not.
 ///
-/// Lives on the director's screen-space HUD GO alongside the panel and a <see cref="SkafinityPlayer"/>
-/// (both built in code by <see cref="GameDirector.BuildHud"/>). There's no in-world "wall" to walk up
+/// Lives on the client-local screen-space HUD GO alongside the panel and a <see cref="SkafinityPlayer"/>
+/// (both built in code by <see cref="Terryball.LocalHud"/>). There's no in-world "wall" to walk up
 /// to — the keys work from anywhere, like chat (T).
 /// </summary>
 public sealed class MusicScreen : Component

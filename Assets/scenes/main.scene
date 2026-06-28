@@ -18,6 +18,20 @@
       ]
     },
     {
+      "__guid": "b000000a-0000-4000-8000-00000000000a",
+      "Name": "HUD",
+      "Position": "0,0,0",
+      "Enabled": true,
+      "NetworkMode": 0,
+      "Components": [
+        {
+          "__type": "Terryball.LocalHud",
+          "__guid": "b000000a-0001-4000-8000-00000000000a",
+          "__enabled": true
+        }
+      ]
+    },
+    {
       "__guid": "b0000009-0000-4000-8000-000000000009",
       "Name": "Lane 1",
       "Position": "0,0,0",

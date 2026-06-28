@@ -153,7 +153,6 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private LaneBuilder _lane;
 	private BallController _ball;
 	private BallCamera _camera;
-	private GameObject _hud;   // the director-owned screen-space HUD (pin overlay + scoreboard)
 	private int _spawnCount;   // walking bowlers dropped so far, to fan them across the settee
 
 	// --- Approach-B throw networking (the active bowler is authoritative for their own turn) -------
@@ -249,35 +248,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			Phase = GamePhase.Lobby;
 			PublishScores();
 		}
-
-		BuildHud();
 	}
 
-	/// <summary>The director owns its own on-screen HUD — it spawns the screen-space pin overlay and
-	/// ten-frame scoreboard at runtime (the same build-it-in-code pattern the lane and ball use)
-	/// rather than relying on a hand-placed scene object, so every score/pin panel belongs to and is
-	/// driven by the director. The in-world settee monitor and the big backstop board read this same
-	/// director, so all four surfaces show one consistent game state.</summary>
-	private void BuildHud()
-	{
-		if ( _hud.IsValid() ) return;
-		_hud = new GameObject( true, "DirectorHUD" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		_hud.Components.Create<ScreenPanel>();
-		_hud.Components.Create<PinStatusOverlay>();
-		_hud.Components.Create<ScoreBoard>();
-		_hud.Components.Create<LaneControls>();
-		_hud.Components.Create<ChatPanel>();
-		_hud.Components.Create<BowlerHud>();
-
-		// Client-local background music: the Skafinity engine plays on its own; the drop-in panel
-		// starts DISABLED (so its ♪ button never shows over the alley and steals the cursor) and is
-		// driven from the keyboard by MusicScreen — N toggles the board, M mutes. See MusicScreen.
-		var music = _hud.Components.Create<Skafinity.SkafinityPlayer>();
-		music.Volume = 0.25f; // start quiet — background ambience, not the main event
-		_hud.Components.Create<Skafinity.SkafinityMusicPanel>( false );
-		_hud.Components.Create<MusicScreen>();
-		_hud.Components.Create<MusicHud>();
-	}
+	// The on-screen HUD is no longer built here. It's a single client-local, NON-networked object
+	// (see LocalHud) so the host's music / panel state can't leak onto clients, and it follows whatever
+	// lane the local player has joined rather than belonging to one director.
 
 	// --- Network roster ----------------------------------------------------------------
 	// INetworkListener fires on the HOST. Every player who joins (the local host included) gets a
@@ -293,6 +268,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		foreach ( var av in Scene.GetAllComponents<TerryAvatar>().ToList() )
 			if ( av.IsValid() && av.GameObject.Network.Owner?.Id == channel.Id )
 				av.GameObject.Destroy();
+
+		// If the player who left was the one UP on this lane, their orphaned rack would otherwise sit
+		// there forever. Advance the turn so the host reclaims the ball + rack and the next bowler is up.
+		if ( Networking.IsHost && Phase == GamePhase.Playing
+			&& channel is not null && channel.Id == ActiveBowlerId )
+			AdvanceTurn();
 	}
 
 	/// <summary>Build one player's walking-Terry avatar (a PlayerController Citizen) at a settee spot
@@ -343,8 +324,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	{
 		if ( !Networking.IsHost || Phase == GamePhase.Playing ) return;
 
+		// Only roster players who joined THIS lane (each lane runs its own game), so with N lanes a START
+		// on one alley doesn't sweep up everyone who's joined elsewhere.
+		var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
 		var joined = Scene.GetAllComponents<TerryAvatar>()
-			.Where( a => a.IsValid() && a.Joined )
+			.Where( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId )
 			.Take( Math.Max( 1, MaxPlayers ) ) // soft cap — extra joiners just don't make this game's roster
 			.ToList();
 		if ( joined.Count == 0 ) return; // nobody to play
@@ -364,8 +348,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_gameOver = false;
 		Phase = GamePhase.Playing;
 
-		// No physics here — the first bowler racks + rolls on their own machine (BeginTurn) the moment
-		// their spotlight (ActiveBowlerId) lands.
+		// Host owns the rack in the gap: present a clean, settled deck BEFORE spotlighting the first
+		// bowler, so they grab an already-good rack (no contested respot). They roll on their own machine
+		// (BeginTurn) the moment their spotlight (ActiveBowlerId) lands.
+		HostRackForNextBowler();
 		SetActiveBowler();
 		PublishScores();
 		Log.Info( $"[terryball][game] START — {_players.Count} bowler(s), frame 1" );
@@ -715,8 +701,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	// HOST bookkeeping. One bowler's frame is done: rotate to the next bowler at the SAME frame; once
 	// the last bowler finishes, step everyone to the next frame; after the last bowler's frame 10 the
-	// game's over. No physics here — the newly-spotlighted bowler racks + rolls on their own machine
-	// (BeginTurn) when their ActiveBowlerId arrives.
+	// game's over. The host racks a clean deck (it owns the rack in the gap) before spotlighting the next
+	// bowler, who then just grabs it and rolls on their own machine (BeginTurn) when ActiveBowlerId arrives.
 	private void AdvanceTurn()
 	{
 		_current++;
@@ -731,8 +717,23 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			}
 		}
 
+		// Reclaim the rack from the bowler who just finished and present a fresh, settled deck on the host
+		// BEFORE the next bowler is spotlighted — this is what clears the previous bowler's downed pins,
+		// authoritatively and with no bowler→bowler ownership handoff to race the respot.
+		HostRackForNextBowler();
 		SetActiveBowler();
 		PublishScores();
+	}
+
+	// HOST: in the gap between turns the host owns the ball + rack. Take them back from the bowler who
+	// just finished, drop a clean full deck and park the ball, so the next bowler grabs a stable,
+	// already-correct rack (no contested writes, no leftover pins). No-op outside a live session.
+	private void HostRackForNextBowler()
+	{
+		if ( !Networking.IsHost ) return;
+		HostReclaimThrowOwnership();
+		FullRack();
+		PlaceBallHome();
 	}
 
 	// Stay in the same frame for another ball. fresh=true racks a clean deck (10th-frame bonus
@@ -781,8 +782,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	// --- Approach-B throw: the active bowler runs the whole turn on its own physics ----------------
 
-	// We just became the active bowler: rack a clean deck on our authoritative local pins and roll.
-	// (The pins/ball were idle on our machine while spectating — FullRack + PlaceBallHome reset them.)
+	// We just became the active bowler: grab the shared ball + rack and roll. The host already racked a
+	// clean, settled deck while it held ownership in the gap (HostRackForNextBowler), so we just take it
+	// over and start — no respot here, which is what used to race the previous bowler's handoff.
 	private void BeginTurn()
 	{
 		_localBalls.Clear();
@@ -790,7 +792,6 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_ballStartDown = 0;
 		PinDownBits = 0;
 		TakeThrowOwnership(); // grab the shared ball + rack so OUR physics drives this turn
-		FullRack();      // fresh deck on the pins we now own
 		BeginRolling();  // ball home, controls live, camera on the ball
 	}
 
