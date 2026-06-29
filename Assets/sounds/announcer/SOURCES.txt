@@ -1,0 +1,20 @@
+Terryball announcer voice-overs.
+
+Recorded by the project owner (Gamah) in a single take session, self-performed.
+License: project-owned / public domain for use in Terryball. No third-party rights.
+
+Source recording: one continuous ~67s take, each call performed TWICE in a row
+("take 0" and "take 1" — used for playback variety). Auto-sliced on the silence
+gaps between calls, then per-clip processed.
+
+Processing:
+  dry/  -> highpass 85Hz + loudnorm (-16 LUFS, -1.5 dBTP). Clean, no ambience.
+  fx/   -> same, plus a subtle PA-room reverb (light aecho tail) + safety limiter.
+          Use these for the in-game announcer feel; swap to dry/ if too wet.
+
+_review_fx.wav / _review_dry.wav: all 25 calls (take 0) concatenated in script
+order, for quick listening. Not used by the game; delete before shipping if desired.
+
+Calls (script order): 1-9, strike, spare, gutter, miss, open-frame, split,
+double, turkey, four-bagger, five-bagger, six-pack, nice, so-close, good-try,
+pocket (in the pocket), perfect-game.
