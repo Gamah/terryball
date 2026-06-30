@@ -29,6 +29,24 @@ Standard stained-glass-shadow technique. Two new pieces: per-light render-to-tex
 ball's transmittance from each light's POV, and a lane-floor shader that multiplies **each
 light's** contribution by that light's transmittance sample.
 
+### Color model: light hue × ball hue (combine, don't replace)
+
+The shadow color is **not** "the ball's green." It's the light's own color **filtered through** the
+ball — i.e. `transmittedRadiance_i = lightColor_i × ballTransmittance`, exactly like stained glass.
+This falls out for free from the per-light design below, because the receiver multiplies *that
+light's radiance* (which already carries the light's hue) by the ball's transmittance:
+
+- The buffer stores the ball's **transmittance** (how much of each RGB channel *passes*), **not** a
+  pre-baked shadow color. `white (1,1,1)` = fully transparent (light passes unchanged),
+  `black (0,0,0)` = fully opaque (a normal gray shadow), a **green** value = passes green, blocks
+  red/blue. Derive it from `galaxyball_color` × the glass translucency (opaque texels → darker
+  transmittance, clear texels → greener/brighter).
+- Result combines hues automatically: **white** sun → green shadow; **red** light → near-black
+  (green glass eats red); **yellow** light → olive; a **green** light → bright green. No special
+  per-light tint logic — the multiply does the mixing.
+- This means a light's color and the ball's color genuinely *mix* in the footprint, and it stays
+  correct when lights of different colors overlap (each contributes `lightColor_i × transmittance`).
+
 > **Source-agnostic by design.** Do *not* hardwire the `Sun`. The mechanism must work for an
 > arbitrary set of scene lights (a sun today, spots/points added later). Drive everything off
 > "the shadow-casting lights that affect this lane," discovered at runtime — never a named light.
@@ -58,8 +76,9 @@ light's** contribution by that light's transmittance sample.
    - The lane floor uses a stock material (`FloorBuilder.cs`). Give it a **custom shader** (fork the
      standard/`complex` lit shader, or a thin post-add). In its lighting loop, for **each** light
      `i`, after the normal shadow visibility, project the world pos into light `i`'s transmittance
-     buffer and **multiply that light's radiance** by the sampled green-transmittance (white →
-     unchanged). This is the source-agnostic payoff: it's a loop over whatever lights exist, not a
+     buffer and **multiply that light's radiance** by the sampled transmittance — `lightColor_i ×
+     transmittance` (see *Color model* above). White sample → unchanged; this is what mixes the
+     light's hue with the ball's. Source-agnostic payoff: a loop over whatever lights exist, no
      special case for the sun.
    - Lights without a transmittance buffer (beyond the cap, or non-casters) sample as white → behave
      exactly as today. Only the lane needs this shader; pins/Terry keep stock.
