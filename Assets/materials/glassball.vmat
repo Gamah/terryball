@@ -1,16 +1,20 @@
 // Glass material for Terryball's ball — translucent so the cube/Terry inside is visible.
-// Uses the engine's glass shader (from the base addon). Tuned clear with a faint cool tint.
+// Uses the engine's glass shader (from the base addon). A green nebula/galaxy color map
+// tints the glass body so the ball reads as a swirling green galaxy marble while staying
+// see-through enough that Terry inside still shows.
 "Layer0"
 {
 	"shader"		"shaders/glass.shader_c"
 	"F_TRANSLUCENT"		"1"
 
+	// Near-white tint so the texture's own greens carry the look (faint green lift).
 	"g_flModelTintAmount"		"1.000000"
-	"g_vColorTint"		"[0.800000 0.880000 1.000000 1.000000]"
-	"TextureColor"		"[1.000000 1.000000 1.000000 1.000000]"
+	"g_vColorTint"		"[0.820000 1.000000 0.880000 1.000000]"
+	"TextureColor"		"materials/galaxyball_color.png"
 
-	// Mostly transparent body, brighter Fresnel edge so the sphere still reads as glass.
-	"g_flOpacityScale"		"0.120000"
+	// A touch more opaque than clear glass so the nebula reads, but still translucent so
+	// Terry rides visibly inside. Brighter Fresnel edge keeps the glass-sphere read.
+	"g_flOpacityScale"		"0.260000"
 	"TextureTranslucency"		"materials/default/default_trans.tga"
 
 	"g_flMetalness"		"0.150000"
@@ -22,9 +26,9 @@
 	"g_flGlassFogExtinctionAmount"		"0.000000"
 	"g_flFadeExponent"		"1.000000"
 	"g_flEdgeColorFalloff"		"3.000000"
-	"g_flEdgeColorMaxOpacity"		"0.450000"
-	"g_flEdgeColorThickness"		"0.120000"
-	"g_vEdgeColor"		"[0.560000 0.640000 0.720000 1.000000]"
+	"g_flEdgeColorMaxOpacity"		"0.650000"
+	"g_flEdgeColorThickness"		"0.180000"
+	"g_vEdgeColor"		"[0.250000 0.950000 0.450000 1.000000]"
 	"GlassTintColor"		"[1.000000 1.000000 1.000000 0.000000]"
 
 	"g_nScaleTexCoordUByModelScaleAxis"		"0"
