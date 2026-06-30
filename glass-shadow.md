@@ -23,6 +23,23 @@ already goes green when seen *through* the ball.
 - Therefore you **cannot** "hijack the ball's shadow cast and add hue." Color must be added on
   the **receiving** surface (the lane floor), not the caster.
 
+## Prior art — how other engines do this (and what it tells us)
+
+- **Canonical algorithm: Translucent Shadow Maps** (Dachsbacher & Stamminger, 2003). Render from the
+  light an extra buffer of how light is attenuated/tinted as it passes the translucent surface, then
+  modulate the receiver by it. The per-light **transmittance buffer** below is the colored subset of
+  exactly this — so we're on a well-trodden path, not inventing one.
+- **Unreal**: "Colored Translucent Shadows" tint the shadow by the material's **Base Color**, scaled by
+  **Opacity** (0..1) — identical to our *light × transmittance* model. **Big caveat: UE only supports it
+  with _static_ lighting (Lightmass); Lumen/dynamic GI does _not_.** Takeaway for us: even a AAA engine
+  punts colored translucent shadows to the **baked** path. Our ball **moves**, so baking is off the
+  table → a fully dynamic version is genuinely advanced. That's a strong argument to **ship the soft-decal
+  fallback first** as the baseline and treat the transmittance buffer as the stretch goal.
+- **Unity (HDRP + DXR)**: "Color Shadow" on ray-traced shadows — the shadow ray accumulates tint as it
+  passes transparent surfaces (`Transmittance Color`). Clean and correct, but costs real ray-tracing
+  budget and RTX-class hardware. See *Alternative: ray-traced* below — s&box does expose an RT accel
+  structure, so it's not impossible here.
+
 ## The real approach: a transmission ("colored shadow") buffer
 
 Standard stained-glass-shadow technique. Two new pieces: per-light render-to-textures of the
@@ -97,17 +114,43 @@ light's radiance* (which already carries the light's hue) by the ball's transmit
 - Receiver shader is the risky part — forking a lit shader in s&box is fiddly. Budget time for it.
 - Make it **toggleable** and lane-scoped so it can't tank perf or leak across the 4 lanes.
 
-## Fallback if the "real" path stalls
+## Alternative: ray-traced colored shadows
 
-The spatially-correct cheap fake: a **soft radial green decal** (proper alpha falloff, multiply
-blend) projected on the lane under the ball, tracked each frame and faded as the ball lifts off.
-This is *not* the flattened glass-sphere smear we removed (that looked wrong because it used the
-full glass shader); a purpose-made soft decal reads much closer to a real tinted shadow. Cheap,
-no custom receiver shader. Use this if the transmission buffer proves too deep for the session.
+Unity's approach: with ray-traced shadows enabled, the shadow ray accumulates `Transmittance Color`
+as it passes the transparent ball, giving correct colored shadows "for free" *if you're already
+paying for RT shadows*. s&box **does** expose a ray-tracing acceleration structure to shaders
+(`common/classes/Raytracing.hlsl`, `_accelStruct`) and an RT mesh-trace path in the engine, so this
+isn't off the table. But: RT shadows cost real GPU and want RTX-class hardware, and we are **not**
+currently doing RT shadows — so this would add the full RT-shadow cost just for the ball's tint.
+Record it, prototype only if the transmittance-buffer path proves too fiddly *and* there's GPU budget.
+
+## Recommended build order
+
+1. **Soft-decal fallback first (ship it).** A purpose-made **soft radial decal** (proper alpha
+   falloff, multiply blend) projected on the lane under the ball, tracked each frame, faded as the
+   ball lifts off. *Not* the flattened glass-sphere smear we removed (that used the full glass shader
+   and looked wrong) — a dedicated soft decal reads close to a real tinted shadow, costs almost
+   nothing, and needs no custom receiver shader. Given even Unreal keeps colored translucent shadows
+   in the *baked* path, this is the pragmatic baseline. To honor *light × ball*, the decal's tint can
+   be modulated by the dominant light's color so it isn't a fixed green.
+2. **Transmittance buffer (the stretch goal)** — the per-light approach above, for the genuinely
+   correct multi-light result. Bigger lift (custom receiver shader); attempt once the baseline ships.
+3. **Ray-traced** — only with GPU budget to spare.
+
+## Tuning / quality knobs (from the UE notes)
+- Shadow **sharpness** depends on the receiver's resolution, the **light's source angle/size** (softer
+  with a wider source), and the transmittance sample quality — expose these rather than hardcoding.
+- **Opacity drives tint strength**: transmittance ≈ the ball color filtered by glass opacity (UE's
+  "Base Color scaled by Opacity", "Thin Translucent" output). Clear texels pass more light (brighter,
+  more saturated tint); opaque texels darken toward a gray block.
 
 ## Key references
+- **Translucent Shadow Maps**, Dachsbacher & Stamminger 2003 — the canonical algorithm this implements.
+- UE "Using Colored Translucent Shadows" (light × base-color × opacity; **static lighting only**).
+- Unity/HDRP "Color Shadow" on ray-traced shadows (the RT alternative).
 - `glass.shader` `S_MODE_DEPTH` block — proof the cast side is colorless.
 - `common/classes/Light.hlsl` `Light::Shadows()` — scalar visibility, the receiver side.
+- `common/classes/Raytracing.hlsl` — the RT accel structure, for the ray-traced alternative.
 - `common/lightbinner.hlsl` — `TransmissiveEnabled` light flag + cookie (`GetLightCookie`); a
   light cookie/gobo is a *third* option but tints the whole light pool, not just the ball footprint.
 - `Code/FloorBuilder.cs` — where the lane floor (the receiver) is built; needs the custom material.
