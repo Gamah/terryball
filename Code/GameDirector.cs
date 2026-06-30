@@ -86,7 +86,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	[Property, Group( "Crane" )] public float CraneHoverSeconds { get; set; } = 0.4f;
 	/// <summary>How high (units) above a player the claw hovers before it sinks to scoop them (and rises
 	/// back to after a scoop/drop).</summary>
-	[Property, Group( "Crane" )] public float CraneAboveHeight { get; set; } = 150f;
+	[Property, Group( "Crane" )] public float CraneAboveHeight { get; set; } = 230f;
 	/// <summary>The noticeable beat (seconds) the ball holds directly above a player both before sinking
 	/// onto them and after rising back off — the claw-game "lining up / lifting clear" pause.</summary>
 	[Property, Group( "Crane" )] public float CraneAbovePauseSeconds { get; set; } = 0.55f;
