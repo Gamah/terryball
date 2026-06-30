@@ -629,9 +629,8 @@ public sealed class LaneBuilder : Component
 		var worldW = laneHalf * 2f;                        // about the lane width
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills that width (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
-		// Float it above the pins, roughly at the watch camera's eye-line so it sits in frame when the
-		// call fires (the cam eases to deck + height looking down at the deck).
-		var centerZ = surfaceZ + worldH * 0.5f + 1.5f * D;
+		// Float it just over the pins — low enough to read with the rack, not way up in the air.
+		var centerZ = surfaceZ + worldH * 0.5f + 0.3f * D;
 
 		var screen = new GameObject( true, "AnnouncerCalloutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		screen.LocalPosition = new Vector3( calloutX, 0f, centerZ );

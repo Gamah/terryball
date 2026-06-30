@@ -645,8 +645,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				var ballBody = _ball.Components.Get<Rigidbody>();
 				var ballStill = ballBody.IsValid() &&
 					ballBody.Velocity.Length <= SettleSpeedThreshold && ballBody.AngularVelocity.Length <= SettleAngularThreshold;
+				// Once the ball has driven THROUGH the rack it can't change the leave any more, so don't
+				// wait on it rattling around the pit — the pins being still is enough. Only a ball that
+				// stalled short of the deck (gutter/weak roll) still has to come to rest itself.
+				var ballPastDeck = _ball.WorldPosition.x >= _lane.PinDeckEndWorldX;
 
-				if ( pinsStill && ballStill )
+				if ( pinsStill && (ballPastDeck || ballStill) )
 				{
 					if ( _quietSince < 0f ) _quietSince = Time.Now;
 				}
