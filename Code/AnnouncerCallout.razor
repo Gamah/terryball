@@ -1,0 +1,51 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Terryball;
+@inherits PanelComponent
+
+@*
+	The announcer call-out banner: big floating text on a lane-width WorldPanel over the throw line,
+	tilted back to face the approach. The GameDirector classifies each settled ball and stamps the
+	call onto director.CalloutText / CalloutAt (see Announce); this just shows it large for a few
+	seconds and fades it out. Built by LaneBuilder.BuildAnnouncerCallout.
+*@
+
+@{
+	var director = Director;
+	var text = director?.CalloutText ?? "";
+	var age = director is null ? 999f : Time.Now - director.CalloutAt;
+	var visible = !string.IsNullOrEmpty( text ) && age < DisplaySeconds;
+	var opacity = !visible ? 0f
+		: (age > DisplaySeconds - FadeSeconds ? (DisplaySeconds - age) / FadeSeconds : 1f);
+}
+
+<root style="width: 100%; height: 100%; align-items: center; justify-content: center;
+             font-family: Poppins, sans-serif; opacity: @opacity;">
+	@if ( visible )
+	{
+		<div style="font-size: 170px; font-weight: 800; color: white; white-space: nowrap;
+		            text-align: center; text-stroke: 6px rgba(0,0,0,0.85);
+		            text-shadow: 0px 6px 18px rgba(0,0,0,0.9);">
+			@text
+		</div>
+	}
+</root>
+
+@code
+{
+	private const float DisplaySeconds = 3.0f; // how long a call stays up
+	private const float FadeSeconds = 0.6f;    // tail fade-out
+
+	private GameDirector Director => Lane.Of( this )?.Director;
+
+	// Rebuild while a call is on screen (coarse time buckets animate the fade), then settle once it's gone.
+	protected override int BuildHash()
+	{
+		var director = Director;
+		var text = director?.CalloutText ?? "";
+		var age = director is null ? 999f : Time.Now - director.CalloutAt;
+		var active = !string.IsNullOrEmpty( text ) && age < DisplaySeconds;
+		var bucket = active ? (int)(age * 8f) : -1;
+		return System.HashCode.Combine( text, bucket );
+	}
+}

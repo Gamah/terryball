@@ -127,6 +127,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	[Sync( SyncFlags.FromHost )] public NetList<string> RosterNames { get; set; } = new();
 	/// <summary>Per-roster-player encoded frame data, parallel to <see cref="RosterNames"/>.</summary>
 	[Sync( SyncFlags.FromHost )] public NetList<string> RosterScores { get; set; } = new();
+	/// <summary>Per-roster-player split markers, parallel to <see cref="RosterNames"/>: a comma-joined
+	/// list of "frame.ball" tokens (the scoreboard circles those ball boxes). Splits are detected on the
+	/// bowler's leave; this surfaces them so every client circles the same counts.</summary>
+	[Sync( SyncFlags.FromHost )] public NetList<string> RosterSplits { get; set; } = new();
 	/// <summary>Whose turn it is (index into the roster).</summary>
 	[Sync( SyncFlags.FromHost )] public int CurrentPlayer { get; set; }
 	/// <summary>The frame everyone's on (0–9).</summary>
@@ -176,6 +180,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	/// <summary>Is pin <paramref name="number"/> (1–10) currently reading as down?</summary>
 	public bool IsPinDown( int number ) => (PinDownBits & (1 << number)) != 0;
+
+	/// <summary>The current announcer call-out text the lane banner shows (e.g. "STRIKE!", "SPLIT!", "6").
+	/// Set locally by <see cref="Announce"/> on every client; not synced (the panel is lane-local).</summary>
+	public string CalloutText { get; private set; }
+	/// <summary>When <see cref="CalloutText"/> was set (<see cref="Time.Now"/>), so the banner can fade out.</summary>
+	public float CalloutAt { get; private set; }
 
 	private LaneBuilder _lane;
 	private BallController _ball;
@@ -250,6 +260,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		public string Name { get; set; }
 		/// <summary>Ten frames; each holds the pins felled per ball (1–2 balls, or 3 in the 10th).</summary>
 		public readonly List<List<int>> Frames = new();
+		/// <summary>Which (frame, ball-index) leaves were splits — host-side, published via RosterSplits.</summary>
+		public readonly HashSet<(int frame, int ball)> Splits = new();
 		public PlayerScore( string name )
 		{
 			Name = name;
@@ -464,10 +476,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		RosterNames.Clear();
 		RosterScores.Clear();
+		RosterSplits.Clear();
 		foreach ( var p in _players )
 		{
 			RosterNames.Add( p.Name );
 			RosterScores.Add( EncodeFrames( p.Frames ) );
+			RosterSplits.Add( string.Join( ",", p.Splits.Select( s => $"{s.frame}.{s.ball}" ) ) );
 		}
 		CurrentPlayer = _current;
 		CurrentFrame = _frame;
@@ -493,6 +507,23 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			}
 		}
 		while ( result.Count < 10 ) result.Add( new List<int>() );
+		return result;
+	}
+
+	// Splits encode as "frame.ball,frame.ball,…" — decode to per-frame sets of ball-box indices to circle.
+	private static Dictionary<int, HashSet<int>> DecodeSplits( string s )
+	{
+		var result = new Dictionary<int, HashSet<int>>();
+		if ( string.IsNullOrEmpty( s ) ) return result;
+		foreach ( var tok in s.Split( ',', StringSplitOptions.RemoveEmptyEntries ) )
+		{
+			var fb = tok.Split( '.' );
+			if ( fb.Length == 2 && int.TryParse( fb[0], out var f ) && int.TryParse( fb[1], out var b ) )
+			{
+				if ( !result.TryGetValue( f, out var set ) ) result[f] = set = new();
+				set.Add( b );
+			}
+		}
 		return result;
 	}
 
@@ -1122,9 +1153,19 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	{
 		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
 
-		if ( _current >= 0 && _current < _players.Count && _frame >= 0 && _frame < 10 )
-			_players[_current].Frames[_frame].Add( knocked );
 		PinDownBits = downMask;
+		if ( _current >= 0 && _current < _players.Count && _frame >= 0 && _frame < 10 )
+		{
+			var player = _players[_current];
+			player.Frames[_frame].Add( knocked );
+
+			// Classify what just happened into an announcer call and broadcast it to every client
+			// (they play it 2D, gated to their own lane, and pop the call-out banner). A split also
+			// gets recorded so the scoreboard can circle the count.
+			var call = ClassifyCall( player, _frame, downMask, out var isSplit );
+			if ( isSplit ) player.Splits.Add( (_frame, player.Frames[_frame].Count - 1) );
+			if ( !string.IsNullOrEmpty( call ) ) Announce( call );
+		}
 		PublishScores();
 	}
 
@@ -1246,6 +1287,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		public List<string> Balls { get; init; } = new();
 		public int? Score { get; init; }
 		public bool Active { get; init; }
+		/// <summary>Indices into <see cref="Balls"/> whose count box is a split (the scoreboard circles them).</summary>
+		public HashSet<int> SplitBalls { get; init; } = new();
 	}
 
 	/// <summary>One player's row: name, ten frames, grand total and whether it's their turn.</summary>
@@ -1288,6 +1331,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		{
 			var name = RosterNames[pi];
 			var framesData = pi < RosterScores.Count ? DecodeFrames( RosterScores[pi] ) : DecodeFrames( "" );
+			var splits = pi < RosterSplits.Count ? DecodeSplits( RosterSplits[pi] ) : new();
 			var player = new PlayerScore( name );
 			for ( var f = 0; f < 10; f++ ) player.Frames[f] = framesData[f];
 
@@ -1302,6 +1346,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 					Balls = BallMarks( player.Frames[fr], fr == 9 ),
 					Score = have[fr] ? cum[fr] : null,
 					Active = pi == CurrentPlayer && fr == CurrentFrame && !over,
+					SplitBalls = splits.TryGetValue( fr, out var sb ) ? sb : new(),
 				} );
 			}
 			views.Add( new PlayerView
@@ -1403,4 +1448,180 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		}
 		return t;
 	}
+
+	// --- Announcer call-outs -------------------------------------------------------------
+	// The host classifies each settled ball (HostBookBall) into a single call id and broadcasts it.
+	// Every client plays the matching VO clip (2D, gated to its own lane) and pops the lane banner.
+
+	private readonly Random _callRng = new();
+
+	/// <summary>Broadcast: an announcer call fired for this lane. On every client, play the clip (only
+	/// if this is the LOCAL player's lane, so it can't carry across lanes) and pop the call-out banner
+	/// (always — the banner is physically on this lane).</summary>
+	[Rpc.Broadcast( NetFlags.HostOnly )]
+	public void Announce( string callId )
+	{
+		var myLane = Lane.Of( this );
+		if ( myLane.IsValid() && Lane.ForLocalPlayer( Scene ) == myLane )
+			myLane.Announcer?.Play( callId );
+
+		CalloutText = CallText( callId );
+		CalloutAt = Time.Now;
+	}
+
+	// Pin adjacency (immediate neighbours) for split detection: a split is the head pin down plus the
+	// standing pins forming two or more disconnected clusters under this graph.
+	private static readonly Dictionary<int, int[]> SplitAdjacency = new()
+	{
+		[1] = new[] { 2, 3 },
+		[2] = new[] { 1, 3, 4, 5 },
+		[3] = new[] { 1, 2, 5, 6 },
+		[4] = new[] { 2, 5, 7, 8 },
+		[5] = new[] { 2, 3, 4, 6, 8, 9 },
+		[6] = new[] { 3, 5, 9, 10 },
+		[7] = new[] { 4, 8 },
+		[8] = new[] { 4, 5, 7, 9 },
+		[9] = new[] { 5, 6, 8, 10 },
+		[10] = new[] { 6, 9 },
+	};
+
+	private static readonly string[] NumberWords =
+		{ "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
+
+	/// <summary>HOST: classify the just-booked ball on <paramref name="player"/>'s <paramref name="frameIdx"/>
+	/// into one announcer call id, using the per-client <paramref name="downMask"/> for the leave pattern.
+	/// Sets <paramref name="isSplit"/> when the leave is a split (so it gets circled on the scoreboard).</summary>
+	private string ClassifyCall( PlayerScore player, int frameIdx, int downMask, out bool isSplit )
+	{
+		isSplit = false;
+		var frame = player.Frames[frameIdx];
+		var tenth = frameIdx == 9;
+		var ball = frame.Count;                 // 1-based: the ball just thrown (= count after the Add)
+		if ( ball < 1 ) return null;
+		var knocked = frame[ball - 1];
+
+		var (fresh, standingBefore) = RackState( frame, tenth, ball );
+
+		if ( fresh )
+		{
+			// A fresh full rack: strike / streak, gutter, or a first-ball leave.
+			if ( knocked == 10 )
+			{
+				var streak = StrikeStreak( player, frameIdx );
+				if ( streak >= 12 ) return "perfect-game";
+				return streak switch
+				{
+					2 => "double",
+					3 => "turkey",
+					4 => "four-bagger",
+					5 => "five-bagger",
+					>= 6 => "six-pack",
+					_ => "strike",
+				};
+			}
+			if ( knocked == 0 ) return "gutter";
+
+			// First-ball leave (1–9 down). Standing pins from the leave bits.
+			var standing = new List<int>();
+			for ( var n = 1; n <= 10; n++ ) if ( (downMask & (1 << n)) == 0 ) standing.Add( n );
+			var headDown = (downMask & (1 << 1)) != 0;
+
+			if ( headDown && IsSplit( standing ) ) { isSplit = true; return "split"; }
+			if ( knocked == 9 )
+				return standing.Count == 1 && (standing[0] == 7 || standing[0] == 10)
+					? NumberWords[9]            // a ringing 7 or 10 isn't "so close"
+					: "so-close";
+			if ( headDown && knocked >= 6 ) return "pocket"; // drove the pocket, left a spare
+			return knocked >= 7 ? "nice" : NumberWords[knocked];
+		}
+
+		// A spare attempt at a leave.
+		if ( knocked == standingBefore ) return _callRng.Next( 4 ) == 0 ? "nice" : "spare"; // cleared it
+		if ( knocked == 0 ) return "miss";                                                  // whiffed
+		return _callRng.Next( 2 ) == 0 ? "good-try" : "open-frame";                         // left it open
+	}
+
+	/// <summary>Was the ball <paramref name="ball"/> (1-based) thrown at a fresh full rack, and how many
+	/// pins were standing entering it? Mirrors the 10th-frame re-rack rules used by BallMarks/DecideLocal.</summary>
+	private static (bool fresh, int standingBefore) RackState( List<int> frame, bool tenth, int ball )
+	{
+		if ( !tenth )
+			return ball == 1 ? (true, 10) : (false, 10 - frame[0]);
+
+		if ( ball == 1 ) return (true, 10);
+		if ( ball == 2 ) return frame[0] == 10 ? (true, 10) : (false, 10 - frame[0]);
+		// ball 3
+		if ( frame[0] == 10 && frame[1] == 10 ) return (true, 10);   // XX_ → fresh
+		if ( frame[0] == 10 ) return (false, 10 - frame[1]);         // X,n,_ → leave from ball 2
+		return (true, 10);                                          // spare then bonus → fresh
+	}
+
+	/// <summary>Consecutive fresh-rack strikes ending at the player's most recent ball (1 = just this one,
+	/// 2 = double, 3 = turkey, … 12 = perfect game). Counts strike BALLS, so the 10th frame's bonus
+	/// strikes extend the run.</summary>
+	private static int StrikeStreak( PlayerScore player, int curFrame )
+	{
+		var flags = new List<bool>();
+		for ( var f = 0; f <= curFrame; f++ )
+		{
+			var frame = player.Frames[f];
+			var tenth = f == 9;
+			for ( var b = 1; b <= frame.Count; b++ )
+			{
+				var (fresh, _) = RackState( frame, tenth, b );
+				flags.Add( fresh && frame[b - 1] == 10 );
+			}
+		}
+		var run = 0;
+		for ( var i = flags.Count - 1; i >= 0; i-- ) { if ( flags[i] ) run++; else break; }
+		return run;
+	}
+
+	/// <summary>Is the standing-pin leave a split? True when the standing pins (head pin already known
+	/// down by the caller) form two or more disconnected clusters under <see cref="SplitAdjacency"/>.</summary>
+	private static bool IsSplit( List<int> standing )
+	{
+		if ( standing.Count < 2 ) return false;
+		var standSet = new HashSet<int>( standing );
+		var seen = new HashSet<int> { standing[0] };
+		var stack = new Stack<int>();
+		stack.Push( standing[0] );
+		while ( stack.Count > 0 )
+		{
+			foreach ( var nb in SplitAdjacency[stack.Pop()] )
+				if ( standSet.Contains( nb ) && seen.Add( nb ) ) stack.Push( nb );
+		}
+		return seen.Count < standing.Count; // a standing pin we couldn't reach → disconnected → split
+	}
+
+	/// <summary>The on-lane banner text for a call id (numbers show as the digit; the rest as a shout).</summary>
+	private static string CallText( string callId ) => callId switch
+	{
+		"strike" => "STRIKE!",
+		"spare" => "SPARE",
+		"gutter" => "GUTTER",
+		"miss" => "MISS",
+		"open-frame" => "OPEN",
+		"split" => "SPLIT!",
+		"pocket" => "POCKET",
+		"double" => "DOUBLE!",
+		"turkey" => "TURKEY!",
+		"four-bagger" => "FOUR-BAGGER!",
+		"five-bagger" => "FIVE-BAGGER!",
+		"six-pack" => "SIX-PACK!",
+		"perfect-game" => "PERFECT GAME!",
+		"nice" => "NICE!",
+		"so-close" => "SO CLOSE!",
+		"good-try" => "GOOD TRY",
+		"one" => "1",
+		"two" => "2",
+		"three" => "3",
+		"four" => "4",
+		"five" => "5",
+		"six" => "6",
+		"seven" => "7",
+		"eight" => "8",
+		"nine" => "9",
+		_ => callId?.ToUpperInvariant() ?? "",
+	};
 }

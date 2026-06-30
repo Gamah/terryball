@@ -423,6 +423,11 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "ThrowLine", new Vector3( throwLineX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
 
+		// ---- Announcer call-out: a lane-width text banner floating over the throw line (the
+		// camera-handoff gate), tilted back to face the approach. The director pops the active call
+		// (STRIKE! / SPLIT! / a pin count …) onto it as each ball settles.
+		BuildAnnouncerCallout( throwLineX, laneHalf, H, ballDiameterUnits );
+
 		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
 		// deepest, outers stepping BACK toward the foul line, so the whole formation points
 		// down-lane at the pins (matching each arrow's own heading), as on a real lane. Flat
@@ -442,6 +447,7 @@ public sealed class LaneBuilder : Component
 		// 1/2/3/4 stepping away, each centred across the lane.
 		_pinModel = BuildPinModel( u );
 		_pinAudio = Components.GetOrCreate<PinImpactAudio>(); // one bank for the lane; pins funnel here
+		Components.GetOrCreate<AnnouncerAudio>(); // one announcer VO bank for the lane (director routes calls here)
 		// Compute the rack layout (WORLD home spots — the director respots/scores in world space). Built
 		// on EVERY client so the model/audio/scale are ready when the networked pins replicate in, but the
 		// pin OBJECTS themselves are spawned once by the host (HostSpawnPins).
@@ -606,6 +612,39 @@ public sealed class LaneBuilder : Component
 		panel.InteractionRange = 100000f;
 
 		screen.Components.Create<PinReadout>();
+	}
+
+	/// <summary>The announcer call-out banner: a WorldPanel (<see cref="AnnouncerCallout"/>) exactly the
+	/// lane's width, floating above the throw line and tilted back 45° to face the approach camera. It
+	/// shows the director's current call (STRIKE!, SPLIT!, a spoken pin count, …) as each ball settles.
+	/// <paramref name="throwLineX"/> is the lane-local x of the throw line; <paramref name="surfaceZ"/>
+	/// the lane surface top; <paramref name="D"/> the ball diameter (the lane's size unit).</summary>
+	private void BuildAnnouncerCallout( float throwLineX, float laneHalf, float surfaceZ, float D )
+	{
+		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
+		// Wide, short banner. CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is
+		// PanelSize / 2 — size the canvas ~2× the content so big text fits with margin (see BuildBackstopReadout).
+		var panelPx = new Vector2( 1800f, 600f );
+		var worldW = laneHalf * 2f;                        // exactly the lane width
+		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the lane width (RenderScale stays 1)
+		var worldH = panelPx.y * s2w * scale;
+		// Float it above the lane at the throw line, lifted clear so it reads from the approach.
+		var centerZ = surfaceZ + worldH * 0.5f + 2f * D;
+
+		var screen = new GameObject( true, "AnnouncerCalloutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		screen.LocalPosition = new Vector3( throwLineX, 0f, centerZ );
+		// identity WorldPanel faces +x; yaw 180 turns it back up-lane toward the bowler/camera, pitch
+		// leans the top away down-lane so it's tilted back 45° from the approach view.
+		screen.LocalRotation = Rotation.FromYaw( 180f ) * Rotation.FromPitch( 45f );
+		screen.LocalScale = scale;
+
+		var panel = screen.Components.Create<WorldPanel>();
+		panel.PanelSize = panelPx;
+		panel.RenderScale = 1f;
+		panel.LookAtCamera = false;
+		panel.InteractionRange = 100000f;
+
+		screen.Components.Create<AnnouncerCallout>();
 	}
 
 	/// <summary>The two overhead settee screens, side by side facing the seats. From the seated bowler's

@@ -50,15 +50,18 @@
 					<div style="font-size: 9px; color: rgba(255,255,255,0.4); align-items: center;
 					            justify-content: center; padding-top: 2px;">@(fr + 1)</div>
 
-					@* Ball-mark boxes *@
+					@* Ball-mark boxes — a split count is circled (border-radius) in amber, alley-style *@
 					<div style="flex-direction: row; justify-content: flex-end; padding: 0px 3px;">
-						@foreach ( var mark in frame.Balls )
+						@for ( var bi = 0; bi < frame.Balls.Count; bi++ )
 						{
+							var split = frame.SplitBalls.Contains( bi );
 							<div style="width: 20px; height: 20px; margin-left: 1px;
 							            align-items: center; justify-content: center; font-size: 13px;
 							            font-weight: 700; color: white;
-							            border-width: 1px; border-color: rgba(255,255,255,0.14);">
-								@mark
+							            border-width: @(split ? "2px" : "1px");
+							            border-color: @(split ? "#f1c40f" : "rgba(255,255,255,0.14)");
+							            border-radius: @(split ? "10px" : "0px");">
+								@frame.Balls[bi]
 							</div>
 						}
 					</div>
@@ -103,6 +106,7 @@
 			{
 				hash.Add( frame.Active );
 				hash.Add( frame.Score );
+				hash.Add( frame.SplitBalls.Count );
 				foreach ( var mark in frame.Balls )
 					hash.Add( mark );
 			}
