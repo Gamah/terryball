@@ -623,10 +623,13 @@ public sealed class LaneBuilder : Component
 	private void BuildAnnouncerCallout( float calloutX, float laneHalf, float surfaceZ, float D )
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
-		// CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2 — size the
-		// canvas ~2× the text content so big text fits with margin (see BuildBackstopReadout).
-		var panelPx = new Vector2( 1800f, 600f );
-		var worldW = laneHalf * 2f;                        // about the lane width
+		// CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2. The
+		// canvas has to be wide enough for the LONGEST call ("PERFECT GAME!", "FOUR-BAGGER!") at the text
+		// size below or it clips. Make it wider than the lane (it billboards to the camera, so spilling
+		// past the lane edges is fine) and scale worldW by the SAME factor so the text's physical size
+		// is unchanged — only the canvas grows.
+		var panelPx = new Vector2( 3000f, 600f );
+		var worldW = laneHalf * 2f * (3000f / 1800f);      // wider than the lane so long calls don't clip
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills that width (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
 		// Float it just over the pins — low enough to read with the rack, not way up in the air.
