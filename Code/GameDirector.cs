@@ -219,7 +219,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	{
 		Move,    // vertical/short lerp to Pos over Seconds (lift, sink, rise)
 		Travel,  // lerp to Pos at the capped speed, with a rack-clearing bulge
-		Wait,    // hold position for Seconds (hover / above-pause)
+		Wait,    // hold position for Seconds (hover / above-pause). Track ⟹ hover OVER the live player.
+		Descend, // sink onto the LIVE player, chasing them; ends (→ Scoop) only once the ball is on them
+		Rise,    // vertical lift straight up from wherever the ball is now (post-scoop)
 		Snap,    // instant: teleport ball to Pos (crane-disabled: skips the animated travel)
 		Scoop,   // instant: body → ball
 		Drop,    // instant: ball → body at the seat
@@ -231,13 +233,14 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		public CraneStepKind Kind;
 		public Vector3 Pos;
 		public float Seconds;
+		public bool Track; // Travel/Wait: home in on the bowler's LIVE position instead of a fixed Pos
 	}
 	private CraneJob _craneJob;
 	private bool _ballCraned;     // ball currently in kinematic crane mode (collider on ⟺ rolling)
 	private readonly List<CraneStep> _craneSteps = new();
 	private int _craneStep;
 	private float _craneStepElapsed, _craneStepDuration;
-	private Vector3 _craneStepFrom;
+	private Vector3 _craneStepFrom, _craneStepTo;
 	private Vector3 _grabPos;     // where the claw grabbed us this turn
 	private bool _grabOnSettee;   // ...and whether that was on the settee (else we drop at the middle)
 	private Vector3 _dropSpot;    // where to set us back down at turn's end
@@ -929,8 +932,24 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private float TravelSeconds( Vector3 a, Vector3 b )
 		=> MathF.Max( CraneMinTravelSeconds, (b - a).Length / (CraneSpeed > 1f ? CraneSpeed : 1f) );
 
-	private void Step( CraneStepKind kind, Vector3 pos = default, float seconds = 0f )
-		=> _craneSteps.Add( new CraneStep { Kind = kind, Pos = pos, Seconds = seconds } );
+	private void Step( CraneStepKind kind, Vector3 pos = default, float seconds = 0f, bool track = false )
+		=> _craneSteps.Add( new CraneStep { Kind = kind, Pos = pos, Seconds = seconds, Track = track } );
+
+	// The bowler's LIVE foot position, for a pickup that tracks them. Falls back to the captured grab spot
+	// if the avatar's momentarily unavailable. Used only pre-scoop (after the scoop they ARE the ball).
+	private Vector3 PickupFoot()
+	{
+		var av = LocalAvatar;
+		return av.IsValid() ? av.WorldPosition : _grabPos;
+	}
+
+	// Step the ball from -> to, capped at maxDist this frame (so a moving target is chased, not snapped).
+	private static Vector3 MoveToward( Vector3 from, Vector3 to, float maxDist )
+	{
+		var d = to - from;
+		var len = d.Length;
+		return (len <= maxDist || len < 0.0001f) ? to : from + d / len * maxDist;
+	}
 
 	// Lay out a trip's choreography. The ball always moves from wherever it currently sits.
 	private void BuildCraneSteps( CraneJob job )
@@ -966,13 +985,14 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		switch ( job )
 		{
 			case CraneJob.Pickup:
-				// Ball is parked (start / previous seat) — fly to ABOVE us, line up, sink on, lift clear,
-				// then carry us to the lane start.
-				Step( CraneStepKind.Travel, CraneAbove( _grabPos ) );
-				Step( CraneStepKind.Wait, seconds: CraneAbovePauseSeconds );
-				Step( CraneStepKind.Move, CraneRest( _grabPos ), CraneSinkSeconds );
+				// Fetch the bowler, who keeps walking the WHOLE time (controls never locked). Every pre-scoop
+				// leg tracks their LIVE position (CraneAbove(_grabPos) is just the seed), so the claw chases
+				// them and only scoops once it's actually on them — no yank-from-afar if they wander off.
+				Step( CraneStepKind.Travel, CraneAbove( _grabPos ), track: true );        // fly above them
+				Step( CraneStepKind.Wait, seconds: CraneAbovePauseSeconds, track: true ); // hover, staying over them
+				Step( CraneStepKind.Descend );                                            // sink onto them; scoops when on
 				Step( CraneStepKind.Scoop );
-				Step( CraneStepKind.Move, CraneAbove( _grabPos ), CraneSinkSeconds );
+				Step( CraneStepKind.Rise );                                               // lift straight up from the scoop
 				Step( CraneStepKind.Wait, seconds: CraneAbovePauseSeconds );
 				Step( CraneStepKind.Travel, _ballHome );
 				Step( CraneStepKind.Roll );
@@ -1023,12 +1043,20 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		var s = _craneSteps[i];
 		_craneStepElapsed = 0f;
 		_craneStepFrom = _ball.WorldPosition;
+		_craneStepTo = s.Pos;
 
 		switch ( s.Kind )
 		{
 			case CraneStepKind.Move: _craneStepDuration = MathF.Max( 0.05f, s.Seconds ); break;
-			case CraneStepKind.Travel: _craneStepDuration = TravelSeconds( _craneStepFrom, s.Pos ); break;
+			case CraneStepKind.Rise:
+				_craneStepTo = _craneStepFrom + Vector3.Up * CraneAboveHeight; // straight up from here
+				_craneStepDuration = MathF.Max( 0.05f, CraneSinkSeconds );
+				break;
+			// Tracked travel chases a live target (no fixed end time); plain travel is distance/speed.
+			case CraneStepKind.Travel: _craneStepDuration = s.Track ? 0f : TravelSeconds( _craneStepFrom, s.Pos ); break;
 			case CraneStepKind.Wait: _craneStepDuration = MathF.Max( 0f, s.Seconds ); break;
+			// Ends on proximity (the ball reaching the player); this is just a don't-hang-forever safety cap.
+			case CraneStepKind.Descend: _craneStepDuration = CraneSinkSeconds + 3f; break;
 
 			case CraneStepKind.Snap: _ball.CraneMoveTo( s.Pos ); BeginStep( i + 1 ); break; // instant teleport
 			case CraneStepKind.Scoop: LocalAvatar?.ScoopIntoBall(); BeginStep( i + 1 ); break; // body → ball
@@ -1046,19 +1074,51 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_craneStepElapsed += Time.Delta;
 		var t = (_craneStepDuration > 0f ? _craneStepElapsed / _craneStepDuration : 1f).Clamp( 0f, 1f );
 
+		// How fast the claw chases a moving target this frame (also the descend rate).
+		var chase = CraneSpeed * Time.Delta;
+
 		switch ( s.Kind )
 		{
 			case CraneStepKind.Move:
-				_ball.CraneMoveTo( Vector3.Lerp( _craneStepFrom, s.Pos, t ) );
+			case CraneStepKind.Rise:
+				_ball.CraneMoveTo( Vector3.Lerp( _craneStepFrom, _craneStepTo, t ) );
 				break;
 			case CraneStepKind.Travel:
+				if ( s.Track )
+				{
+					// Chase a point directly above the LIVE bowler; finish once we're over them.
+					var above = CraneAbove( PickupFoot() );
+					var next = MoveToward( _ball.WorldPosition, above, chase );
+					_ball.CraneMoveTo( next );
+					if ( (next - above).WithZ( 0f ).Length <= _ball.Radius ) BeginStep( _craneStep + 1 );
+					return;
+				}
 				// Linear (so the speed cap holds) with a vertical bulge to clear the rack.
 				_ball.CraneMoveTo( Vector3.Lerp( _craneStepFrom, s.Pos, t )
 					+ Vector3.Up * CraneArcHeight * MathF.Sin( t * MathF.PI ) );
 				break;
 			case CraneStepKind.Wait:
-				_ball.CraneMoveTo( _craneStepFrom ); // hold above / hover
+				// Tracked hover: stay locked above the live bowler. Plain hover: hold position.
+				_ball.CraneMoveTo( s.Track ? MoveToward( _ball.WorldPosition, CraneAbove( PickupFoot() ), chase ) : _craneStepFrom );
 				break;
+			case CraneStepKind.Descend:
+			{
+				// Sink onto the live bowler, chasing them horizontally so they can't outrun the claw. The
+				// scoop fires only once the ball is actually ON them (close + at rest height) — not on a timer
+				// from a stale spot. The duration is just a safety cap so a wedged case can't hang the turn.
+				var rest = CraneRest( PickupFoot() );
+				var sinkRate = CraneAboveHeight / MathF.Max( 0.05f, CraneSinkSeconds ) * Time.Delta;
+				var pos = _ball.WorldPosition;
+				var horiz = MoveToward( pos.WithZ( 0f ), rest.WithZ( 0f ), chase );
+				var z = pos.z + Math.Clamp( rest.z - pos.z, -sinkRate, sinkRate );
+				var next = horiz.WithZ( z );
+				_ball.CraneMoveTo( next );
+
+				var onThem = (next - rest).WithZ( 0f ).Length <= _ball.Radius * 0.6f
+				             && MathF.Abs( next.z - rest.z ) <= _ball.Radius * 0.5f;
+				if ( onThem || _craneStepElapsed >= _craneStepDuration ) BeginStep( _craneStep + 1 );
+				return;
+			}
 		}
 
 		if ( t >= 1f ) BeginStep( _craneStep + 1 );
