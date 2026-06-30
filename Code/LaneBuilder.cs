@@ -368,7 +368,11 @@ public sealed class LaneBuilder : Component
 		// negative, giving an inverted collider that flung the ball off the wall. A slab + clamping the
 		// floor to z ≥ 0 keeps it valid at any depth.)
 		var pitThk = 12f * u;
-		var pitFloorTopZ = MathF.Max( H - pitD, 0f );
+		// Clamp the pit floor to a hair ABOVE the building floor (z = 0), not exactly 0: at z = 0 the pit
+		// slab's top is coplanar with the building floor and the two z-fight (the pit floor flickers
+		// orange/gray). A small lift keeps the dark PitColor as the clean top surface. (PitDepth here
+		// exceeds the platform height, so the unclamped target is below the floor.)
+		var pitFloorTopZ = MathF.Max( H - pitD, u * 0.25f );
 		var pitBottomZ = pitFloorTopZ - pitThk; // pit floor slab + backboard both reach down to here
 
 		// Citizen units-per-inch — the settee + the deck that hosts it are sized to the walking bowlers,
@@ -423,11 +427,10 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "ThrowLine", new Vector3( throwLineX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
 
-		// ---- Announcer call-out: an in-world text banner floating over the lane, forward of where the
-		// pins spawn (toward the bowler from the head pin), facing the camera. The call (STRIKE! /
-		// SPLIT! / a pin count …) pops here as each ball settles.
-		var calloutX = headPinX - ThrowLineDistanceInches * u * 0.5f; // half-way from the head pin to the throw line
-		BuildAnnouncerCallout( calloutX, laneHalf, H, ballDiameterUnits );
+		// ---- Announcer call-out: an in-world text banner in line with the backstop wall (the backboard's
+		// lane-facing face at pitEndX), lifted just above the settee that sits on the backboard, facing
+		// the camera. The call (STRIKE! / SPLIT! / a pin count …) pops here as each ball settles.
+		BuildAnnouncerCallout( pitEndX, laneHalf, deckTopZ, ballDiameterUnits );
 
 		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
 		// deepest, outers stepping BACK toward the foul line, so the whole formation points
@@ -615,12 +618,12 @@ public sealed class LaneBuilder : Component
 		screen.Components.Create<PinReadout>();
 	}
 
-	/// <summary>The announcer call-out banner: a WorldPanel (<see cref="AnnouncerCallout"/>) the lane's
-	/// width, floating over the lane forward of the pin spawn and facing the camera (LookAtCamera) so it
-	/// reads from the watch vantage. Shows the director's current call as each ball settles.
-	/// <paramref name="calloutX"/> is the lane-local x to float it at; <paramref name="surfaceZ"/> the
-	/// lane surface top; <paramref name="D"/> the ball diameter (the lane's size unit).</summary>
-	private void BuildAnnouncerCallout( float calloutX, float laneHalf, float surfaceZ, float D )
+	/// <summary>The announcer call-out banner: a WorldPanel (<see cref="AnnouncerCallout"/>) in line with
+	/// the backstop wall, lifted just above the settee and facing the camera (LookAtCamera) so it reads
+	/// from the watch vantage. Shows the director's current call as each ball settles. <paramref
+	/// name="bannerX"/> is the lane-local x of the backstop wall; <paramref name="baseZ"/> the settee/
+	/// backboard top; <paramref name="D"/> the ball diameter (the lane's size unit).</summary>
+	private void BuildAnnouncerCallout( float bannerX, float laneHalf, float baseZ, float D )
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
 		// CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2. The
@@ -632,11 +635,11 @@ public sealed class LaneBuilder : Component
 		var worldW = laneHalf * 2f * (3000f / 1800f);      // wider than the lane so long calls don't clip
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills that width (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
-		// Float it just over the pins — low enough to read with the rack, not way up in the air.
-		var centerZ = surfaceZ + worldH * 0.5f + 0.3f * D;
+		// Lift it just above the settee (which sits on the backboard top at baseZ), facing the camera.
+		var centerZ = baseZ + worldH * 0.5f + 0.3f * D;
 
 		var screen = new GameObject( true, "AnnouncerCalloutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		screen.LocalPosition = new Vector3( calloutX, 0f, centerZ );
+		screen.LocalPosition = new Vector3( bannerX, 0f, centerZ );
 		screen.LocalScale = scale;
 
 		var panel = screen.Components.Create<WorldPanel>();

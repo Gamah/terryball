@@ -3,19 +3,23 @@ Terryball announcer voice-overs.
 Recorded by the project owner (Gamah) in a single take session, self-performed.
 License: project-owned / public domain for use in Terryball. No third-party rights.
 
-Source recording: one continuous ~67s take, each call performed TWICE in a row
-("take 0" and "take 1" — used for playback variety). Auto-sliced on the silence
-gaps between calls, then per-clip processed.
+Source recording: one continuous ~67s take (~/vo.m4a, kept OUT of the repo), each
+call performed TWICE in a row ("take 0" and "take 1" — used for playback variety),
+in the script order below.
 
-Processing:
-  dry/  -> highpass 85Hz + loudnorm (-16 LUFS, -1.5 dBTP). Clean, no ambience.
-          These are the CORRECT source slices. A processed "fx/" set with reverb
-          was attempted and removed (the desired effect wasn't dialed in yet); see
-          the next-session brief in scratch / ask the user for target tone before
-          re-deriving fx from these dry clips.
+Pipeline:
+  reslice.py   -> dry/   re-cuts the 50 clips from ~/vo.m4a. Splits only on the
+                  gaps BETWEEN calls (within-phrase gaps like "open frame" stay
+                  together) and keeps head/tail padding so word endings aren't
+                  clipped. Each clip: mono, highpass 85Hz + loudnorm (-16 LUFS,
+                  -1.5 dBTP). (An earlier auto-slice trimmed too tight and cut the
+                  tails off four-bagger / five-bagger — reslice.py fixed that.)
+  process_fx.py -> fx/   adds the in-game "announcer over a PA in a big room"
+                  effect (bright present voice over a dark, fast convolution-reverb
+                  tail). fx/ is the set the GAME plays (AnnouncerAudio).
 
-_review_dry.wav: all 25 calls (take 0) concatenated in script order, for quick
-listening. Not used by the game.
+_review_dry.wav / _review_fx.wav: all 25 calls (take 0) concatenated in script
+order, for quick listening. Not used by the game.
 
 Calls (script order): 1-9, strike, spare, gutter, miss, open-frame, split,
 double, turkey, four-bagger, five-bagger, six-pack, nice, so-close, good-try,
