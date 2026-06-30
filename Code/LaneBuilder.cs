@@ -39,7 +39,7 @@ public sealed class LaneBuilder : Component
 	/// <summary>Restitution of the lane structures (bed, gutters, pit, back wall). Modest — enough that
 	/// struck pins ricochet off the deck/walls a little, but not so high the rolling ball hops on the
 	/// bed. (Was cranked to 0.9 as an overshoot; walked back with the rest of the restitution pass.)</summary>
-	[Property, Group( "Lane" )] public float LaneElasticity { get; set; } = 0.3f;
+	[Property, Group( "Lane" )] public float LaneElasticity { get; set; } = 0.42f;
 
 	/// <summary>Restitution of the PIT FLOOR and BACK WALL only — the catch zone behind the pins.
 	/// Near-dead so the ball dumps its energy instead of rebounding off a bouncy wall back into the
@@ -103,7 +103,7 @@ public sealed class LaneBuilder : Component
 	/// flings the pin away faster AND makes the ball lose more speed to it — both wanted. Low values
 	/// make ball+pin move together (ball plows, pin doesn't fly). Keep high; the steamroll was a
 	/// contact/CCD bug, not this. Drives pin-ball and pin-pin liveliness.</summary>
-	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.3f;
+	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.5f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 1f, 1f, 1f, 1f );
 	/// <summary>The two trim stripes ringing the pin's neck.</summary>
 	[Property, Group( "Pins" )] public Color PinStripeColor { get; set; } = new Color( 0.78f, 0.07f, 0.09f, 1f );
