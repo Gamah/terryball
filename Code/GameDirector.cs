@@ -1241,6 +1241,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	// Drop the ball on its run-up spot, upright and dead still.
 	private void PlaceBallHome()
 	{
+		if ( !_ball.IsValid() ) return;
 		_ball.WorldPosition = _ballHome;
 		_ball.WorldRotation = _ballHomeRot;
 		var ballBody = _ball.Components.Get<Rigidbody>();

@@ -242,22 +242,25 @@ public sealed class BallController : Component, Component.ICollisionListener
 	{
 		if ( !_terryRenderer.IsValid() || id == Guid.Empty ) return;
 
-		ClothingContainer clothing;
-		if ( Connection.Local is not null && id == Connection.Local.Id )
-		{
-			clothing = ClothingContainer.CreateFromLocalUser();
-		}
-		else
-		{
-			var conn = Connection.Find( id );
-			clothing = conn is not null ? ClothingContainer.CreateFromConnection( conn ) : null;
-		}
-		if ( clothing is null ) return;
-
 		_dressCts?.Cancel();
 		_dressCts = new CancellationTokenSource();
 		try
 		{
+			// Build the avatar container, then apply. CreateFromLocalUser/CreateFromConnection can throw
+			// from inside the engine (e.g. an inventory read faulting in RemoveUnownedItems), so the whole
+			// thing is guarded — a transient cosmetics failure must not take down the bowler's turn.
+			ClothingContainer clothing;
+			if ( Connection.Local is not null && id == Connection.Local.Id )
+			{
+				clothing = ClothingContainer.CreateFromLocalUser();
+			}
+			else
+			{
+				var conn = Connection.Find( id );
+				clothing = conn is not null ? ClothingContainer.CreateFromConnection( conn ) : null;
+			}
+			if ( clothing is null ) return;
+
 			await clothing.ApplyAsync( _terryRenderer, _dressCts.Token );
 		}
 		catch ( OperationCanceledException ) { }
