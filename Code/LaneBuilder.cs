@@ -427,10 +427,11 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "ThrowLine", new Vector3( throwLineX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
 
-		// ---- Announcer call-out: an in-world text banner in line with the backstop wall (the backboard's
-		// lane-facing face at pitEndX), lifted just above the settee that sits on the backboard, facing
-		// the camera. The call (STRIKE! / SPLIT! / a pin count …) pops here as each ball settles.
-		BuildAnnouncerCallout( pitEndX, laneHalf, deckTopZ, ballDiameterUnits );
+		// ---- Announcer call-out: an in-world text banner over the lane, a little forward of the backstop
+		// wall (toward the lane from the settee, floating over the pit), lifted just above the settee and
+		// facing the camera. The call (STRIKE! / SPLIT! / a pin count …) pops here as each ball settles.
+		var calloutX = pitEndX - (pitEndX - pinDeckEndX) * 0.3f; // nudge toward the lane, in front of the settee
+		BuildAnnouncerCallout( calloutX, laneHalf, deckTopZ, ballDiameterUnits );
 
 		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
 		// deepest, outers stepping BACK toward the foul line, so the whole formation points
@@ -632,7 +633,9 @@ public sealed class LaneBuilder : Component
 		// past the lane edges is fine) and scale worldW by the SAME factor so the text's physical size
 		// is unchanged — only the canvas grows.
 		var panelPx = new Vector2( 3000f, 600f );
-		var worldW = laneHalf * 2f * (3000f / 1800f);      // wider than the lane so long calls don't clip
+		// 1.5× the earlier size for a bigger, bolder call-out. Scaling worldW (not the font/canvas) keeps
+		// the canvas:text ratio, so long calls still fit — everything just renders 1.5× larger.
+		var worldW = laneHalf * 2f * (3000f / 1800f) * 1.5f; // wider than the lane so long calls don't clip
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills that width (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
 		// Lift it just above the settee (which sits on the backboard top at baseZ), facing the camera.
