@@ -48,7 +48,10 @@ public sealed class AnnouncerAudio : Component
 				if ( sf != null ) sounds.Add( sf );
 			}
 			if ( sounds.Count == 0 ) continue;
-			_events[call] = new SoundEvent { Sounds = sounds, Volume = 1.0f };
+			// UI = true makes it a 2D sound: no distance attenuation, full volume regardless of where the
+			// listener/camera is. (A 3D SoundEvent defaults to Distance=15000 and plays at the origin, so
+			// the watch camera way down at the pins hears nothing.)
+			_events[call] = new SoundEvent { Sounds = sounds, Volume = 1.0f, UI = true };
 		}
 		Log.Info( $"[terryball][vo] AnnouncerAudio loaded {_events.Count}/{Calls.Length} calls" );
 	}
@@ -65,7 +68,6 @@ public sealed class AnnouncerAudio : Component
 		var h = Sound.Play( ev );
 		Log.Info( $"[terryball][vo] Play('{callId}') handle valid={h.IsValid()}" );
 		if ( !h.IsValid() ) return;
-		h.SpacialBlend = 0f; // force 2D — a clear PA regardless of camera position
 		h.Volume = Volume;
 	}
 }

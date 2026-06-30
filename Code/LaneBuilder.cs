@@ -423,12 +423,11 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "ThrowLine", new Vector3( throwLineX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
 
-		// ---- Announcer call-out: a lane-width text banner floating over the lane, tilted back to face
-		// the approach, where the call (STRIKE! / SPLIT! / a pin count …) pops as each ball settles.
-		// Placed just in front of the pins (NOT back at the throw line): the watch camera eases to a
-		// vantage at deck − WatchBack looking down-lane at the deck, so the throw line ends up BEHIND
-		// it — the banner has to sit ahead of the pins to be in the settle-time frame.
-		var calloutX = headPinX - rowDepth * 1.5f;
+		// ---- Announcer call-out: a lane-width text banner floating just in FRONT of the head-pin spot
+		// (toward the bowler from pin 1), where the call (STRIKE! / SPLIT! / a pin count …) pops as each
+		// ball settles. It faces the camera (LookAtCamera), so it reads from the watch vantage. Sits
+		// ahead of the pins, halfway to the throw line, so it's clear of the rack and in the watch frame.
+		var calloutX = headPinX - ThrowLineDistanceInches * u * 0.5f;
 		BuildAnnouncerCallout( calloutX, laneHalf, H, ballDiameterUnits );
 
 		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
@@ -634,19 +633,16 @@ public sealed class LaneBuilder : Component
 		var worldH = panelPx.y * s2w * scale;
 		// Float it above the pins, roughly at the watch camera's eye-line (the cam sits at deck + height
 		// looking down at the deck), so the banner sits in frame when the call fires.
-		var centerZ = surfaceZ + worldH * 0.5f + 1.3f * D;
+		var centerZ = surfaceZ + worldH * 0.5f + 1.5f * D;
 
 		var screen = new GameObject( true, "AnnouncerCalloutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		screen.LocalPosition = new Vector3( calloutX, 0f, centerZ );
-		// identity WorldPanel faces +x; yaw 180 turns it back up-lane toward the bowler/camera, pitch
-		// leans the top away down-lane so it's tilted back 45° from the approach view.
-		screen.LocalRotation = Rotation.FromYaw( 180f ) * Rotation.FromPitch( 45f );
 		screen.LocalScale = scale;
 
 		var panel = screen.Components.Create<WorldPanel>();
 		panel.PanelSize = panelPx;
 		panel.RenderScale = 1f;
-		panel.LookAtCamera = false;
+		panel.LookAtCamera = true; // always face the rendering camera, so it reads from the watch vantage
 		panel.InteractionRange = 100000f;
 
 		screen.Components.Create<AnnouncerCallout>();
