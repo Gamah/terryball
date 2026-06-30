@@ -53,20 +53,14 @@ public sealed class AnnouncerAudio : Component
 			// the watch camera way down at the pins hears nothing.)
 			_events[call] = new SoundEvent { Sounds = sounds, Volume = 1.0f, UI = true };
 		}
-		Log.Info( $"[terryball][vo] AnnouncerAudio loaded {_events.Count}/{Calls.Length} calls" );
 	}
 
 	/// <summary>Play the announcer line for <paramref name="callId"/> as a 2D PA cue. No-op for an
 	/// unknown id or a clip that failed to load.</summary>
 	public void Play( string callId )
 	{
-		if ( string.IsNullOrEmpty( callId ) || !_events.TryGetValue( callId, out var ev ) )
-		{
-			Log.Info( $"[terryball][vo] Play('{callId}') — no clip loaded for this call" );
-			return;
-		}
+		if ( string.IsNullOrEmpty( callId ) || !_events.TryGetValue( callId, out var ev ) ) return;
 		var h = Sound.Play( ev );
-		Log.Info( $"[terryball][vo] Play('{callId}') handle valid={h.IsValid()}" );
 		if ( !h.IsValid() ) return;
 		h.Volume = Volume;
 	}

@@ -1169,7 +1169,6 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			// (they play it 2D, gated to their own lane, and pop the call-out banner). A split also
 			// gets recorded so the scoreboard can circle the count.
 			var call = ClassifyCall( player, _frame, downMask, pocket, out var isSplit );
-			Log.Info( $"[terryball][vo] booked knocked={knocked} frame={_frame} → call='{call}' split={isSplit}" );
 			if ( isSplit ) player.Splits.Add( (_frame, player.Frames[_frame].Count - 1) );
 			if ( !string.IsNullOrEmpty( call ) ) Announce( call );
 		}
@@ -1469,9 +1468,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	public void Announce( string callId )
 	{
 		var myLane = Lane.Of( this );
-		var mine = myLane.IsValid() && Lane.ForLocalPlayer( Scene ) == myLane;
-		Log.Info( $"[terryball][vo] Announce '{callId}' localLaneMatch={mine} announcer={(myLane?.Announcer != null)}" );
-		if ( mine )
+		if ( myLane.IsValid() && Lane.ForLocalPlayer( Scene ) == myLane )
 			myLane.Announcer?.Play( callId );
 
 		CalloutText = CallText( callId );
