@@ -25,38 +25,56 @@ already goes green when seen *through* the ball.
 
 ## The real approach: a transmission ("colored shadow") buffer
 
-Standard stained-glass-shadow technique. Two new pieces: a render-to-texture of the ball's
-transmittance from the light's POV, and a lane-floor shader that multiplies its lighting by it.
+Standard stained-glass-shadow technique. Two new pieces: per-light render-to-textures of the
+ball's transmittance from each light's POV, and a lane-floor shader that multiplies **each
+light's** contribution by that light's transmittance sample.
 
-1. **Transmission RT, rendered from the Sun's direction.**
-   - The lane shadow caster is the `Sun` DirectionalLight (see `PLAN.md` Milestone 0 / the
-     `main.scene`). Build an **orthographic** view aligned to the sun direction, framed over
-     the lane play area (roughly the lane bounds from `LaneBuilder`).
-   - Render **only the ball** into an `RGBA` RT: where the ball covers a texel, store its green
-     **transmittance** color (tint toward `galaxyball_color` greens, alpha = coverage/opacity);
-     clear to white (1,1,1) = "fully lets light through" everywhere else.
-   - s&box hooks to evaluate: `CommandList` / a `RenderHook` / `Graphics.RenderToTexture`, or a
-     dedicated off-screen `CameraComponent` with a render target + a layer/tag mask so only the
-     ball draws. A custom material on the ball for this pass keeps it cheap (no need for the full
-     glass shader — just output green×coverage).
-   - Bind the RT + its world→light matrix as **global shader attributes** (e.g.
-     `Graphics.GlobalAttributes` or `Scene` attributes) so receiver shaders can read them.
+> **Source-agnostic by design.** Do *not* hardwire the `Sun`. The mechanism must work for an
+> arbitrary set of scene lights (a sun today, spots/points added later). Drive everything off
+> "the shadow-casting lights that affect this lane," discovered at runtime — never a named light.
+> The natural seam is the engine's own per-light loop (`lightbinner.hlsl` / `Light::Shadows()`),
+> where colored transmission becomes "multiply this light's visibility scalar by this light's
+> transmittance color." One light or ten, the receiver code is the same loop body.
 
-2. **Lane-floor receiver shader samples the buffer.**
-   - The lane floor currently uses a stock material (`FloorBuilder.cs` builds it). Give it a
-     **custom shader** (fork the standard/`complex` lit shader, or a thin post-add) that, after
-     normal lighting, projects the pixel's world pos into the transmission RT and **multiplies**
-     the lit color by the sampled green-transmittance. Outside the ball's footprint the sample is
-     white → no change.
-   - Only the lane needs this; pins/Terry can keep stock shaders.
+1. **A transmittance RT per relevant light** (not one global buffer).
+   - Enumerate the scene's shadow-casting lights that reach the lane at runtime; for **each**,
+     derive its light-space view-projection from the light itself, by type — **directional** →
+     orthographic aligned to its direction, framed to the lane bounds (`LaneBuilder`);
+     **spot** → its perspective cone; **point** → a cube / the engine's point-shadow convention.
+     Pull these from the light's transform/params, so adding a light "just works."
+   - For each, render **only the ball** into an `RGBA` RT: where the ball covers a texel, store its
+     green **transmittance** (tint toward `galaxyball_color` greens, alpha = coverage/opacity);
+     clear to white (1,1,1) = "fully lets light through." A cheap custom ball material for this
+     pass (output green×coverage) avoids the full glass shader.
+   - **Budget the count.** N RTs for N lights gets expensive — cap it (e.g. the K nearest/strongest
+     shadow-casters per lane); lights beyond the cap fall back to a normal gray shadow. Make K a
+     tunable. Pack the RTs into an **atlas/array** indexed the same way the light loop indexes lights.
+   - s&box hooks to evaluate: `CommandList` / `RenderHook` / `Graphics.RenderToTexture`, or an
+     off-screen `CameraComponent` + render target with a layer/tag mask so only the ball draws.
+   - Bind the RT array + each light's world→light matrix as **global shader attributes**, keyed by
+     light index, so the receiver can look up "light i's transmittance buffer + matrix."
+
+2. **Lane-floor receiver shader multiplies per light.**
+   - The lane floor uses a stock material (`FloorBuilder.cs`). Give it a **custom shader** (fork the
+     standard/`complex` lit shader, or a thin post-add). In its lighting loop, for **each** light
+     `i`, after the normal shadow visibility, project the world pos into light `i`'s transmittance
+     buffer and **multiply that light's radiance** by the sampled green-transmittance (white →
+     unchanged). This is the source-agnostic payoff: it's a loop over whatever lights exist, not a
+     special case for the sun.
+   - Lights without a transmittance buffer (beyond the cap, or non-casters) sample as white → behave
+     exactly as today. Only the lane needs this shader; pins/Terry keep stock.
 
 ### Gotchas / unknowns to resolve early
-- **Directional light = no single position.** Frame the ortho RT to the lane, not a point light
-  cone. Keep the RT matrix in sync with the `Sun` each frame (or assume the sun is static and bake
-  the matrix once — confirm the sun doesn't move).
-- Confirm s&box exposes a clean way to render a single object to an RT from script (camera+tag mask
-  is most likely; verify against `sbox-public` Camera/RenderHook APIs before committing to it).
-- Confirm you can bind a global texture + matrix that a `.shader` reads (global attributes).
+- **No named lights anywhere.** Discover shadow-casters at runtime and key buffers by light index,
+  so the feature survives lights being added/removed/moved. If a light moves, rebuild its matrix
+  that frame; if static, you may cache — but detect that generically, don't assume "the sun."
+- **Per-type projections.** Directional = ortho framed to the lane; spot = perspective cone; point =
+  cube/6-face (or skip point lights in v1 and note it). Read projection from the light, not a constant.
+- **Cost scales with light count** — hence the K-light cap + atlas. Decide K and the selection metric
+  (distance/intensity) up front.
+- Confirm s&box exposes: rendering a single object to an RT from script (camera+tag mask likely);
+  binding a global **texture array + matrix array** a `.shader` can index; and reading the engine's
+  active-light list/order from script so the receiver indices match the cast indices.
 - Receiver shader is the risky part — forking a lit shader in s&box is fiddly. Budget time for it.
 - Make it **toggleable** and lane-scoped so it can't tank perf or leak across the 4 lanes.
 
@@ -79,4 +97,5 @@ no custom receiver shader. Use this if the transmission buffer proves too deep f
 
 ## Done when
 The ball's shadow on the lane is visibly green-tinted, tracks the ball, doesn't bleed onto other
-lanes, has a toggle, and doesn't measurably hurt frame time.
+lanes, has a toggle, and doesn't measurably hurt frame time — **and it still works (no code
+changes) after adding another shadow-casting light to the scene.**
