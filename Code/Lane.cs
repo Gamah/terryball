@@ -47,6 +47,7 @@ public sealed class Lane : Component
 	private BallCamera _camera;
 	private GameDirector _director;
 	private LaneMonitorCamera _monitor;
+	private AnnouncerAudio _announcer;
 
 	/// <summary>This lane's geometry/pin builder.</summary>
 	public LaneBuilder Builder => _builder.IsValid() ? _builder : (_builder = GetComponentInChildren<LaneBuilder>( true ));
@@ -58,4 +59,6 @@ public sealed class Lane : Component
 	public GameDirector Director => _director.IsValid() ? _director : (_director = GetComponentInChildren<GameDirector>( true ));
 	/// <summary>This lane's settee feed camera (renders the active ball to the right-hand screen).</summary>
 	public LaneMonitorCamera Monitor => _monitor.IsValid() ? _monitor : (_monitor = GetComponentInChildren<LaneMonitorCamera>( true ));
+	/// <summary>This lane's announcer voice-over bank (the director routes settled-ball calls here).</summary>
+	public AnnouncerAudio Announcer => _announcer.IsValid() ? _announcer : (_announcer = GetComponentInChildren<AnnouncerAudio>( true ));
 }

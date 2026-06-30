@@ -1,6 +1,7 @@
 using Sandbox;
 using Sandbox.Citizen;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -500,8 +501,29 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// "isn't affected" by the pins, either no contacts fire (contact generation failing) or they fire
 	// with near-zero Impulse. Both are visible here. NormalSpeed = closing speed along the contact
 	// normal; Impulse = the actual momentum exchanged at the contact.
-	public void OnCollisionStart( Collision c ) => LogPinContact( "START", c );
+	public void OnCollisionStart( Collision c )
+	{
+		RecordPinContact( c );
+		LogPinContact( "START", c );
+	}
 	public void OnCollisionUpdate( Collision c ) => LogPinContact( "UPDATE", c );
+
+	// Which pins THIS ball has directly touched this throw — used to tell a pocket hit (drove between
+	// the 1 and the 2/3) from a Brooklyn/high hit. Cleared each ball by the director (ResetContacts).
+	private readonly HashSet<int> _contacts = new();
+
+	private void RecordPinContact( Collision c )
+	{
+		var pin = c.Other.GameObject.IsValid() ? c.Other.GameObject.Components.Get<Pin>() : null;
+		if ( pin.IsValid() ) _contacts.Add( pin.Number );
+	}
+
+	/// <summary>True if this throw drove the pocket: the ball directly contacted the head pin (1) AND
+	/// the 2 or 3 (either side of the pocket). A flush pocket strike, not a high hit or a wide miss.</summary>
+	public bool PocketHit => _contacts.Contains( 1 ) && (_contacts.Contains( 2 ) || _contacts.Contains( 3 ));
+
+	/// <summary>Clear the recorded pin contacts so the next throw starts fresh.</summary>
+	public void ResetContacts() => _contacts.Clear();
 
 	private void LogPinContact( string phase, Collision c )
 	{
