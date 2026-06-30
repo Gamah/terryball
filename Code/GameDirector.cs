@@ -1572,11 +1572,20 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				return standing.Count == 1 && (standing[0] == 7 || standing[0] == 10)
 					? NumberWords[9]            // a ringing 7 or 10 isn't "so close"
 					: "so-close";
-			return knocked >= 7 ? "nice" : NumberWords[knocked];
+			// First-ball count, never "nice" — that call is reserved for hard SPARE conversions below.
+			return NumberWords[knocked];
 		}
 
 		// A spare attempt at a leave.
-		if ( knocked == standingBefore ) return _callRng.Next( 4 ) == 0 ? "nice" : "spare"; // cleared it
+		if ( knocked == standingBefore )
+		{
+			// Cleared it. "Nice" is only for a genuinely hard pickup: a split conversion (always), or a
+			// 3+ pin spare (occasionally). A routine 1–2 pin spare just gets the plain "spare" call.
+			var clearedSplit = player.Splits.Contains( (frameIdx, ball - 2) ); // split was logged on the prior ball
+			if ( clearedSplit ) return "nice";
+			if ( standingBefore >= 3 && _callRng.Next( 4 ) == 0 ) return "nice";
+			return "spare";
+		}
 		if ( knocked == 0 ) return "miss";                                                  // whiffed
 		return _callRng.Next( 2 ) == 0 ? "good-try" : "open-frame";                         // left it open
 	}
