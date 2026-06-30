@@ -123,6 +123,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	public enum GamePhase { Lobby, Playing }
 	/// <summary>Lobby = players join/leave; Playing = a game is on (START pressed). Host-set.</summary>
 	[Sync( SyncFlags.FromHost )] public GamePhase Phase { get; set; } = GamePhase.Lobby;
+	/// <summary>Host toggle (lane controls): when off, the ball is teleported between spots instead of
+	/// flying the choreographed claw animation — the scoop/drop body↔ball swaps and the roll still
+	/// happen, just instantly. Synced so the active bowler (who runs the crane) reads the host's choice.</summary>
+	[Sync( SyncFlags.FromHost )] public bool CraneEnabled { get; set; } = true;
 	/// <summary>The bowlers in this game, in turn order (only meaningful in Playing).</summary>
 	[Sync( SyncFlags.FromHost )] public NetList<string> RosterNames { get; set; } = new();
 	/// <summary>Per-roster-player encoded frame data, parallel to <see cref="RosterNames"/>.</summary>
@@ -216,6 +220,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		Move,    // vertical/short lerp to Pos over Seconds (lift, sink, rise)
 		Travel,  // lerp to Pos at the capped speed, with a rack-clearing bulge
 		Wait,    // hold position for Seconds (hover / above-pause)
+		Snap,    // instant: teleport ball to Pos (crane-disabled: skips the animated travel)
 		Scoop,   // instant: body → ball
 		Drop,    // instant: ball → body at the seat
 		Roll,    // instant: end the trip, restore physics, roll
@@ -933,6 +938,31 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_craneSteps.Clear();
 		var lift = _ball.WorldPosition + Vector3.Up * CraneLiftHeight;
 
+		// Crane disabled: no claw animation — keep only the logical steps (body↔ball swap, roll/handoff)
+		// and teleport the ball straight to where each leg would have ended.
+		if ( !CraneEnabled )
+		{
+			switch ( job )
+			{
+				case CraneJob.Pickup:
+					Step( CraneStepKind.Snap, CraneRest( _grabPos ) ); // over the bowler for the scoop
+					Step( CraneStepKind.Scoop );
+					Step( CraneStepKind.Snap, _ballHome );
+					Step( CraneStepKind.Roll );
+					break;
+				case CraneJob.Dropoff:
+					Step( CraneStepKind.Snap, CraneRest( _dropSpot ) );
+					Step( CraneStepKind.Drop );
+					Step( CraneStepKind.EndDrop );
+					break;
+				default: // Return
+					Step( CraneStepKind.Snap, _ballHome );
+					Step( CraneStepKind.Roll );
+					break;
+			}
+			return;
+		}
+
 		switch ( job )
 		{
 			case CraneJob.Pickup:
@@ -1000,6 +1030,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			case CraneStepKind.Travel: _craneStepDuration = TravelSeconds( _craneStepFrom, s.Pos ); break;
 			case CraneStepKind.Wait: _craneStepDuration = MathF.Max( 0f, s.Seconds ); break;
 
+			case CraneStepKind.Snap: _ball.CraneMoveTo( s.Pos ); BeginStep( i + 1 ); break; // instant teleport
 			case CraneStepKind.Scoop: LocalAvatar?.ScoopIntoBall(); BeginStep( i + 1 ); break; // body → ball
 			case CraneStepKind.Drop: LocalAvatar?.DropAtReturnSpot(); BeginStep( i + 1 ); break; // ball → body
 			case CraneStepKind.Roll: FinishRoll(); break;

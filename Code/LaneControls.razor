@@ -52,6 +52,16 @@
 						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 1px;">
 							LANE <span style="color: #5aa0e6;">1</span> CONTROLS
 						</div>
+						@if ( IsHost )
+						{
+							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
+							            font-size: 15px; font-weight: 700; cursor: pointer;
+							            border-width: 1px; border-color: rgba(120,160,220,0.4);
+							            background-color: @(CraneOn ? "rgba(46,204,113,0.18)" : "rgba(255,255,255,0.06)");"
+							     onclick=@ToggleCrane>
+								Ball Crane: <span style="color: @(CraneOn ? "#2ecc71" : "rgba(255,255,255,0.55)");">@(CraneOn ? "ON" : "OFF")</span>
+							</div>
+						}
 						<div style="font-size: 18px; font-weight: 700;
 						            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.6)");">
 							@(over ? "GAME OVER" : (playing ? (UpName + " is up") : ("LOBBY — " + JoinedCount + " joined")))
@@ -211,6 +221,15 @@
 		}
 	}
 
+	// Ball Crane toggle (host-only; CraneEnabled is FromHost-synced so only the host's write propagates).
+	private bool CraneOn => Director?.CraneEnabled ?? true;
+	private void ToggleCrane()
+	{
+		var d = Director;
+		if ( d is null || !IsHost ) return;
+		d.CraneEnabled = !d.CraneEnabled;
+	}
+
 	// CLOSE button: hand back to the avatar so it restores look + cursor exactly like pressing E.
 	private void CloseControls() => LocalAvatar?.RequestCloseControls();
 
@@ -227,6 +246,7 @@
 		hash.Add( IsHost );
 		hash.Add( me?.NearStation );
 		hash.Add( me?.ControlsOpen );
+		hash.Add( d?.CraneEnabled );
 		foreach ( var p in Players )
 		{
 			hash.Add( p.Name );
