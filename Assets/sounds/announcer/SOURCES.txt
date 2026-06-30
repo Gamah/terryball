@@ -9,16 +9,13 @@ gaps between calls, then per-clip processed.
 
 Processing:
   dry/  -> highpass 85Hz + loudnorm (-16 LUFS, -1.5 dBTP). Clean, no ambience.
-  fx/   -> highpass 70Hz, dominant dry voice + a quiet MONO convolution room
-          reverb (decaying-noise impulse, mixed ~well below the voice so it sits
-          behind it), low-shelf boom (+6dB @95Hz), centered (dual-mono) output,
-          loudnorm, trailing-tail trim, safety limiter.
-          Mono/centered on purpose: earlier detune and decorrelated-stereo-reverb
-          attempts caused phasing and hard-left panning. No pitch/detune at all.
-          Use these for the in-game announcer feel; swap to dry/ if too wet.
+          These are the CORRECT source slices. A processed "fx/" set with reverb
+          was attempted and removed (the desired effect wasn't dialed in yet); see
+          the next-session brief in scratch / ask the user for target tone before
+          re-deriving fx from these dry clips.
 
-_review_fx.wav / _review_dry.wav: all 25 calls (take 0) concatenated in script
-order, for quick listening. Not used by the game; delete before shipping if desired.
+_review_dry.wav: all 25 calls (take 0) concatenated in script order, for quick
+listening. Not used by the game.
 
 Calls (script order): 1-9, strike, spare, gutter, miss, open-frame, split,
 double, turkey, four-bagger, five-bagger, six-pack, nice, so-close, good-try,
