@@ -326,8 +326,8 @@ public sealed class TerryAvatar : Component
 	/// crane sets us back down). Rotating to the next bowler is a separate step — see <see cref="EndTurn"/>.
 	/// Runs on the host.</summary>
 	[Rpc.Host]
-	public void ReportBall( int knocked, int downMask )
-		=> Director?.HostBookBall( knocked, downMask );
+	public void ReportBall( int knocked, int downMask, bool pocket )
+		=> Director?.HostBookBall( knocked, downMask, pocket );
 
 	/// <summary>Bowler → host: our turn is fully over — the dropoff crane has set us back on the settee, so
 	/// the host can now rotate to the next bowler (which reclaims + re-racks the ball). Runs on the host.</summary>

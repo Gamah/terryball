@@ -761,8 +761,10 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		var knocked = Math.Clamp( DownCount - _ballStartDown, 0, 10 );
 		_localBalls.Add( knocked );
 
+		var pocket = _ball?.PocketHit ?? false; // did this ball drive the pocket (touched 1 + 2/3)?
 		var turnDone = DecideLocal();
-		LocalAvatar?.ReportBall( knocked, PinDownBits ); // host books it onto the card right away
+		LocalAvatar?.ReportBall( knocked, PinDownBits, pocket ); // host books it onto the card right away
+		_ball?.ResetContacts(); // next ball starts with a clean contact set
 
 		if ( turnDone )
 		{
@@ -1149,7 +1151,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// <summary>Host side (called from the bowler's ReportBall RPC): book a settled ball's pinfall onto
 	/// the active player's card, reflect the leave on the host's own panels, and rotate when the
 	/// bowler says their turn is done.</summary>
-	public void HostBookBall( int knocked, int downMask )
+	public void HostBookBall( int knocked, int downMask, bool pocket )
 	{
 		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
 
@@ -1162,7 +1164,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			// Classify what just happened into an announcer call and broadcast it to every client
 			// (they play it 2D, gated to their own lane, and pop the call-out banner). A split also
 			// gets recorded so the scoreboard can circle the count.
-			var call = ClassifyCall( player, _frame, downMask, out var isSplit );
+			var call = ClassifyCall( player, _frame, downMask, pocket, out var isSplit );
 			Log.Info( $"[terryball][vo] booked knocked={knocked} frame={_frame} → call='{call}' split={isSplit}" );
 			if ( isSplit ) player.Splits.Add( (_frame, player.Frames[_frame].Count - 1) );
 			if ( !string.IsNullOrEmpty( call ) ) Announce( call );
@@ -1494,7 +1496,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	/// <summary>HOST: classify the just-booked ball on <paramref name="player"/>'s <paramref name="frameIdx"/>
 	/// into one announcer call id, using the per-client <paramref name="downMask"/> for the leave pattern.
 	/// Sets <paramref name="isSplit"/> when the leave is a split (so it gets circled on the scoreboard).</summary>
-	private string ClassifyCall( PlayerScore player, int frameIdx, int downMask, out bool isSplit )
+	private string ClassifyCall( PlayerScore player, int frameIdx, int downMask, bool pocket, out bool isSplit )
 	{
 		isSplit = false;
 		var frame = player.Frames[frameIdx];
@@ -1512,6 +1514,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			{
 				var streak = StrikeStreak( player, frameIdx );
 				if ( streak >= 12 ) return "perfect-game";
+				// A flush pocket strike sometimes gets the "in the pocket" call instead of plain "strike"
+				// (only a single strike — a streak's double/turkey/… always wins).
+				if ( streak < 2 && pocket && _callRng.Next( 3 ) == 0 ) return "pocket";
 				return streak switch
 				{
 					2 => "double",
@@ -1534,7 +1539,6 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				return standing.Count == 1 && (standing[0] == 7 || standing[0] == 10)
 					? NumberWords[9]            // a ringing 7 or 10 isn't "so close"
 					: "so-close";
-			if ( headDown && knocked >= 6 ) return "pocket"; // drove the pocket, left a spare
 			return knocked >= 7 ? "nice" : NumberWords[knocked];
 		}
 

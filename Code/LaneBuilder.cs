@@ -423,13 +423,6 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "ThrowLine", new Vector3( throwLineX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
 
-		// ---- Announcer call-out: a lane-width text banner floating just in FRONT of the head-pin spot
-		// (toward the bowler from pin 1), where the call (STRIKE! / SPLIT! / a pin count …) pops as each
-		// ball settles. It faces the camera (LookAtCamera), so it reads from the watch vantage. Sits
-		// ahead of the pins, halfway to the throw line, so it's clear of the rack and in the watch frame.
-		var calloutX = headPinX - ThrowLineDistanceInches * u * 0.5f;
-		BuildAnnouncerCallout( calloutX, laneHalf, H, ballDiameterUnits );
-
 		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
 		// deepest, outers stepping BACK toward the foul line, so the whole formation points
 		// down-lane at the pins (matching each arrow's own heading), as on a real lane. Flat
@@ -614,38 +607,6 @@ public sealed class LaneBuilder : Component
 		panel.InteractionRange = 100000f;
 
 		screen.Components.Create<PinReadout>();
-	}
-
-	/// <summary>The announcer call-out banner: a WorldPanel (<see cref="AnnouncerCallout"/>) exactly the
-	/// lane's width, floating over the lane and tilted back 45° to face the (elevated) watch camera. It
-	/// shows the director's current call (STRIKE!, SPLIT!, a spoken pin count, …) as each ball settles.
-	/// <paramref name="calloutX"/> is the lane-local x to float it at (just in front of the pins, so it's
-	/// in the settle-time watch frame); <paramref name="surfaceZ"/> the lane surface top; <paramref
-	/// name="D"/> the ball diameter (the lane's size unit).</summary>
-	private void BuildAnnouncerCallout( float calloutX, float laneHalf, float surfaceZ, float D )
-	{
-		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
-		// Wide, short banner. CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is
-		// PanelSize / 2 — size the canvas ~2× the content so big text fits with margin (see BuildBackstopReadout).
-		var panelPx = new Vector2( 1800f, 600f );
-		var worldW = laneHalf * 2f;                        // exactly the lane width
-		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the lane width (RenderScale stays 1)
-		var worldH = panelPx.y * s2w * scale;
-		// Float it above the pins, roughly at the watch camera's eye-line (the cam sits at deck + height
-		// looking down at the deck), so the banner sits in frame when the call fires.
-		var centerZ = surfaceZ + worldH * 0.5f + 1.5f * D;
-
-		var screen = new GameObject( true, "AnnouncerCalloutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		screen.LocalPosition = new Vector3( calloutX, 0f, centerZ );
-		screen.LocalScale = scale;
-
-		var panel = screen.Components.Create<WorldPanel>();
-		panel.PanelSize = panelPx;
-		panel.RenderScale = 1f;
-		panel.LookAtCamera = true; // always face the rendering camera, so it reads from the watch vantage
-		panel.InteractionRange = 100000f;
-
-		screen.Components.Create<AnnouncerCallout>();
 	}
 
 	/// <summary>The two overhead settee screens, side by side facing the seats. From the seated bowler's

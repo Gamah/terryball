@@ -4,10 +4,11 @@
 @inherits PanelComponent
 
 @*
-	The announcer call-out banner: big floating text on a lane-width WorldPanel over the throw line,
-	tilted back to face the approach. The GameDirector classifies each settled ball and stamps the
-	call onto director.CalloutText / CalloutAt (see Announce); this just shows it large for a few
-	seconds and fades it out. Built by LaneBuilder.BuildAnnouncerCallout.
+	The announcer call-out — a screen-space HUD banner (NOT a world panel), so it's fixed in front of
+	the camera and reads correctly for the bowler and any spectator on their own screen. The
+	GameDirector classifies each settled ball and stamps the call onto director.CalloutText / CalloutAt
+	(see Announce); this shows it big over the lane for a few seconds and fades it out. Mounted on
+	LocalHud, following the local player's lane via Lane.ForLocalPlayer.
 *@
 
 @{
@@ -19,13 +20,14 @@
 		: (age > DisplaySeconds - FadeSeconds ? (DisplaySeconds - age) / FadeSeconds : 1f);
 }
 
-<root style="width: 100%; height: 100%; align-items: center; justify-content: center;
+<root style="position: absolute; top: 14%; left: 0px; width: 100%;
+             align-items: center; justify-content: center; pointer-events: none;
              font-family: Poppins, sans-serif; opacity: @opacity;">
 	@if ( visible )
 	{
-		<div style="font-size: 170px; font-weight: 800; color: white; white-space: nowrap;
-		            text-align: center; text-stroke: 6px rgba(0,0,0,0.85);
-		            text-shadow: 0px 6px 18px rgba(0,0,0,0.9);">
+		<div style="font-size: 96px; font-weight: 800; color: white; white-space: nowrap;
+		            text-align: center; text-stroke: 4px rgba(0,0,0,0.85);
+		            text-shadow: 0px 4px 14px rgba(0,0,0,0.9);">
 			@text
 		</div>
 	}
@@ -36,7 +38,8 @@
 	private const float DisplaySeconds = 3.0f; // how long a call stays up
 	private const float FadeSeconds = 0.6f;    // tail fade-out
 
-	private GameDirector Director => Lane.Of( this )?.Director;
+	// Follow whatever lane the local player has joined (like the other HUD panels).
+	private GameDirector Director => Lane.ForLocalPlayer( Scene )?.Director;
 
 	// Rebuild while a call is on screen (coarse time buckets animate the fade), then settle once it's gone.
 	protected override int BuildHash()

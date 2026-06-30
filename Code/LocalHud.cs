@@ -30,6 +30,7 @@ public sealed class LocalHud : Component
 		Components.Create<ScreenPanel>();
 		Components.Create<PinStatusOverlay>();
 		Components.Create<ScoreBoard>();
+		Components.Create<AnnouncerCallout>();
 		Components.Create<LaneControls>();
 		Components.Create<ChatPanel>();
 		Components.Create<BowlerHud>();
