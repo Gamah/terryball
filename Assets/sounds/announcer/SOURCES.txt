@@ -9,10 +9,12 @@ gaps between calls, then per-clip processed.
 
 Processing:
   dry/  -> highpass 85Hz + loudnorm (-16 LUFS, -1.5 dBTP). Clean, no ambience.
-  fx/   -> highpass 70Hz, then a CONVOLUTION room reverb (decaying-noise impulse,
-          decorrelated L/R so the stereo width is natural), low-shelf boom (+3dB
-          @110Hz), loudnorm, trailing-tail trim, safety limiter. No pitch/detune
-          processing (an earlier detune approach combed/phased and is abandoned).
+  fx/   -> highpass 70Hz, dominant dry voice + a quiet MONO convolution room
+          reverb (decaying-noise impulse, mixed ~well below the voice so it sits
+          behind it), low-shelf boom (+6dB @95Hz), centered (dual-mono) output,
+          loudnorm, trailing-tail trim, safety limiter.
+          Mono/centered on purpose: earlier detune and decorrelated-stereo-reverb
+          attempts caused phasing and hard-left panning. No pitch/detune at all.
           Use these for the in-game announcer feel; swap to dry/ if too wet.
 
 _review_fx.wav / _review_dry.wav: all 25 calls (take 0) concatenated in script
