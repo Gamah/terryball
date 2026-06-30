@@ -21,9 +21,9 @@ public sealed class BallCamera : Component
 	[Property] public float Distance { get; set; } = 700f;
 	[Property] public float Height { get; set; } = 60f;
 	/// <summary>Lowest the camera can pitch (look down), in degrees.</summary>
-	[Property, Range( -89f, 89f, 1f )] public float MinPitch { get; set; } = -5f;
+	[Property, Range( -89f, 89f ), Step( 1f )] public float MinPitch { get; set; } = -5f;
 	/// <summary>Highest the camera can pitch (look up), in degrees.</summary>
-	[Property, Range( -89f, 89f, 1f )] public float MaxPitch { get; set; } = 15f;
+	[Property, Range( -89f, 89f ), Step( 1f )] public float MaxPitch { get; set; } = 15f;
 
 	// --- Watch mode -------------------------------------------------------------------------
 	// Once the ball crosses the throw line the camera blends OFF the ball to a vantage behind and

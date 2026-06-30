@@ -65,7 +65,6 @@ public sealed class BallAudio : Component
 	private SoundHandle _rollHandle;
 	private short[] _rollBuf;
 	private float _lp1, _lp2;     // two-pole lowpass state (deep rumble)
-	private float _amSmoothed = 1f;
 	private float _amPhase;
 	private float _whumpPhase;     // per-revolution "whump" cycle, advanced by spin rate
 	private float _spinRate01;     // ramped spin: 0 at throw, climbs to match speed, falls fast on slowdown
