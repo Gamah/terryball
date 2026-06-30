@@ -14,7 +14,7 @@
 
 	// A touch more opaque than clear glass so the nebula reads, but still translucent so
 	// Terry rides visibly inside. Brighter Fresnel edge keeps the glass-sphere read.
-	"g_flOpacityScale"		"0.260000"
+	"g_flOpacityScale"		"0.220000"
 	"TextureTranslucency"		"materials/default/default_trans.tga"
 
 	"g_flMetalness"		"0.150000"

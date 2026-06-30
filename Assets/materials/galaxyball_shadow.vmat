@@ -1,0 +1,44 @@
+// Shadow "ghost" of the ball — a flattened sphere laid on the lane under the ball so the
+// cast shadow picks up the ball's green galaxy colouring. Same glass shader + galaxy color
+// map as glassball.vmat, but tinted dark and made more opaque so it reads as a green-tinted
+// shadow smear rather than a bright glass blob. Driven/placed by BallController.
+"Layer0"
+{
+	"shader"		"shaders/glass.shader_c"
+	"F_TRANSLUCENT"		"1"
+
+	// Multiply the galaxy texture way down so it lands as a dark green shadow, not a glow.
+	"g_flModelTintAmount"		"1.000000"
+	"g_vColorTint"		"[0.090000 0.300000 0.150000 1.000000]"
+	"TextureColor"		"materials/galaxyball_color.png"
+
+	// More opaque than the ball so the smear darkens the lane like a shadow.
+	"g_flOpacityScale"		"0.520000"
+	"TextureTranslucency"		"materials/default/default_trans.tga"
+
+	"g_flMetalness"		"0.000000"
+	"TextureRoughness"		"[0.900000 0.900000 0.900000 0.000000]"
+	"TextureNormal"		"[0.501961 0.501961 1.000000 0.000000]"
+	"TextureAmbientOcclusion"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_bAvoidDoubleFogging"		"1"
+	"g_flGlassFogExtinctionAmount"		"0.000000"
+	"g_flFadeExponent"		"1.000000"
+	// Soft dark-green rim so the smear edge feathers into the lane instead of a hard disc.
+	"g_flEdgeColorFalloff"		"2.000000"
+	"g_flEdgeColorMaxOpacity"		"0.250000"
+	"g_flEdgeColorThickness"		"0.350000"
+	"g_vEdgeColor"		"[0.060000 0.220000 0.110000 1.000000]"
+	"GlassTintColor"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_nScaleTexCoordUByModelScaleAxis"		"0"
+	"g_nScaleTexCoordVByModelScaleAxis"		"0"
+	"g_vTexCoordOffset"		"[0.000 0.000]"
+	"g_vTexCoordScale"		"[1.000 1.000]"
+	"g_vTexCoordScrollSpeed"		"[0.000 0.000]"
+
+	"SystemAttributes"
+	{
+		"PhysicsSurfaceProperties"		"glass"
+	}
+}

@@ -125,11 +125,20 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
 	[Property, Group( "Debug" )] public float RealBallInches { get; set; } = 8.5f;
 
+	/// <summary>Cast a soft green "galaxy" smear under the ball so its shadow picks up the ball's
+	/// colour. The engine's shadow maps are colourless, so this is a faked blob — a flattened ghost
+	/// of the ball, in the same galaxy material darkened, projected straight down onto the lane.</summary>
+	[Property, Group( "Ball" )] public bool ColorShadow { get; set; } = true;
+	/// <summary>How far above the lane the ball can be before its colour-shadow fully fades out.</summary>
+	[Property, Group( "Ball" )] public float ShadowFadeHeight { get; set; } = 400f;
+
 	private Rigidbody _body;
 	private SphereCollider _col;
 	private GameObject _terry;
 	private SkinnedModelRenderer _terryRenderer;
 	private CitizenAnimationHelper _anim;
+	private GameObject _shadow;          // flattened ghost laid on the lane (the faked colour shadow)
+	private ModelRenderer _shadowShell;  // its renderer, so we can fade the smear with ball height
 
 	// In-ball Terry is dressed in the ACTIVE bowler's avatar so everyone sees who's up riding inside.
 	// Re-dressed (on every client) whenever the spotlight moves to a different bowler.
@@ -189,6 +198,22 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		var shellBounds = shell.Model.Bounds.Size.x; // dev sphere ≈ 64 across (r 32)
 		visual.LocalScale = new Vector3( (Radius * 2f) / shellBounds );
+
+		// Faked colour shadow: a second sphere in the darkened galaxy material, flattened into a
+		// disc and laid on the lane under the ball (placed/oriented every frame in OnUpdate). Parented
+		// to the lane (our parent), NOT the ball, so the ball's spin never carries the smear.
+		if ( ColorShadow )
+		{
+			_shadow = new GameObject( true, "BallColorShadow" )
+			{
+				Parent = GameObject.Parent,
+				Flags = GameObjectFlags.NotSaved
+			};
+			_shadowShell = _shadow.Components.GetOrCreate<ModelRenderer>();
+			_shadowShell.Model = shell.Model;
+			_shadowShell.MaterialOverride = Material.Load( "materials/galaxyball_shadow.vmat" );
+			_shadowShell.RenderType = ModelRenderer.ShadowRenderType.Off; // the smear itself casts no shadow
+		}
 
 		// Terry: a Citizen riding the inside. His world transform is driven every frame, so
 		// the ball's spin never carries him — he rides the inner surface independently.
@@ -407,6 +432,8 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		PlaceTerry();
 
+		UpdateColorShadow();
+
 		// Drive Terry's locomotion from the BALL's speed (he's centred, so he barely moves himself). He
 		// eases from a walk up to a run as the ball speeds up, then tucks into the Citizen's continuous Roll
 		// animation once it's really moving. ramp01 maps 0..rollSpeed → walk..run; past that he rolls.
@@ -465,6 +492,50 @@ public sealed class BallController : Component, Component.ICollisionListener
 			DebugOverlay.Text( WorldPosition + Vector3.Up * (Radius + 90f),
 				$"{UnitsToMph( v ):F1} mph   ({v:F0} u/s)", 24, TextFlag.Center, Color.White );
 		}
+	}
+
+	// Faked colour shadow: drop a downward ray to the lane surface beneath the ball and lay the flattened
+	// galaxy "ghost" there as a horizontal smear. It shrinks/fades as the ball lifts off the lane (the crane
+	// pickup), so a grounded/rolling ball reads a green shadow and an airborne one loses it.
+	private void UpdateColorShadow()
+	{
+		if ( !_shadow.IsValid() ) return;
+
+		// Trace straight down from the ball centre to whatever lane surface is below it, ignoring the
+		// ball's own collider (and Terry, who lives in the same hierarchy).
+		var from = WorldPosition;
+		var reach = Radius + ShadowFadeHeight + 50f;
+		var hit = Scene.Trace.Ray( from, from + Vector3.Down * reach )
+			.IgnoreGameObjectHierarchy( GameObject )
+			.Run();
+
+		// Height of the ball's underside above that surface; 0 when it's resting/rolling on the lane.
+		var gap = hit.Hit ? MathF.Max( 0f, hit.Distance - Radius ) : float.MaxValue;
+		var t = ShadowFadeHeight > 0f ? (1f - gap / ShadowFadeHeight).Clamp( 0f, 1f ) : (hit.Hit ? 1f : 0f);
+
+		// Off the lane entirely (airborne in the crane): hide the smear rather than parking a dot.
+		if ( !hit.Hit || t <= 0.02f )
+		{
+			_shadow.Enabled = false;
+			return;
+		}
+		_shadow.Enabled = true;
+
+		// Lay it flat on the surface, a hair above to dodge z-fighting. Kept axis-aligned (a horizontal
+		// pancake) — the dev sphere is radially symmetric, so only the flattened Z axis matters.
+		_shadow.WorldRotation = Rotation.Identity;
+		_shadow.WorldPosition = hit.HitPosition + hit.Normal * 1.5f;
+
+		// Scale: a disc a bit wider than the ball, shrinking with height so it eases out as the ball lifts.
+		// The dev sphere is ≈64 across, so divide the wanted world size by that. Z stays thin (a smear).
+		const float shellBounds = 64f;
+		var diam = Radius * 2f * 1.30f * t;
+		_shadow.WorldScale = new Vector3( diam / shellBounds, diam / shellBounds, (Radius * 0.10f) / shellBounds );
+
+		// Bonus fade on the tint alpha (in case the shader honours per-instance alpha); the scale carries
+		// the fade regardless.
+		if ( _shadowShell.IsValid() )
+			_shadowShell.Tint = _shadowShell.Tint.WithAlpha( t );
 	}
 
 	// Bowling-scale mph ↔ units, treating the ball's diameter as RealBallInches (1 mph = 17.6 in/s). The
