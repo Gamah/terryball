@@ -423,10 +423,13 @@ public sealed class LaneBuilder : Component
 		MakeDecal( "ThrowLine", new Vector3( throwLineX, 0f, H ),
 			new Vector3( 2f * u, gutterOuter * 2f, 6.5f ), ThrowLineColor );
 
-		// ---- Announcer call-out: a lane-width text banner floating over the throw line (the
-		// camera-handoff gate), tilted back to face the approach. The director pops the active call
-		// (STRIKE! / SPLIT! / a pin count …) onto it as each ball settles.
-		BuildAnnouncerCallout( throwLineX, laneHalf, H, ballDiameterUnits );
+		// ---- Announcer call-out: a lane-width text banner floating over the lane, tilted back to face
+		// the approach, where the call (STRIKE! / SPLIT! / a pin count …) pops as each ball settles.
+		// Placed just in front of the pins (NOT back at the throw line): the watch camera eases to a
+		// vantage at deck − WatchBack looking down-lane at the deck, so the throw line ends up BEHIND
+		// it — the banner has to sit ahead of the pins to be in the settle-time frame.
+		var calloutX = headPinX - rowDepth * 1.5f;
+		BuildAnnouncerCallout( calloutX, laneHalf, H, ballDiameterUnits );
 
 		// ---- Arrows: the seven targeting arrows in their dovetail chevron — centre (apex) arrow
 		// deepest, outers stepping BACK toward the foul line, so the whole formation points
@@ -615,11 +618,12 @@ public sealed class LaneBuilder : Component
 	}
 
 	/// <summary>The announcer call-out banner: a WorldPanel (<see cref="AnnouncerCallout"/>) exactly the
-	/// lane's width, floating above the throw line and tilted back 45° to face the approach camera. It
+	/// lane's width, floating over the lane and tilted back 45° to face the (elevated) watch camera. It
 	/// shows the director's current call (STRIKE!, SPLIT!, a spoken pin count, …) as each ball settles.
-	/// <paramref name="throwLineX"/> is the lane-local x of the throw line; <paramref name="surfaceZ"/>
-	/// the lane surface top; <paramref name="D"/> the ball diameter (the lane's size unit).</summary>
-	private void BuildAnnouncerCallout( float throwLineX, float laneHalf, float surfaceZ, float D )
+	/// <paramref name="calloutX"/> is the lane-local x to float it at (just in front of the pins, so it's
+	/// in the settle-time watch frame); <paramref name="surfaceZ"/> the lane surface top; <paramref
+	/// name="D"/> the ball diameter (the lane's size unit).</summary>
+	private void BuildAnnouncerCallout( float calloutX, float laneHalf, float surfaceZ, float D )
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
 		// Wide, short banner. CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is
@@ -628,11 +632,12 @@ public sealed class LaneBuilder : Component
 		var worldW = laneHalf * 2f;                        // exactly the lane width
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the lane width (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
-		// Float it above the lane at the throw line, lifted clear so it reads from the approach.
-		var centerZ = surfaceZ + worldH * 0.5f + 2f * D;
+		// Float it above the pins, roughly at the watch camera's eye-line (the cam sits at deck + height
+		// looking down at the deck), so the banner sits in frame when the call fires.
+		var centerZ = surfaceZ + worldH * 0.5f + 1.3f * D;
 
 		var screen = new GameObject( true, "AnnouncerCalloutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		screen.LocalPosition = new Vector3( throwLineX, 0f, centerZ );
+		screen.LocalPosition = new Vector3( calloutX, 0f, centerZ );
 		// identity WorldPanel faces +x; yaw 180 turns it back up-lane toward the bowler/camera, pitch
 		// leans the top away down-lane so it's tilted back 45° from the approach view.
 		screen.LocalRotation = Rotation.FromYaw( 180f ) * Rotation.FromPitch( 45f );
