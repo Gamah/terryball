@@ -68,7 +68,7 @@ public sealed class LaneBuilder : Component
 
 	[Property, Group( "Barriers" )] public float BarrierWidthInches { get; set; } = 6f;
 	[Property, Group( "Barriers" )] public float BarrierHeightInches { get; set; } = 3f; // a low lip flush along the gutter, not a wall
-	[Property, Group( "Barriers" )] public float BufferWidthInches { get; set; } = 24f;  // flat margin for future decoration
+	// Baseplate overhang past the barriers is derived as HALF the barrier width (see bufferW below).
 	[Property, Group( "Barriers" )] public Color BarrierColor { get; set; } = new Color( 0.35f, 0.37f, 0.42f, 1f );
 	[Property, Group( "Barriers" )] public Color BufferColor { get; set; } = new Color( 0.28f, 0.24f, 0.20f, 1f );
 
@@ -128,7 +128,7 @@ public sealed class LaneBuilder : Component
 	// hence the earlier "balls" units. Tune by feel.)
 	[Property, Group( "Settee" )] public float BowlerHeightUnits { get; set; } = 72f;    // the s&box Citizen is ≈ 72u tall
 	[Property, Group( "Settee" )] public float BowlerHeightInches { get; set; } = 72f;   // treat Terry as a 6 ft human → ~1 u/in
-	[Property, Group( "Settee" )] public float SetteeDepthInches { get; set; } = 220f;   // how far back the seating zone runs from the ramp foot
+	[Property, Group( "Settee" )] public float SetteeDepthInches { get; set; } = 275f;   // how far back the seating zone runs (drives the backstop deck depth too)
 	[Property, Group( "Settee" )] public float SetteeWidthInches { get; set; } = 360f;   // min total width; grows to seat the boards
 	[Property, Group( "Settee" )] public float SetteeRiserInches { get; set; } = 4f;     // low step up onto the carpeted zone
 	[Property, Group( "Settee" )] public float BenchSeatHeightInches { get; set; } = 18f;
@@ -271,7 +271,7 @@ public sealed class LaneBuilder : Component
 		var laneHalf = LaneWidthInches * u * 0.5f;
 		var gutterW = GutterWidthInches * u;
 		var barrierW = BarrierWidthInches * u;
-		var bufferW = BufferWidthInches * u;
+		var bufferW = barrierW * 0.5f;                      // baseplate lips past the wall by half the wall width
 		var gutterOuter = laneHalf + gutterW;               // lane+gutter span (gutter outer edge)
 		var barrierOuter = gutterOuter + barrierW;
 		var platformHalf = barrierOuter + bufferW;          // platform edge
@@ -401,15 +401,15 @@ public sealed class LaneBuilder : Component
 		BuildBackstopReadout( pitEndX, laneHalf, deckTopZ, ballDiameterUnits );
 
 		// ---- Boards: 39 alternating-tint planks across the lane, straddling z = H so they read as
-		// the surface itself (not floating above it) with the seams showing through. Visual-only —
-		// no collider — so the ball never catches them. Bowlers aim by board number, so they're
-		// functional, not just decoration.
+		// the surface itself (not floating above it). Drawn FULL width so neighbours butt flush with no
+		// gap between them — the alternating tint alone separates the planks. Visual-only — no collider —
+		// so the ball never catches them. Bowlers aim by board number, so they're functional, not decoration.
 		var boardW = (laneHalf * 2f) / BoardCount;
 		for ( var b = 0; b < BoardCount; b++ )
 		{
 			var by = laneHalf - (b + 0.5f) * boardW;
 			MakeDecal( $"Board{b + 1}", new Vector3( laneRegionCx, by, H ),
-				new Vector3( laneRegionLenX, boardW * 0.92f, 4f ),
+				new Vector3( laneRegionLenX, boardW, 4f ),
 				(b % 2 == 0) ? LaneColorA : LaneColorB );
 		}
 
