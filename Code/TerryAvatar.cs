@@ -70,6 +70,14 @@ public sealed class TerryAvatar : Component
 	/// <summary>Director (owner-side): the claw reached us — scoop us into the ball.</summary>
 	public void ScoopIntoBall() => Carried = true;
 
+	/// <summary>Height (world units) of this walking avatar's pelvis bone above its foot origin. The crane
+	/// uses it to drop the ball low enough to centre the pelvis (matching the in-ball framing), instead of
+	/// resting the ball's bottom at the feet. Falls back to ~half a Citizen if the bone isn't resolvable.</summary>
+	public float PelvisHeight =>
+		_renderer.IsValid() && _renderer.TryGetBoneTransformLocal( "pelvis", out var p )
+			? p.Position.z * _renderer.WorldScale.z
+			: 36f;
+
 	/// <summary>Director (owner-side): the claw reached our seat — set us back down on the recorded spot.</summary>
 	public void DropAtReturnSpot() { Carried = false; ReturnToSettee(); }
 

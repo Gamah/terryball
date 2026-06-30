@@ -86,7 +86,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	[Property, Group( "Crane" )] public float CraneHoverSeconds { get; set; } = 0.4f;
 	/// <summary>How high (units) above a player the claw hovers before it sinks to scoop them (and rises
 	/// back to after a scoop/drop).</summary>
-	[Property, Group( "Crane" )] public float CraneAboveHeight { get; set; } = 450f;
+	[Property, Group( "Crane" )] public float CraneAboveHeight { get; set; } = 320f;
 	/// <summary>The noticeable beat (seconds) the ball holds directly above a player both before sinking
 	/// onto them and after rising back off — the claw-game "lining up / lifting clear" pause.</summary>
 	[Property, Group( "Crane" )] public float CraneAbovePauseSeconds { get; set; } = 0.55f;
@@ -920,10 +920,16 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	// is NOT forced onto the ball here — it follows the player (it's on the ball only while they're actually
 	// scooped IN), so a pickup is watched from their Terry as the claw comes to fetch them.
 
-	// Centre the ball would rest at to sit ON the floor over a player at footSpot (their feet), so the
-	// scoop/drop looks like the ball swallowing them rather than burying its centre at their feet.
+	// Centre the ball would rest at over a player at footSpot (their feet): low enough that the ball
+	// swallows them with their PELVIS dead-centre — the same framing as when Terry rides inside the ball
+	// — rather than parking the ball's bottom at their feet (which only dipped halfway onto them). Reads
+	// the live avatar's pelvis height; falls back to one ball-radius if it isn't resolvable.
 	private Vector3 CraneRest( Vector3 footSpot )
-		=> footSpot + Vector3.Up * (_ball.IsValid() ? _ball.Radius : 100f);
+	{
+		var av = LocalAvatar;
+		var pelvisUp = av.IsValid() ? av.PelvisHeight : (_ball.IsValid() ? _ball.Radius : 100f);
+		return footSpot + Vector3.Up * pelvisUp;
+	}
 
 	// A point the claw hovers at, directly above a player, before sinking / after rising.
 	private Vector3 CraneAbove( Vector3 footSpot ) => CraneRest( footSpot ) + Vector3.Up * CraneAboveHeight;
