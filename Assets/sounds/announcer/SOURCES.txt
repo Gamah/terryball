@@ -9,7 +9,10 @@ gaps between calls, then per-clip processed.
 
 Processing:
   dry/  -> highpass 85Hz + loudnorm (-16 LUFS, -1.5 dBTP). Clean, no ambience.
-  fx/   -> same, plus a subtle PA-room reverb (light aecho tail) + safety limiter.
+  fx/   -> highpass 70Hz, then a CONVOLUTION room reverb (decaying-noise impulse,
+          decorrelated L/R so the stereo width is natural), low-shelf boom (+3dB
+          @110Hz), loudnorm, trailing-tail trim, safety limiter. No pitch/detune
+          processing (an earlier detune approach combed/phased and is abandoned).
           Use these for the in-game announcer feel; swap to dry/ if too wet.
 
 _review_fx.wav / _review_dry.wav: all 25 calls (take 0) concatenated in script
