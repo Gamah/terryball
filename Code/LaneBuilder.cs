@@ -474,7 +474,7 @@ public sealed class LaneBuilder : Component
 		// deckTopZ its flat top), extending away from the lane (+x) so the seats face back up-lane and
 		// the bowlers watch the ball roll toward them. (cu was computed up by the backboard.)
 		SetteeFaceRotation = Transform.World.Rotation * Rotation.FromYaw( 180f );
-		BuildSettee( cu, deckFrontX, +1f, deckTopZ, platformHalf );
+		BuildSettee( cu, deckFrontX, +1f, deckTopZ, platformHalf, deckDepth );
 
 		// The chase cam that the right-hand settee screen mirrors (renders the active ball to a
 		// texture). Built locally on every client — it's a re-render of the local ball, which is the
@@ -500,16 +500,20 @@ public sealed class LaneBuilder : Component
 	/// ballooning to match the giant ball.
 	/// <paramref name="frontX"/> is the deck's lane-facing edge; the settee extends AWAY from the lane in
 	/// the <paramref name="away"/> direction (±1 in x). <paramref name="baseZ"/> is the deck top it stands
-	/// on. The seats face back toward the lane so the bowlers watch the ball roll toward them.
+	/// on. <paramref name="deckDepth"/> is the backboard deck's full depth — the carpet runs the whole way
+	/// so it reaches the back of the backstop. The seats face back toward the lane so the bowlers watch the
+	/// ball roll toward them.
 	/// </summary>
-	private void BuildSettee( float cu, float frontX, float away, float baseZ, float platformHalf )
+	private void BuildSettee( float cu, float frontX, float away, float baseZ, float platformHalf, float deckDepth )
 	{
 		// Board dimensions first — the settee floor grows to seat the (now 2×) boards.
 		var boardW = MonitorWidthInches * cu;
 		var boardGap = boardW * 0.14f;            // space between the two boards
 		var monitorSpan = boardW * 2f + boardGap; // total width the two boards occupy
 
-		var depth = SetteeDepthInches * cu;
+		// Carpet runs the FULL depth of the backboard deck, so the seating floor reaches all the way to
+		// the back of the backstop rather than leaving a bare strip of deck behind it.
+		var depth = deckDepth;
 		var riser = SetteeRiserInches * cu;
 		// Wide enough to seat the boards with a margin, but at least the configured seating width.
 		var halfW = MathF.Min(
