@@ -5,11 +5,10 @@ namespace Terryball;
 
 /// <summary>
 /// Builds four coloured light posts at the corners of the ball's approach/spawn area (R, G, B, W). Each post
-/// is a slim box "pole" with a box "head" aimed DOWN at the run-up point, holding a coloured SpotLight - so
+/// is a slim box "pole" with a box "head" aimed DOWN at the run-up point, holding a coloured PointLight - so
 /// the lights point down at the approach (short shadows on the run-up) rather than raking across the lane.
-/// Each SpotLight casts REAL engine shadows, so the ball + Terry throw four genuine, grounded coloured
-/// shadows fanning out over the approach (the coloured penumbrae come from the lights overlapping - blocking
-/// the red light leaves a cyan-ish shadow, etc.). They're HDR-bright so they compete with the sun/sky ambient.
+/// The BallShadowTintPP post-process picks these PointLights up and casts an analytic, ball-coloured shadow
+/// for each one, so the ball throws four coloured shadows fanning out over the approach.
 ///
 /// Replaces the single overhead GreenApproachLight. The run-up point (LaneBuilder.RunUpWorldPosition) is
 /// procedural, so we resolve it at runtime and build once the lane exists. Lives at the scene root.
@@ -28,13 +27,8 @@ public sealed class ApproachLightRig : Component
 	/// <summary>Corner distance across the lane from the spawn (units).</summary>
 	[Property] public float SpanSide { get; set; } = 450f;
 
-	/// <summary>Reach of each coloured SpotLight (units).</summary>
+	/// <summary>Reach of each coloured PointLight (units).</summary>
 	[Property] public float LightRadius { get; set; } = 2500f;
-
-	/// <summary>HDR brightness multiplier on each coloured light. Brightness lives in the LightColor magnitude
-	/// (there's no separate field), and the coloured shadows only read if these lights compete with the sun +
-	/// sky ambient - so push above 1. Too high blows the approach to white and HIDES the shadows; tune to taste.</summary>
-	[Property] public float Brightness { get; set; } = 3f;
 
 	/// <summary>Pole cross-section (units).</summary>
 	[Property] public float PostThickness { get; set; } = 16f;
@@ -91,11 +85,10 @@ public sealed class ApproachLightRig : Component
 			var pr = pole.Components.Create<ModelRenderer>();
 			pr.Model = box;
 			pr.Tint = new Color( 0.16f, 0.16f, 0.18f );
-			pr.RenderType = ModelRenderer.ShadowRenderType.Off; // decorative housing: never cast a shadow
 			pole.LocalScale = new Vector3( PostThickness / bs.x, PostThickness / bs.y, Height / bs.z );
 
 			// Head: a box aimed down at the run-up point (stretched along its aim => reads as a downlight can),
-			// tinted its colour, carrying the coloured SpotLight (aimed along this head's forward = the aim).
+			// tinted its colour, carrying the coloured PointLight the shadow post-process reads.
 			var aim = (origin - headPos).Normal;
 			var head = new GameObject( true, $"LightHead_{tag}" )
 			{
@@ -107,21 +100,12 @@ public sealed class ApproachLightRig : Component
 			var hr = head.Components.Create<ModelRenderer>();
 			hr.Model = box;
 			hr.Tint = col;
-			// CRITICAL: the light sits at this box's centre. If the housing casts shadows it traps its own light
-			// (nothing reaches the ground => no illumination, no shadows). Off = still visible, never occludes.
-			hr.RenderType = ModelRenderer.ShadowRenderType.Off;
 			head.LocalScale = new Vector3( (HeadSize * 1.7f) / bs.x, HeadSize / bs.y, HeadSize / bs.z );
 
-			// SpotLight (not PointLight): the head already aims DOWN at the run-up, and a spotlight casts a
-			// projected (frustum) shadow - the standard, reliable path - instead of a PointLight's expensive
-			// omnidirectional cube shadow (which wasn't rendering). The cone also concentrates the light on the
-			// approach, giving the coloured shadows real contrast.
-			var light = head.Components.Create<SpotLight>();
-			light.LightColor = col * Brightness;  // HDR: brightness is baked into the colour magnitude
+			var light = head.Components.Create<PointLight>();
+			light.LightColor = col;
 			light.Radius = LightRadius;
-			light.ConeInner = 35f;                // degrees: fully-lit inner cone
-			light.ConeOuter = 55f;                // degrees: soft outer edge - wide enough to cover the run-up from height
-			light.Shadows = true;                 // REAL engine shadow: the ball + Terry cast genuine coloured shadows on the approach
+			light.Shadows = false; // no engine shadow needed: the post-process projects Terry's captured silhouette + the ball's colour
 		}
 	}
 }
