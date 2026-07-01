@@ -1,0 +1,40 @@
+// Pokeball TEST ball (2nd colourway): glass shell showing the teal/magenta pokeball colour map, so the ball
+// visually matches the spatial colours its shadow projects (the shadow samples the same texture per-ray).
+// A different palette from glassball_poke.vmat so two balls cast clearly different-coloured shadows.
+"Layer0"
+{
+	"shader"		"shaders/glass.shader_c"
+	"F_TRANSLUCENT"		"1"
+
+	"g_flModelTintAmount"		"1.000000"
+	"g_vColorTint"		"[1.000000 1.000000 1.000000 1.000000]"
+	"TextureColor"		"materials/pokeball_teal_color.png"
+
+	"g_flOpacityScale"		"0.350000"
+	"TextureTranslucency"		"materials/default/default_trans.tga"
+
+	"g_flMetalness"		"0.150000"
+	"TextureRoughness"		"[0.050000 0.050000 0.050000 0.000000]"
+	"TextureNormal"		"[0.501961 0.501961 1.000000 0.000000]"
+	"TextureAmbientOcclusion"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_bAvoidDoubleFogging"		"1"
+	"g_flGlassFogExtinctionAmount"		"0.000000"
+	"g_flFadeExponent"		"1.000000"
+	"g_flEdgeColorFalloff"		"3.000000"
+	"g_flEdgeColorMaxOpacity"		"0.650000"
+	"g_flEdgeColorThickness"		"0.180000"
+	"g_vEdgeColor"		"[1.000000 1.000000 1.000000 1.000000]"
+	"GlassTintColor"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_nScaleTexCoordUByModelScaleAxis"		"0"
+	"g_nScaleTexCoordVByModelScaleAxis"		"0"
+	"g_vTexCoordOffset"		"[0.000 0.000]"
+	"g_vTexCoordScale"		"[1.000 1.000]"
+	"g_vTexCoordScrollSpeed"		"[0.000 0.000]"
+
+	"SystemAttributes"
+	{
+		"PhysicsSurfaceProperties"		"glass"
+	}
+}

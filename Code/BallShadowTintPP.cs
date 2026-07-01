@@ -1,5 +1,6 @@
 using Sandbox;
 using Sandbox.Rendering;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -65,8 +66,20 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>Max balls the shader handles (unrolled slots). Keep in sync with the shader.</summary>
 	private const int MaxBalls = 4;
 
-	/// <summary>Max extra (point) lights the shader handles beyond the sun. Keep in sync with the shader.</summary>
-	private const int MaxLights = 2;
+	/// <summary>How many extra (point) lights beyond the sun can each cast their own analytic ball shadow. The
+	/// shader loops a StructuredBuffer, so this is a live cap - more lights = more per-pixel work.</summary>
+	[Property, Group( "Extra Lights" ), Range( 1, 128 )] public int MaxLights { get; set; } = 16;
+
+	// One entry per extra light, uploaded to the shader's StructuredBuffer. Layout must match `struct
+	// ShadowLight` in ballshadow_tint.shader (two float4s: position/type, colour/enabled).
+	private struct ShadowLightData
+	{
+		public Vector4 Pos; // xyz world, w: 1 = point / 0 = directional
+		public Vector4 Col; // rgb colour, w > 0 = enabled
+	}
+
+	private GpuBuffer<ShadowLightData> _lightBuffer;
+	private int _lightBufferCap = -1;
 
 	private static readonly Material Shader = Material.FromShader( "shaders/ballshadow_tint.shader" );
 
@@ -138,25 +151,38 @@ public sealed class BallShadowTintPP : BasePostProcess
 		}
 
 		// Extra coloured lights (point lights) each cast an analytic ball shadow. The sun (DirectionalLight)
-		// keeps its real engine shadow and isn't pushed here.
-		var lights = Scene.GetAllComponents<PointLight>().Where( l => l.IsValid() && l.Active ).Take( MaxLights ).ToList();
-		for ( int i = 0; i < MaxLights; i++ )
+		// keeps its real engine shadow and isn't pushed here. Gather up to MaxLights and hand them to the
+		// shader as a StructuredBuffer so the count is dynamic (no fixed unrolled slots).
+		int cap = Math.Max( 1, MaxLights );
+		if ( _lightBuffer is null || _lightBufferCap != cap )
 		{
-			if ( i < lights.Count )
-			{
-				var l = lights[i];
-				var p = l.WorldPosition;
-				Attributes.Set( $"ShadowLightPos{i}", new Vector4( p.x, p.y, p.z, 1f ) ); // point light
-				Attributes.Set( $"ShadowLightCol{i}", new Vector4( l.LightColor.r, l.LightColor.g, l.LightColor.b, 1f ) );
-			}
-			else
-			{
-				Attributes.Set( $"ShadowLightCol{i}", new Vector4( 0f, 0f, 0f, 0f ) ); // disabled
-			}
+			_lightBuffer?.Dispose();
+			_lightBuffer = new GpuBuffer<ShadowLightData>( cap, GpuBuffer.UsageFlags.Structured );
+			_lightBufferCap = cap;
 		}
+
+		var lights = Scene.GetAllComponents<PointLight>().Where( l => l.IsValid() && l.Active ).Take( cap ).ToList();
+		var data = new ShadowLightData[cap];
+		for ( int i = 0; i < lights.Count; i++ )
+		{
+			var l = lights[i];
+			var p = l.WorldPosition;
+			data[i].Pos = new Vector4( p.x, p.y, p.z, 1f ); // point light
+			data[i].Col = new Vector4( l.LightColor.r, l.LightColor.g, l.LightColor.b, 1f );
+		}
+		_lightBuffer.SetData( data );
+		Attributes.Set( "ShadowLights", _lightBuffer );
+		Attributes.Set( "ShadowLightCount", lights.Count );
 
 		// AfterOpaque: shadow-map + light constants are still bound here.
 		var blit = BlitMode.WithBackbuffer( Shader, Stage.AfterOpaque, 1 );
 		Blit( blit, "BallShadowTint" );
+	}
+
+	protected override void OnDestroy()
+	{
+		_lightBuffer?.Dispose();
+		_lightBuffer = null;
+		_lightBufferCap = -1;
 	}
 }

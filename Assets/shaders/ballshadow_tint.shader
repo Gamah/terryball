@@ -98,12 +98,16 @@ PS
     float4 g_vBallR2 < Attribute( "ShadowBallR2" ); Default4( 0, 0, 0, 1 ); >;
     float4 g_vBallR3 < Attribute( "ShadowBallR3" ); Default4( 0, 0, 0, 1 ); >;
 
-    // Extra coloured lights (beyond the sun). Pos = (xyz, 1=point / 0=directional); Col = (rgb, w>0 = enabled).
-    // The sun keeps its real engine shadow; these cast an ANALYTIC ball shadow tinted by ball colour x light colour.
-    float4 g_vLightPos0 < Attribute( "ShadowLightPos0" ); Default4( 0, 0, 0, 0 ); >;
-    float4 g_vLightPos1 < Attribute( "ShadowLightPos1" ); Default4( 0, 0, 0, 0 ); >;
-    float4 g_vLightCol0 < Attribute( "ShadowLightCol0" ); Default4( 0, 0, 0, 0 ); >;
-    float4 g_vLightCol1 < Attribute( "ShadowLightCol1" ); Default4( 0, 0, 0, 0 ); >;
+    // Extra coloured lights (beyond the sun), a dynamic count up to a component-set cap. Pos = (xyz, 1=point /
+    // 0=directional); Col = (rgb, w>0 = enabled). The sun keeps its real engine shadow; each of these casts an
+    // ANALYTIC ball shadow tinted by ball colour x light colour. Fed from a StructuredBuffer so N is dynamic.
+    struct ShadowLight
+    {
+        float4 Pos;
+        float4 Col;
+    };
+    StructuredBuffer<ShadowLight> g_lights < Attribute( "ShadowLights" ); >;
+    int g_nLightCount < Attribute( "ShadowLightCount" ); Default( 0 ); >;
 
     // DIAGNOSTIC MODE (live-switchable uniform - flip in the inspector, no recompile):
     //   1 FULL / 2 DEPTH / 3 CASCADES / 4 ALLSHADOWS / 5 BALLMASK / 6 FINAL (the real effect)
@@ -187,6 +191,11 @@ PS
         if ( mask <= 0.0f )
             return;
 
+        // Opaque occupant (Terry) blocks this light entirely, so his silhouette reads dark (not glass-tinted)
+        // in EVERY extra light's shadow - the same black-cut the sun path applies, but keyed straight off the
+        // analytic occupant mask since these lights have no real shadow map to gate it.
+        filter = lerp( filter, float3( g_flOccupantDark, g_flOccupantDark, g_flOccupantDark ), occ );
+
         float flum = dot( filter, float3( 0.299f, 0.587f, 0.114f ) );
         filter = lerp( float3( flum, flum, flum ), filter, g_flSaturation );
 
@@ -262,9 +271,13 @@ PS
         float3 tinted = lerp( color.rgb * filter, baseLuma * filter, g_flColorize );
         color.rgb = lerp( color.rgb, tinted, mask * g_flStrength );
 
-        // Extra coloured lights cast their own analytic ball shadows on top.
-        ApplyLight( vWorldPos, g_vLightPos0, g_vLightCol0, color.rgb );
-        ApplyLight( vWorldPos, g_vLightPos1, g_vLightCol1, color.rgb );
+        // Extra coloured lights each cast their own analytic ball shadow on top (N up to the component cap).
+        [loop]
+        for ( int li = 0; li < g_nLightCount; li++ )
+        {
+            ShadowLight L = g_lights[li];
+            ApplyLight( vWorldPos, L.Pos, L.Col, color.rgb );
+        }
         return color;
     }
 }
