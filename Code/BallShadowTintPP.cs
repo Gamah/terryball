@@ -125,6 +125,11 @@ public sealed class BallShadowTintPP : BasePostProcess
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
 		Attributes.Set( "BallShadowOccupantDark", OccupantDark );
+
+		// Terry's live silhouette (captured side-on by OccupantSilhouetteCapture), projected per light so the
+		// occupant casts his real shape. Empty/absent => transparent (black) => no occupant shadow.
+		var capture = Scene.GetAllComponents<OccupantSilhouetteCapture>().FirstOrDefault( c => c.IsValid() );
+		Attributes.Set( "OccupantSilhouette", capture?.SilhouetteTexture ?? Texture.Black ); // Black (not Transparent, whose RGB is grey) => no occupant
 		Attributes.Set( "BallShadowColorize", Colorize );
 		Attributes.Set( "BallShadowSaturation", Saturation );
 		Attributes.Set( "BallShadowColorMip", ColorMip );
