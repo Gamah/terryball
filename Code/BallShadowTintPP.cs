@@ -27,13 +27,9 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// black instead of taking the colour. High so only the solid silhouette darkens, not the dithered glass.</summary>
 	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
 
-	/// <summary>How dark the opaque occupant (Terry) reads: 0 = pure black, higher = deep grey (ambient fill).</summary>
+	/// <summary>How dark the opaque occupant (Terry) reads in the SUN shadow: 0 = pure black, higher = deep grey
+	/// (ambient fill). The extra lights get Terry's silhouette from the engine's real shadows, not this.</summary>
 	[Property, Range( 0f, 0.5f )] public float OccupantDark { get; set; } = 0.1f;
-
-	/// <summary>Terry's silhouette size as a fraction of the ball, for the analytic (extra-light) black cut. The
-	/// sun uses the real shadow map; the coloured lights have none, so they darken only this central core -
-	/// smaller = tighter dark centre, more vibrant colour around it.</summary>
-	[Property, Range( 0f, 1f )] public float OccupantCore { get; set; } = 0.55f;
 
 	/// <summary>0 = multiply (dark, shadow-like), 1 = colorize (bright/vibrant). Lower reads more like a shadow.</summary>
 	[Property, Range( 0f, 1f )] public float Colorize { get; set; } = 0.5f;
@@ -76,11 +72,11 @@ public sealed class BallShadowTintPP : BasePostProcess
 	[Property, Group( "Extra Lights" ), Range( 1, 128 )] public int MaxLights { get; set; } = 16;
 
 	// One entry per extra light, uploaded to the shader's StructuredBuffer. Layout must match `struct
-	// ShadowLight` in ballshadow_tint.shader (two float4s: position/type, colour/enabled).
+	// ShadowLight` in ballshadow_tint.shader (two float4s).
 	private struct ShadowLightData
 	{
-		public Vector4 Pos; // xyz world, w: 1 = point / 0 = directional
-		public Vector4 Col; // rgb colour, w > 0 = enabled
+		public Vector4 Pos; // xyz world position, w = range/radius
+		public Vector4 Col; // rgb colour
 	}
 
 	private GpuBuffer<ShadowLightData> _lightBuffer;
@@ -129,7 +125,6 @@ public sealed class BallShadowTintPP : BasePostProcess
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
 		Attributes.Set( "BallShadowOccupantDark", OccupantDark );
-		Attributes.Set( "BallShadowOccupantCore", OccupantCore );
 		Attributes.Set( "BallShadowColorize", Colorize );
 		Attributes.Set( "BallShadowSaturation", Saturation );
 		Attributes.Set( "BallShadowColorMip", ColorMip );
@@ -173,7 +168,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 		{
 			var l = lights[i];
 			var p = l.WorldPosition;
-			data[i].Pos = new Vector4( p.x, p.y, p.z, 1f ); // point light
+			data[i].Pos = new Vector4( p.x, p.y, p.z, l.Radius ); // w = range, for the shadow's distance falloff
 			data[i].Col = new Vector4( l.LightColor.r, l.LightColor.g, l.LightColor.b, 1f );
 		}
 		_lightBuffer.SetData( data );

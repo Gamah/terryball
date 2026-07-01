@@ -77,8 +77,7 @@ PS
 
     float g_flStrength < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
     float g_flTerryCut < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this, under an occupant ball, darkens
-    float g_flOccupantDark < Attribute( "BallShadowOccupantDark" ); Default( 0.1f ); >; // opaque-occupant darkness (0 = pure black)
-    float g_flOccupantCore < Attribute( "BallShadowOccupantCore" ); Default( 0.55f ); >; // occupant (Terry) radius as a fraction of the ball, for the analytic (extra-light) black cut
+    float g_flOccupantDark < Attribute( "BallShadowOccupantDark" ); Default( 0.1f ); >; // opaque-occupant darkness in the SUN shadow (0 = pure black)
     float g_flColorize < Attribute( "BallShadowColorize" ); Default( 0.5f ); >;   // 0 = multiply (dark, shadow-like), 1 = colorize (vibrant)
     float g_flSaturation < Attribute( "BallShadowSaturation" ); Default( 0.65f ); >; // 1 = full colour, 0 = greyscale shadow
     float g_flColorMip < Attribute( "BallShadowColorMip" ); Default( 0.0f ); >;  // >0 blurs the colour map (kills grain)
@@ -99,9 +98,10 @@ PS
     float4 g_vBallR2 < Attribute( "ShadowBallR2" ); Default4( 0, 0, 0, 1 ); >;
     float4 g_vBallR3 < Attribute( "ShadowBallR3" ); Default4( 0, 0, 0, 1 ); >;
 
-    // Extra coloured lights (beyond the sun), a dynamic count up to a component-set cap. Pos = (xyz, 1=point /
-    // 0=directional); Col = (rgb, w>0 = enabled). The sun keeps its real engine shadow; each of these casts an
-    // ANALYTIC ball shadow tinted by ball colour x light colour. Fed from a StructuredBuffer so N is dynamic.
+    // Extra coloured point lights (beyond the sun), a dynamic count up to a component-set cap. Pos = (xyz world,
+    // w = range/radius); Col = rgb. Each casts an ANALYTIC ball-colour shadow (ball surface colour x light
+    // colour), faded out past the light's range. Terry's silhouette inside is the ENGINE's real shadow (these
+    // lights cast real shadows), already in the colour buffer - we don't re-derive it. StructuredBuffer => N dynamic.
     struct ShadowLight
     {
         float4 Pos;
@@ -122,13 +122,12 @@ PS
     // Analytic soft mask: is worldPos in this ball's shadow volume for a light in direction vToLight?
     // 0..1 (thin AA edge) and outputs BOTH surface points the ray crosses: vHitFar (sun-facing entry) and
     // vHitNear (ground-facing exit). Sampling both captures light that passed through two colours.
-    float BallShadowMask( float3 vWorldPos, float3 vToLight, float3 center, float radius, out float3 vHitFar, out float3 vHitNear, out float dPerp )
+    float BallShadowMask( float3 vWorldPos, float3 vToLight, float3 center, float radius, out float3 vHitFar, out float3 vHitNear )
     {
         float3 oc = vWorldPos - center;
         float b = dot( oc, vToLight );
         float perp2 = max( dot( oc, oc ) - b * b, 0.0f );
         float d = sqrt( perp2 );
-        dPerp = d; // how far this ray passes from the ball centre (small = through the middle, where Terry rides)
 
         float c = dot( oc, oc ) - radius * radius;
         float disc = b * b - c;
@@ -152,17 +151,17 @@ PS
     }
 
     // Stack one ball into the subtractive filter, grow the union mask, and (if it holds an opaque occupant)
-    // the occupant mask used for the Terry-black cut.
+    // the occupant mask - the full ball disc, which the SUN path gates with the real shadow map to carve out
+    // Terry. The extra lights don't use occ: Terry's silhouette there is the engine's own real shadow.
     void AccumBall( Texture2D tex, float3 wp, float3 toL, float4 a, float4 t, float4 rot,
-                    inout float3 filter, inout float mask, inout float occ, inout float occCore )
+                    inout float3 filter, inout float mask, inout float occ )
     {
         float radius = a.w;
         if ( radius <= 0.0f )
             return;
 
         float3 hitFar, hitNear;
-        float dPerp;
-        float m = BallShadowMask( wp, toL, a.xyz, radius, hitFar, hitNear, dPerp );
+        float m = BallShadowMask( wp, toL, a.xyz, radius, hitFar, hitNear );
         if ( m <= 0.0f )
             return;
 
@@ -172,40 +171,37 @@ PS
         filter *= lerp( float3( 1, 1, 1 ), col, m );             // subtractive: overlapping balls multiply
         mask = max( mask, m );
         if ( t.w > 0.5f )
-        {
-            occ = max( occ, m ); // full disc - the sun path gates this with the REAL shadow to carve out Terry
-            // Analytic Terry proxy (no real shadow map under extra lights): the occupant rides centred, so a
-            // ray passing within ~g_flOccupantCore of the centre is the one his body blocks. Central core only,
-            // so the rest of the disc keeps its vibrant projected colour.
-            float core = 1.0f - smoothstep( radius * ( g_flOccupantCore - 0.08f ), radius * ( g_flOccupantCore + 0.06f ), dPerp );
-            occCore = max( occCore, core * m );
-        }
+            occ = max( occ, m );
     }
 
-    // Cast one extra light's analytic ball shadow onto the ground colour. The ball colour filters the
-    // light's colour (green light through red glass -> dark), so it reads as that light being blocked.
+    // Cast one extra point light's analytic ball-colour shadow onto the ground colour. The ball colour filters
+    // the light's colour (green light through red glass -> dark), so it reads as that light being blocked. Faded
+    // out past the light's range so the ball stops throwing ovals once it has rolled out of the light. Terry's
+    // silhouette is NOT drawn here - it's the engine's real shadow, already darkening the colour buffer.
     void ApplyLight( float3 wp, float4 lpos, float4 lcol, inout float3 color )
     {
-        if ( lcol.w <= 0.0f )
+        float radius = lpos.w;
+        if ( radius <= 0.0f )
             return;
 
-        float3 toL = ( lpos.w > 0.5f ) ? normalize( lpos.xyz - wp ) : normalize( -lpos.xyz );
+        // Range falloff: (1 - (d/r)^2)^2, so the shadow is full near the light and gone at its radius.
+        float3 toLight = lpos.xyz - wp;
+        float atten = saturate( 1.0f - dot( toLight, toLight ) / ( radius * radius ) );
+        atten *= atten;
+        if ( atten <= 0.0f )
+            return;
+
+        float3 toL = normalize( toLight );
 
         float3 filter = float3( 1, 1, 1 );
         float mask = 0.0f;
         float occ = 0.0f;
-        float occCore = 0.0f;
-        AccumBall( g_tBall0, wp, toL, g_vBallA0, g_vBallT0, g_vBallR0, filter, mask, occ, occCore );
-        AccumBall( g_tBall1, wp, toL, g_vBallA1, g_vBallT1, g_vBallR1, filter, mask, occ, occCore );
-        AccumBall( g_tBall2, wp, toL, g_vBallA2, g_vBallT2, g_vBallR2, filter, mask, occ, occCore );
-        AccumBall( g_tBall3, wp, toL, g_vBallA3, g_vBallT3, g_vBallR3, filter, mask, occ, occCore );
+        AccumBall( g_tBall0, wp, toL, g_vBallA0, g_vBallT0, g_vBallR0, filter, mask, occ );
+        AccumBall( g_tBall1, wp, toL, g_vBallA1, g_vBallT1, g_vBallR1, filter, mask, occ );
+        AccumBall( g_tBall2, wp, toL, g_vBallA2, g_vBallT2, g_vBallR2, filter, mask, occ );
+        AccumBall( g_tBall3, wp, toL, g_vBallA3, g_vBallT3, g_vBallR3, filter, mask, occ );
         if ( mask <= 0.0f )
             return;
-
-        // Opaque occupant (Terry) reads dark only in his CENTRAL silhouette (occCore), not across the whole
-        // disc - so the rest of the shadow keeps its vibrant projected colour like a plain colour ball. (The
-        // sun path uses the real shadow map for an exact silhouette; extra lights use this analytic core.)
-        filter = lerp( filter, float3( g_flOccupantDark, g_flOccupantDark, g_flOccupantDark ), occCore );
 
         float flum = dot( filter, float3( 0.299f, 0.587f, 0.114f ) );
         filter = lerp( float3( flum, flum, flum ), filter, g_flSaturation );
@@ -213,7 +209,7 @@ PS
         float3 transmit = filter * lcol.rgb; // the ball colour filtering this light's colour
         float baseLuma = dot( color, float3( 0.299f, 0.587f, 0.114f ) );
         float3 tinted = lerp( color * transmit, baseLuma * transmit, g_flColorize );
-        color = lerp( color, tinted, mask * g_flStrength );
+        color = lerp( color, tinted, mask * g_flStrength * atten );
     }
 
     float4 MainPs( PixelInput i ) : SV_Target0
@@ -256,11 +252,10 @@ PS
         float3 filter = float3( 1, 1, 1 );
         float mask = 0.0f;
         float occ = 0.0f;
-        float occCore = 0.0f; // unused on the sun path (real shadow map carves Terry), but AccumBall needs it
-        AccumBall( g_tBall0, vWorldPos, vToSun, g_vBallA0, g_vBallT0, g_vBallR0, filter, mask, occ, occCore );
-        AccumBall( g_tBall1, vWorldPos, vToSun, g_vBallA1, g_vBallT1, g_vBallR1, filter, mask, occ, occCore );
-        AccumBall( g_tBall2, vWorldPos, vToSun, g_vBallA2, g_vBallT2, g_vBallR2, filter, mask, occ, occCore );
-        AccumBall( g_tBall3, vWorldPos, vToSun, g_vBallA3, g_vBallT3, g_vBallR3, filter, mask, occ, occCore );
+        AccumBall( g_tBall0, vWorldPos, vToSun, g_vBallA0, g_vBallT0, g_vBallR0, filter, mask, occ );
+        AccumBall( g_tBall1, vWorldPos, vToSun, g_vBallA1, g_vBallT1, g_vBallR1, filter, mask, occ );
+        AccumBall( g_tBall2, vWorldPos, vToSun, g_vBallA2, g_vBallT2, g_vBallR2, filter, mask, occ );
+        AccumBall( g_tBall3, vWorldPos, vToSun, g_vBallA3, g_vBallT3, g_vBallR3, filter, mask, occ );
 
         if ( g_nDebugMode == 5 )
             return float4( mask.xxx, 1.0f );

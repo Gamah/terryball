@@ -105,7 +105,7 @@ public sealed class ApproachLightRig : Component
 			var light = head.Components.Create<PointLight>();
 			light.LightColor = col;
 			light.Radius = LightRadius;
-			light.Shadows = false; // the analytic ball shadow is what we want from these, not real shadow maps
+			light.Shadows = true; // real shadow maps => the engine casts Terry's actual silhouette; the post-process only adds the ball's colour
 		}
 	}
 }
