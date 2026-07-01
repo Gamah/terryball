@@ -18,6 +18,29 @@
       ]
     },
     {
+      "__guid": "b000000b-0000-4000-8000-00000000000b",
+      "Name": "GreenApproachLight",
+      "Position": "0,220,450",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Sandbox.PointLight",
+          "__guid": "b000000b-0001-4000-8000-00000000000b",
+          "__enabled": true,
+          "LightColor": "0.15,1,0.25,1",
+          "Radius": 2000,
+          "Shadows": false
+        },
+        {
+          "__type": "Terryball.ApproachLight",
+          "__guid": "b000000b-0002-4000-8000-00000000000b",
+          "__enabled": true,
+          "Height": 450,
+          "Offset": "0,220,0"
+        }
+      ]
+    },
+    {
       "__guid": "b0000009-0000-4000-8000-000000000009",
       "Name": "Lane 1",
       "Position": "0,0,0",
@@ -128,22 +151,6 @@
               "WatchSeconds": 5,
               "TiltThresholdDegrees": 30,
               "DisplacementThresholdInches": 4
-            }
-          ]
-        },
-        {
-          "__guid": "b000000b-0000-4000-8000-00000000000b",
-          "Name": "GreenApproachLight",
-          "Position": "0,350,400",
-          "Enabled": true,
-          "Components": [
-            {
-              "__type": "Sandbox.PointLight",
-              "__guid": "b000000b-0001-4000-8000-00000000000b",
-              "__enabled": true,
-              "LightColor": "0.15,1,0.25,1",
-              "Radius": 2000,
-              "Shadows": false
             }
           ]
         }
