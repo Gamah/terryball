@@ -181,3 +181,4 @@ PS
         color.rgb = lerp( color.rgb, color.rgb * vTintFilter, t );
         return color;
     }
+}
