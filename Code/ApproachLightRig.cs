@@ -33,8 +33,8 @@ public sealed class ApproachLightRig : Component
 
 	/// <summary>HDR brightness multiplier on each coloured light. Brightness lives in the LightColor magnitude
 	/// (there's no separate field), and the coloured shadows only read if these lights compete with the sun +
-	/// sky ambient - so push well above 1. Tune to taste against the wash-out.</summary>
-	[Property] public float Brightness { get; set; } = 6f;
+	/// sky ambient - so push above 1. Too high blows the approach to white and HIDES the shadows; tune to taste.</summary>
+	[Property] public float Brightness { get; set; } = 3f;
 
 	/// <summary>Pole cross-section (units).</summary>
 	[Property] public float PostThickness { get; set; } = 16f;
@@ -91,6 +91,7 @@ public sealed class ApproachLightRig : Component
 			var pr = pole.Components.Create<ModelRenderer>();
 			pr.Model = box;
 			pr.Tint = new Color( 0.16f, 0.16f, 0.18f );
+			pr.RenderType = ModelRenderer.ShadowRenderType.Off; // decorative housing: never cast a shadow
 			pole.LocalScale = new Vector3( PostThickness / bs.x, PostThickness / bs.y, Height / bs.z );
 
 			// Head: a box aimed down at the run-up point (stretched along its aim => reads as a downlight can),
@@ -106,6 +107,9 @@ public sealed class ApproachLightRig : Component
 			var hr = head.Components.Create<ModelRenderer>();
 			hr.Model = box;
 			hr.Tint = col;
+			// CRITICAL: the light sits at this box's centre. If the housing casts shadows it traps its own light
+			// (nothing reaches the ground => no illumination, no shadows). Off = still visible, never occludes.
+			hr.RenderType = ModelRenderer.ShadowRenderType.Off;
 			head.LocalScale = new Vector3( (HeadSize * 1.7f) / bs.x, HeadSize / bs.y, HeadSize / bs.z );
 
 			var light = head.Components.Create<PointLight>();
