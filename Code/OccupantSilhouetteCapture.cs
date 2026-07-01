@@ -1,4 +1,5 @@
 using Sandbox;
+using System;
 using System.Linq;
 
 namespace Terryball;
@@ -54,10 +55,12 @@ public sealed class OccupantSilhouetteCapture : Component
 		_cam.Orthographic = true;
 		_cam.BackgroundColor = Color.Black;                                    // black => luminance is the silhouette mask
 		_cam.ClearFlags = ClearFlags.Color | ClearFlags.Depth | ClearFlags.Stencil;
-		_cam.RenderTags.Add( OccupantTag );                                    // whitelist: ONLY the occupant renders
-		_cam.ZNear = 1f;
-		_cam.ZFar = 5000f;
+		_cam.RenderTags.Add( OccupantTag );                                    // whitelist: ONLY the occupant renders (3D geometry)
+		// ZNear/ZFar are re-derived per frame in OnUpdate as a thin slab around the ball (see there).
 	}
+
+	// How far off the ball's side the camera sits, in ball radii. Ortho, so this only sets the near/far slab.
+	private const float CamDistRadii = 3f;
 
 	protected override void OnUpdate()
 	{
@@ -71,10 +74,18 @@ public sealed class OccupantSilhouetteCapture : Component
 
 		// Side-on: sit off the ball's +Y, look back at it, world-up so Terry stays upright in-frame. Ortho, so
 		// distance doesn't change scale - only the height (2*radius) frames him to the ball's bounds.
-		var camPos = center + Vector3.Left * (r * 6f);
+		var dist = r * CamDistRadii;
+		var camPos = center + Vector3.Left * dist;
 		_cam.WorldPosition = camPos;
 		_cam.WorldRotation = Rotation.LookAt( (center - camPos).Normal, Vector3.Up );
 		_cam.OrthographicHeight = r * 2f;
+
+		// Clip to a thin slab that hugs just the ball's own depth. WorldPanels (lane monitors, the PINS
+		// backstop, the announcer banner) IGNORE the RenderTags whitelist, so without this the wide far plane
+		// swallows any panel sitting across the lane in the capture column and prints it into the shadow. The
+		// slab is [dist - r, dist + r] (+5% pad so Terry's limbs aren't clipped) => nothing past the ball renders.
+		_cam.ZNear = MathF.Max( 1f, dist - r * 1.05f );
+		_cam.ZFar = dist + r * 1.05f;
 
 		// On-demand render of just the occupant into the RT. Called from OnUpdate (game thread, Graphics inactive)
 		// so RenderToTexture self-initialises the scene camera - no live screen camera, no hijack.
