@@ -77,7 +77,8 @@ PS
 
     float g_flStrength < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
     float g_flTerryCut < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this, under an occupant ball, = black
-    float g_flColorize < Attribute( "BallShadowColorize" ); Default( 1.0f ); >;  // 0 = multiply (physical), 1 = colorize (assertive)
+    float g_flColorize < Attribute( "BallShadowColorize" ); Default( 0.5f ); >;   // 0 = multiply (dark, shadow-like), 1 = colorize (vibrant)
+    float g_flSaturation < Attribute( "BallShadowSaturation" ); Default( 0.65f ); >; // 1 = full colour, 0 = greyscale shadow
     float g_flColorMip < Attribute( "BallShadowColorMip" ); Default( 0.0f ); >;  // >0 blurs the colour map (kills grain)
     float3 g_vTintColor < Attribute( "BallShadowDebugTint" ); Default3( 1.0f, 0.0f, 0.0f ); >; // debug modes only
 
@@ -211,8 +212,12 @@ PS
         float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow ) * occ;
         filter = lerp( filter, float3( 0, 0, 0 ), opaque );
 
-        // Paint the projected colour across the whole footprint; the already-shadowed brightness (baseLuma)
-        // gives the light/dark gradient. Colorize so the hue reads instead of a gray print.
+        // Desaturate the projected colour toward its own luminance so the shadow reads muted, not neon.
+        float flum = dot( filter, float3( 0.299f, 0.587f, 0.114f ) );
+        filter = lerp( float3( flum, flum, flum ), filter, g_flSaturation );
+
+        // Paint the projected colour across the footprint. Multiply (color*filter) darkens the ground like a
+        // real shadow; colorize (baseLuma*filter) keeps the hue in dark areas - blend for a muted colour shadow.
         float baseLuma = dot( color.rgb, float3( 0.299f, 0.587f, 0.114f ) );
         float3 tinted = lerp( color.rgb * filter, baseLuma * filter, g_flColorize );
         color.rgb = lerp( color.rgb, tinted, mask * g_flStrength );

@@ -26,8 +26,11 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// black instead of taking the colour. High so only the solid silhouette darkens, not the dithered glass.</summary>
 	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
 
-	/// <summary>0 = physical multiply (subtle), 1 = colorize (assertively paints the projected colour).</summary>
-	[Property, Range( 0f, 1f )] public float Colorize { get; set; } = 1f;
+	/// <summary>0 = multiply (dark, shadow-like), 1 = colorize (bright/vibrant). Lower reads more like a shadow.</summary>
+	[Property, Range( 0f, 1f )] public float Colorize { get; set; } = 0.5f;
+
+	/// <summary>Projected-colour saturation. 1 = full colour (neon), 0 = greyscale shadow. Lower = more muted.</summary>
+	[Property, Range( 0f, 1f )] public float Saturation { get; set; } = 0.65f;
 
 	/// <summary>Blur the colour map (mip level) to kill per-pixel grain; 0 = sharp (good for hard splits).</summary>
 	[Property, Range( 0f, 6f )] public float ColorMip { get; set; } = 0.5f;
@@ -102,6 +105,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
 		Attributes.Set( "BallShadowColorize", Colorize );
+		Attributes.Set( "BallShadowSaturation", Saturation );
 		Attributes.Set( "BallShadowColorMip", ColorMip );
 		Attributes.Set( "BallShadowDebugTint", new Vector3( DebugTint.r, DebugTint.g, DebugTint.b ) );
 		Attributes.Set( "BallShadowDebugMode", (int)DebugMode );
