@@ -24,11 +24,17 @@ namespace Terryball;
 [Icon( "accessibility_new" )]
 public sealed class OccupantSilhouetteCapture : Component
 {
-	/// <summary>Render-target square resolution (px).</summary>
-	[Property] public int Resolution { get; set; } = 256;
+	/// <summary>Render-target square resolution (px). Higher = smoother silhouette edge (less blocky).</summary>
+	[Property] public int Resolution { get; set; } = 1024;
 
 	/// <summary>Tag the capture camera renders (and only that). BallController tags Terry with this.</summary>
 	[Property] public string OccupantTag { get; set; } = "occupant";
+
+	/// <summary>Tag we stamp onto every WorldPanel and exclude from the capture. WorldPanels IGNORE the
+	/// RenderTags whitelist (they render into any camera), so the only way to keep the lane's HUD panels out of
+	/// Terry's silhouette is to exclude them explicitly - their GameObject tags propagate to the panel scene
+	/// object, which the camera's ExcludeTags then filters.</summary>
+	[Property] public string PanelExcludeTag { get; set; } = "no_silhouette";
 
 	/// <summary>The captured silhouette (Terry lit on black). Read by BallShadowTintPP.</summary>
 	public Texture SilhouetteTexture { get; private set; }
@@ -56,6 +62,7 @@ public sealed class OccupantSilhouetteCapture : Component
 		_cam.BackgroundColor = Color.Black;                                    // black => luminance is the silhouette mask
 		_cam.ClearFlags = ClearFlags.Color | ClearFlags.Depth | ClearFlags.Stencil;
 		_cam.RenderTags.Add( OccupantTag );                                    // whitelist: ONLY the occupant renders (3D geometry)
+		_cam.RenderExcludeTags.Add( PanelExcludeTag );                         // ...and never the HUD WorldPanels (tagged in OnUpdate)
 		// ZNear/ZFar are re-derived per frame in OnUpdate as a thin slab around the ball (see there).
 	}
 
@@ -68,6 +75,12 @@ public sealed class OccupantSilhouetteCapture : Component
 		if ( !_ball.IsValid() )
 			_ball = Scene.GetAllComponents<BallController>().FirstOrDefault( b => b.IsValid() );
 		if ( !_ball.IsValid() ) return;
+
+		// WorldPanels bypass the RenderTags whitelist, so stamp them all with the exclude tag (idempotent) - it
+		// propagates to their panel scene object, which the capture's ExcludeTags then keeps out of the render.
+		// Cheap: a handful of panels, and Tags.Add is a no-op once present.
+		foreach ( var wp in Scene.GetAllComponents<WorldPanel>() )
+			wp.GameObject.Tags.Add( PanelExcludeTag );
 
 		var center = _ball.WorldPosition;
 		var r = _ball.Radius;

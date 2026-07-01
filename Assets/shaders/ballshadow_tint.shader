@@ -180,7 +180,7 @@ PS
 
         float3 s = g_tOccupant.SampleLevel( g_sOccupant, float2( u, 1.0f - v ), 0 ).rgb; // texture V=0 is the top (head)
         float lum = dot( s, float3( 0.299f, 0.587f, 0.114f ) );
-        return smoothstep( 0.03f, 0.10f, lum );
+        return smoothstep( 0.02f, 0.28f, lum ); // wide ramp => soft anti-aliased edge, not a blocky 1-bit cutout
     }
 
     // Stack one ball into the subtractive filter, grow the union mask, and (if it holds an opaque occupant)
