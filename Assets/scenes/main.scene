@@ -44,19 +44,6 @@
       ]
     },
     {
-      "__guid": "b000000d-0000-4000-8000-00000000000d",
-      "Name": "OccupantSilhouetteCapture",
-      "Position": "0,0,0",
-      "Enabled": true,
-      "Components": [
-        {
-          "__type": "Terryball.OccupantSilhouetteCapture",
-          "__guid": "b000000d-0001-4000-8000-00000000000d",
-          "__enabled": true
-        }
-      ]
-    },
-    {
       "__guid": "b0000009-0000-4000-8000-000000000009",
       "Name": "Lane 1",
       "Position": "0,0,0",

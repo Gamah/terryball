@@ -1,6 +1,5 @@
 using Sandbox;
 using Sandbox.Rendering;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -67,20 +66,8 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>Max balls the shader handles (unrolled slots). Keep in sync with the shader.</summary>
 	private const int MaxBalls = 4;
 
-	/// <summary>How many extra (point) lights beyond the sun can each cast their own analytic ball shadow. The
-	/// shader loops a StructuredBuffer, so this is a live cap - more lights = more per-pixel work.</summary>
-	[Property, Group( "Extra Lights" ), Range( 1, 128 )] public int MaxLights { get; set; } = 16;
-
-	// One entry per extra light, uploaded to the shader's StructuredBuffer. Layout must match `struct
-	// ShadowLight` in ballshadow_tint.shader (two float4s).
-	private struct ShadowLightData
-	{
-		public Vector4 Pos; // xyz world position, w = range/radius
-		public Vector4 Col; // rgb colour
-	}
-
-	private GpuBuffer<ShadowLightData> _lightBuffer;
-	private int _lightBufferCap = -1;
+	// NOTE: the extra coloured approach lights cast REAL engine shadows now (ApproachLightRig sets Shadows=true),
+	// so this pass only recolours the SUN's shadow - it no longer uploads lights or an occupant silhouette.
 
 	private static readonly Material Shader = Material.FromShader( "shaders/ballshadow_tint.shader" );
 
@@ -125,11 +112,6 @@ public sealed class BallShadowTintPP : BasePostProcess
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
 		Attributes.Set( "BallShadowOccupantDark", OccupantDark );
-
-		// Terry's live silhouette (captured side-on by OccupantSilhouetteCapture), projected per light so the
-		// occupant casts his real shape. Empty/absent => transparent (black) => no occupant shadow.
-		var capture = Scene.GetAllComponents<OccupantSilhouetteCapture>().FirstOrDefault( c => c.IsValid() );
-		Attributes.Set( "OccupantSilhouette", capture?.SilhouetteTexture ?? Texture.Black ); // Black (not Transparent, whose RGB is grey) => no occupant
 		Attributes.Set( "BallShadowColorize", Colorize );
 		Attributes.Set( "BallShadowSaturation", Saturation );
 		Attributes.Set( "BallShadowColorMip", ColorMip );
@@ -156,39 +138,8 @@ public sealed class BallShadowTintPP : BasePostProcess
 			}
 		}
 
-		// Extra coloured lights (point lights) each cast an analytic ball shadow. The sun (DirectionalLight)
-		// keeps its real engine shadow and isn't pushed here. Gather up to MaxLights and hand them to the
-		// shader as a StructuredBuffer so the count is dynamic (no fixed unrolled slots).
-		int cap = Math.Max( 1, MaxLights );
-		if ( _lightBuffer is null || _lightBufferCap != cap )
-		{
-			_lightBuffer?.Dispose();
-			_lightBuffer = new GpuBuffer<ShadowLightData>( cap, GpuBuffer.UsageFlags.Structured );
-			_lightBufferCap = cap;
-		}
-
-		var lights = Scene.GetAllComponents<PointLight>().Where( l => l.IsValid() && l.Active ).Take( cap ).ToList();
-		var data = new ShadowLightData[cap];
-		for ( int i = 0; i < lights.Count; i++ )
-		{
-			var l = lights[i];
-			var p = l.WorldPosition;
-			data[i].Pos = new Vector4( p.x, p.y, p.z, l.Radius ); // w = range, for the shadow's distance falloff
-			data[i].Col = new Vector4( l.LightColor.r, l.LightColor.g, l.LightColor.b, 1f );
-		}
-		_lightBuffer.SetData( data );
-		Attributes.Set( "ShadowLights", _lightBuffer );
-		Attributes.Set( "ShadowLightCount", lights.Count );
-
 		// AfterOpaque: shadow-map + light constants are still bound here.
 		var blit = BlitMode.WithBackbuffer( Shader, Stage.AfterOpaque, 1 );
 		Blit( blit, "BallShadowTint" );
-	}
-
-	protected override void OnDestroy()
-	{
-		_lightBuffer?.Dispose();
-		_lightBuffer = null;
-		_lightBufferCap = -1;
 	}
 }

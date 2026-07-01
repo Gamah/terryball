@@ -7,8 +7,9 @@ namespace Terryball;
 /// Builds four coloured light posts at the corners of the ball's approach/spawn area (R, G, B, W). Each post
 /// is a slim box "pole" with a box "head" aimed DOWN at the run-up point, holding a coloured PointLight - so
 /// the lights point down at the approach (short shadows on the run-up) rather than raking across the lane.
-/// The BallShadowTintPP post-process picks these PointLights up and casts an analytic, ball-coloured shadow
-/// for each one, so the ball throws four coloured shadows fanning out over the approach.
+/// Each PointLight casts REAL engine shadows, so the ball + Terry throw four genuine, grounded coloured
+/// shadows fanning out over the approach (the coloured penumbrae come from the lights overlapping - blocking
+/// the red light leaves a cyan-ish shadow, etc.). They're HDR-bright so they compete with the sun/sky ambient.
 ///
 /// Replaces the single overhead GreenApproachLight. The run-up point (LaneBuilder.RunUpWorldPosition) is
 /// procedural, so we resolve it at runtime and build once the lane exists. Lives at the scene root.
@@ -29,6 +30,11 @@ public sealed class ApproachLightRig : Component
 
 	/// <summary>Reach of each coloured PointLight (units).</summary>
 	[Property] public float LightRadius { get; set; } = 2500f;
+
+	/// <summary>HDR brightness multiplier on each coloured light. Brightness lives in the LightColor magnitude
+	/// (there's no separate field), and the coloured shadows only read if these lights compete with the sun +
+	/// sky ambient - so push well above 1. Tune to taste against the wash-out.</summary>
+	[Property] public float Brightness { get; set; } = 6f;
 
 	/// <summary>Pole cross-section (units).</summary>
 	[Property] public float PostThickness { get; set; } = 16f;
@@ -103,9 +109,9 @@ public sealed class ApproachLightRig : Component
 			head.LocalScale = new Vector3( (HeadSize * 1.7f) / bs.x, HeadSize / bs.y, HeadSize / bs.z );
 
 			var light = head.Components.Create<PointLight>();
-			light.LightColor = col;
+			light.LightColor = col * Brightness; // HDR: brightness is baked into the colour magnitude
 			light.Radius = LightRadius;
-			light.Shadows = false; // no engine shadow needed: the post-process projects Terry's captured silhouette + the ball's colour
+			light.Shadows = true; // REAL engine shadows: the ball + Terry cast genuine, grounded coloured shadows on the approach
 		}
 	}
 }
