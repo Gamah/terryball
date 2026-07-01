@@ -1,0 +1,40 @@
+// Blue variant of glassball.vmat for the shadow TEST ball, so it's visually distinct from the green
+// hamster ball (its shadow tint is set separately on its ShadowBall component).
+"Layer0"
+{
+	"shader"		"shaders/glass.shader_c"
+	"F_TRANSLUCENT"		"1"
+
+	// Blue tint over the nebula texture so the ball reads blue.
+	"g_flModelTintAmount"		"1.000000"
+	"g_vColorTint"		"[0.300000 0.450000 1.000000 1.000000]"
+	"TextureColor"		"materials/galaxyball_color.png"
+
+	"g_flOpacityScale"		"0.220000"
+	"TextureTranslucency"		"materials/default/default_trans.tga"
+
+	"g_flMetalness"		"0.150000"
+	"TextureRoughness"		"[0.050000 0.050000 0.050000 0.000000]"
+	"TextureNormal"		"[0.501961 0.501961 1.000000 0.000000]"
+	"TextureAmbientOcclusion"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_bAvoidDoubleFogging"		"1"
+	"g_flGlassFogExtinctionAmount"		"0.000000"
+	"g_flFadeExponent"		"1.000000"
+	"g_flEdgeColorFalloff"		"3.000000"
+	"g_flEdgeColorMaxOpacity"		"0.650000"
+	"g_flEdgeColorThickness"		"0.180000"
+	"g_vEdgeColor"		"[0.250000 0.450000 0.950000 1.000000]"
+	"GlassTintColor"		"[1.000000 1.000000 1.000000 0.000000]"
+
+	"g_nScaleTexCoordUByModelScaleAxis"		"0"
+	"g_nScaleTexCoordVByModelScaleAxis"		"0"
+	"g_vTexCoordOffset"		"[0.000 0.000]"
+	"g_vTexCoordScale"		"[1.000 1.000]"
+	"g_vTexCoordScrollSpeed"		"[0.000 0.000]"
+
+	"SystemAttributes"
+	{
+		"PhysicsSurfaceProperties"		"glass"
+	}
+}

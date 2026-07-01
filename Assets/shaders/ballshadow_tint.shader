@@ -122,9 +122,11 @@ PS
         float tFar = -b + sqrt( max( disc, 0.0f ) );
         vHit = vWorldPos + vToLight * tFar;
 
-        // Soft only outside the rim; gated to "the ball is toward the light" (closest approach ahead).
+        // Solid across the whole disc with only a thin AA edge, so the dense rim (darkest green) is still
+        // tinted - a wide fade here "culls" the edge to gray, the opposite of what we want. Gated to "the
+        // ball is toward the light" (closest approach ahead).
         float ahead = step( 0.0f, -b );
-        float mask = 1.0f - smoothstep( radius * 0.75f, radius * 1.06f, d );
+        float mask = 1.0f - smoothstep( radius * 0.97f, radius * 1.02f, d );
         return mask * ahead;
     }
 
@@ -217,12 +219,13 @@ PS
         float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow );
         filter = lerp( filter, float3( 0, 0, 0 ), opaque );
 
-        // FINAL: recolour the REAL shadow toward the balls' hue. Colorize (pixel luminance x hue) so the
-        // colour reads even in dark/bright areas instead of a gray texture print; blended with a plain
-        // multiply for control. flShadow rides through as the shadow's shape/grading.
+        // FINAL: paint the ball's hue across its WHOLE shadow footprint (mask) - NOT gated by flShadow, so
+        // clear glass still reads green. The gradient comes for free from the already-shadowed scene
+        // brightness (baseLuma): dark at the dense rim -> dark green, light at the clear centre -> light
+        // green, Terry (filter forced to 0) -> black. Colorize so it reads as colour, not a gray print.
         float baseLuma = dot( color.rgb, float3( 0.299f, 0.587f, 0.114f ) );
         float3 tinted = lerp( color.rgb * filter, baseLuma * filter, g_flColorize );
-        float t = flShadow * mask * g_flStrength;
+        float t = mask * g_flStrength;
         color.rgb = lerp( color.rgb, tinted, t );
         return color;
     }
