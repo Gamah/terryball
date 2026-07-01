@@ -30,6 +30,11 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>How dark the opaque occupant (Terry) reads: 0 = pure black, higher = deep grey (ambient fill).</summary>
 	[Property, Range( 0f, 0.5f )] public float OccupantDark { get; set; } = 0.1f;
 
+	/// <summary>Terry's silhouette size as a fraction of the ball, for the analytic (extra-light) black cut. The
+	/// sun uses the real shadow map; the coloured lights have none, so they darken only this central core -
+	/// smaller = tighter dark centre, more vibrant colour around it.</summary>
+	[Property, Range( 0f, 1f )] public float OccupantCore { get; set; } = 0.55f;
+
 	/// <summary>0 = multiply (dark, shadow-like), 1 = colorize (bright/vibrant). Lower reads more like a shadow.</summary>
 	[Property, Range( 0f, 1f )] public float Colorize { get; set; } = 0.5f;
 
@@ -124,6 +129,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
 		Attributes.Set( "BallShadowOccupantDark", OccupantDark );
+		Attributes.Set( "BallShadowOccupantCore", OccupantCore );
 		Attributes.Set( "BallShadowColorize", Colorize );
 		Attributes.Set( "BallShadowSaturation", Saturation );
 		Attributes.Set( "BallShadowColorMip", ColorMip );
