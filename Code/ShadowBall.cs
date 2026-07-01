@@ -3,10 +3,10 @@ using Sandbox;
 namespace Terryball;
 
 /// <summary>
-/// Marks a GameObject as a ball that casts a coloured shadow (see BallShadowTintPP / PLAN.md). The
-/// post-process gathers every ShadowBall and recolours its real shadow by <see cref="Tint"/> (optionally
-/// modulated by the shared galaxy texture, per-ray). Put one on the hamster ball; put more (different
-/// tints) around the lane and their shadows mix subtractively where they overlap.
+/// Marks a GameObject as a ball that casts a colour-projected shadow (see BallShadowTintPP / PLAN.md). The
+/// post-process gathers every ShadowBall and projects its <see cref="ColorMap"/> into its real shadow,
+/// sampled per-ray - so a two-tone ball (pokeball) casts a two-tone shadow, and different balls cast
+/// different-coloured shadows. Overlapping shadows mix subtractively.
 ///
 /// Reads the GameObject's world transform, so the shadow follows the ball as it moves/rolls.
 /// </summary>
@@ -18,10 +18,14 @@ public sealed class ShadowBall : Component
 	/// <summary>World radius of the ball's shadow volume (units).</summary>
 	[Property] public float Radius { get; set; } = 100f;
 
-	/// <summary>The colour the shadow is tinted toward. Saturated so it reads clearly (the pale vmat lift
-	/// washed out); defaults to the ball's edge-green. Later this comes automatically from the ball's material.</summary>
-	[Property] public Color Tint { get; set; } = new Color( 0.25f, 0.95f, 0.45f );
+	/// <summary>The ball's colour map (equirectangular), projected into the shadow per-ray. Null = flat white
+	/// (so <see cref="Tint"/> alone gives a flat-coloured shadow). Ideally the same map the ball renders.</summary>
+	[Property] public Texture ColorMap { get; set; }
 
-	/// <summary>Modulate the tint by the per-ray galaxy texel (texture detail) vs a flat tint.</summary>
-	[Property] public bool UseGalaxyTexture { get; set; } = true;
+	/// <summary>Multiplier over the sampled colour map (leave white to use the map as-is).</summary>
+	[Property] public Color Tint { get; set; } = Color.White;
+
+	/// <summary>True if an opaque occupant rides inside (Terry in the glass ball) - its silhouette reads black
+	/// in the shadow instead of taking the colour. Leave false for plain colour balls.</summary>
+	[Property] public bool HasOpaqueOccupant { get; set; }
 }

@@ -1,16 +1,17 @@
 //
-// Ball shadow tint - recolours each ball's REAL shadow in screen space (see PLAN.md).
+// Ball shadow tint - projects each ball's SURFACE COLOUR into its real shadow (see PLAN.md).
 //
-// Reconstruct world pos from depth, read the engine's real directional-shadow term (keeps its grading +
-// Terry silhouette), mask to each ball's analytic shadow volume, and tint by the galaxy texel the sun ray
-// passed through. Multiple balls stack SUBTRACTIVELY (each occluder filters the light), so overlapping
-// coloured shadows mix (green * blue -> dark). Opaque occupants (Terry) read black, not tinted.
+// For every shadowed pixel we trace the ray toward the sun, find where it pierces each ball, sample that
+// ball's colour map at that surface point (so a pokeball's red half lands red in the shadow, blue half
+// blue - the shadow is a spatial projection of the ball, not one flat colour), and colourise the real
+// shadow with it. Balls stack SUBTRACTIVELY where their shadows overlap. An opaque occupant (Terry inside
+// the glass) reads black. Per-ball colour maps => different balls cast different-coloured shadows.
 //
 // ASCII ONLY and keep every section brace balanced - the vfx source parser crashes on load otherwise.
 //
 HEADER
 {
-    Description = "Ball shadow tint (per-ray galaxy, multi-ball subtractive)";
+    Description = "Ball shadow tint (per-ray surface-colour projection, multi-ball subtractive)";
     DevShader = true;
 }
 
@@ -67,84 +68,76 @@ PS
 
     Texture2D g_tColorBuffer < Attribute( "ColorBuffer" ); SrgbRead( true ); >;
 
-    // The balls' colour texture (galaxy nebula) - sampled per-ray for the shadow tint.
-    Texture2D g_tGalaxy < Attribute( "BallGalaxyTex" ); SrgbRead( true ); >;
-    SamplerState g_sGalaxy < Filter( BILINEAR ); AddressU( WRAP ); AddressV( CLAMP ); >;
+    // Per-ball colour maps (equirectangular). The ball's shadow is a per-ray projection of these.
+    Texture2D g_tBall0 < Attribute( "ShadowBallTex0" ); SrgbRead( true ); >;
+    Texture2D g_tBall1 < Attribute( "ShadowBallTex1" ); SrgbRead( true ); >;
+    Texture2D g_tBall2 < Attribute( "ShadowBallTex2" ); SrgbRead( true ); >;
+    Texture2D g_tBall3 < Attribute( "ShadowBallTex3" ); SrgbRead( true ); >;
+    SamplerState g_sBall < Filter( BILINEAR ); AddressU( WRAP ); AddressV( CLAMP ); >;
 
-    float  g_flStrength     < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
-    float  g_flTerryCut     < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this = opaque -> black
-    float  g_flGalaxyDetail < Attribute( "BallShadowGalaxyDetail" ); Default( 0.4f ); >; // 0 = flat tint, 1 = full swirl luminance
-    float  g_flColorize     < Attribute( "BallShadowColorize" ); Default( 1.0f ); >; // 0 = multiply (physical), 1 = colorize (assertive)
-    float3 g_vTintColor     < Attribute( "BallShadowDebugTint" ); Default3( 1.0f, 0.0f, 0.0f ); >; // debug modes only
+    float g_flStrength < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
+    float g_flTerryCut < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this, under an occupant ball, = black
+    float g_flColorize < Attribute( "BallShadowColorize" ); Default( 1.0f ); >;  // 0 = multiply (physical), 1 = colorize (assertive)
+    float g_flColorMip < Attribute( "BallShadowColorMip" ); Default( 0.0f ); >;  // >0 blurs the colour map (kills grain)
+    float3 g_vTintColor < Attribute( "BallShadowDebugTint" ); Default3( 1.0f, 0.0f, 0.0f ); >; // debug modes only
 
-    // Up to 4 balls. Per slot: A = (center.xyz, radius); Tint = (rgb, useGalaxy); Rot = world quat.
+    // Up to 4 balls. A = (center.xyz, radius); T = (tint.rgb, hasOpaqueOccupant); R = world quat.
     // radius <= 0 => empty slot.
     float4 g_vBallA0 < Attribute( "ShadowBallA0" ); Default4( 0, 0, 0, 0 ); >;
     float4 g_vBallA1 < Attribute( "ShadowBallA1" ); Default4( 0, 0, 0, 0 ); >;
     float4 g_vBallA2 < Attribute( "ShadowBallA2" ); Default4( 0, 0, 0, 0 ); >;
     float4 g_vBallA3 < Attribute( "ShadowBallA3" ); Default4( 0, 0, 0, 0 ); >;
-    float4 g_vBallT0 < Attribute( "ShadowBallT0" ); Default4( 1, 1, 1, 1 ); >;
-    float4 g_vBallT1 < Attribute( "ShadowBallT1" ); Default4( 1, 1, 1, 1 ); >;
-    float4 g_vBallT2 < Attribute( "ShadowBallT2" ); Default4( 1, 1, 1, 1 ); >;
-    float4 g_vBallT3 < Attribute( "ShadowBallT3" ); Default4( 1, 1, 1, 1 ); >;
+    float4 g_vBallT0 < Attribute( "ShadowBallT0" ); Default4( 1, 1, 1, 0 ); >;
+    float4 g_vBallT1 < Attribute( "ShadowBallT1" ); Default4( 1, 1, 1, 0 ); >;
+    float4 g_vBallT2 < Attribute( "ShadowBallT2" ); Default4( 1, 1, 1, 0 ); >;
+    float4 g_vBallT3 < Attribute( "ShadowBallT3" ); Default4( 1, 1, 1, 0 ); >;
     float4 g_vBallR0 < Attribute( "ShadowBallR0" ); Default4( 0, 0, 0, 1 ); >;
     float4 g_vBallR1 < Attribute( "ShadowBallR1" ); Default4( 0, 0, 0, 1 ); >;
     float4 g_vBallR2 < Attribute( "ShadowBallR2" ); Default4( 0, 0, 0, 1 ); >;
     float4 g_vBallR3 < Attribute( "ShadowBallR3" ); Default4( 0, 0, 0, 1 ); >;
 
     // DIAGNOSTIC MODE (live-switchable uniform - flip in the inspector, no recompile):
-    //   1 FULL       : tint the WHOLE screen (pass runs + blit writes back?)
-    //   2 DEPTH      : normalized depth greyscale (depth chain bound?)
-    //   3 CASCADES   : GREEN if the directional-shadow cbuffer is bound, else RED
-    //   4 ALLSHADOWS : red-tint EVERY shadow (the original spike)
-    //   5 BALLMASK   : white where any ball's analytic shadow volume covers this pixel
-    //   6 FINAL      : the real effect - ball shadows recoloured, mixed subtractively
+    //   1 FULL / 2 DEPTH / 3 CASCADES / 4 ALLSHADOWS / 5 BALLMASK / 6 FINAL (the real effect)
     int g_nDebugMode < Attribute( "BallShadowDebugMode" ); Default( 6 ); >;
 
-    // Rotate vector v by quaternion q (xyz,w).
     float3 QuatRotate( float4 q, float3 v )
     {
         return v + 2.0f * cross( q.xyz, cross( q.xyz, v ) + q.w * v );
     }
 
-    // Analytic soft mask: is worldPos inside this ball's shadow volume for a light in direction vToLight?
-    // Returns 0..1 (soft rim) and outputs the light-facing surface hit point on the ball.
+    // Analytic soft mask: is worldPos in this ball's shadow volume for a light in direction vToLight?
+    // 0..1 (thin AA edge) and outputs the light-facing surface hit point on the ball.
     float BallShadowMask( float3 vWorldPos, float3 vToLight, float3 center, float radius, out float3 vHit )
     {
         float3 oc = vWorldPos - center;
-        float b = dot( oc, vToLight );                 // closest-approach param is -b
+        float b = dot( oc, vToLight );
         float perp2 = max( dot( oc, oc ) - b * b, 0.0f );
         float d = sqrt( perp2 );
 
-        // The far intersection (toward the light) - the surface the light enters.
         float c = dot( oc, oc ) - radius * radius;
         float disc = b * b - c;
-        float tFar = -b + sqrt( max( disc, 0.0f ) );
+        float tFar = -b + sqrt( max( disc, 0.0f ) ); // far intersection = surface the light enters
         vHit = vWorldPos + vToLight * tFar;
 
-        // Solid across the whole disc with only a thin AA edge, so the dense rim (darkest green) is still
-        // tinted - a wide fade here "culls" the edge to gray, the opposite of what we want. Gated to "the
-        // ball is toward the light" (closest approach ahead).
-        float ahead = step( 0.0f, -b );
+        float ahead = step( 0.0f, -b ); // ball is toward the light
         float mask = 1.0f - smoothstep( radius * 0.97f, radius * 1.02f, d );
         return mask * ahead;
     }
 
-    // Sample the galaxy texel the light ray passed through: world hit -> ball-local -> spherical UV.
-    float3 SampleGalaxy( float3 vHit, float3 center, float4 rot )
+    // Ball surface colour at the light-facing hit: world hit -> ball-local -> spherical UV -> map.
+    float3 SampleBall( Texture2D tex, float3 vHit, float3 center, float4 rot )
     {
-        // Inverse-rotate the world hit normal into ball-local space, then spherical UV.
-        // Constants: 0.15915494 = 1 over two pi, 0.31830989 = 1 over pi.
         float3 n = normalize( vHit - center );
-        float3 nl = normalize( QuatRotate( float4( -rot.xyz, rot.w ), n ) );
-        float u = atan2( nl.y, nl.x ) * 0.15915494f + 0.5f;
-        float v = acos( clamp( nl.z, -1.0f, 1.0f ) ) * 0.31830989f;
-        // Sample a blurred mip: a fullscreen pass has no UV gradient so mip 0 prints the texture's grain.
-        return g_tGalaxy.SampleLevel( g_sGalaxy, float2( u, v ), 2.0f ).rgb;
+        float3 nl = normalize( QuatRotate( float4( -rot.xyz, rot.w ), n ) ); // inverse-rotate to ball-local
+        float u = atan2( nl.y, nl.x ) * 0.15915494f + 0.5f; // 1/(2pi)
+        float v = acos( clamp( nl.z, -1.0f, 1.0f ) ) * 0.31830989f; // 1/pi
+        return tex.SampleLevel( g_sBall, float2( u, v ), g_flColorMip ).rgb;
     }
 
-    // Stack one ball's tint into the subtractive filter and grow the union mask.
-    void AccumBall( float3 wp, float3 toL, float4 a, float4 tint, float4 rot, inout float3 filter, inout float mask )
+    // Stack one ball into the subtractive filter, grow the union mask, and (if it holds an opaque occupant)
+    // the occupant mask used for the Terry-black cut.
+    void AccumBall( Texture2D tex, float3 wp, float3 toL, float4 a, float4 t, float4 rot,
+                    inout float3 filter, inout float mask, inout float occ )
     {
         float radius = a.w;
         if ( radius <= 0.0f )
@@ -155,16 +148,11 @@ PS
         if ( m <= 0.0f )
             return;
 
-        float3 col = tint.rgb;                          // HUE comes from the ball's own colour
-        if ( tint.w > 0.5f )                            // useGalaxy: modulate only the BRIGHTNESS by the swirl (keeps hue)
-        {
-            float3 g = SampleGalaxy( hit, a.xyz, rot );
-            float gl = dot( g, float3( 0.299f, 0.587f, 0.114f ) );
-            col *= lerp( 1.0f, saturate( gl * 1.6f ), g_flGalaxyDetail );
-        }
-
-        filter *= lerp( float3( 1, 1, 1 ), col, m );    // subtractive: overlapping balls multiply
+        float3 col = SampleBall( tex, hit, a.xyz, rot ) * t.rgb; // surface colour x optional tint
+        filter *= lerp( float3( 1, 1, 1 ), col, m );             // subtractive: overlapping balls multiply
         mask = max( mask, m );
+        if ( t.w > 0.5f )
+            occ = max( occ, m );
     }
 
     float4 MainPs( PixelInput i ) : SV_Target0
@@ -200,33 +188,31 @@ PS
             return color;
         }
 
-        // Direction from this surface point toward the sun (light travels along g_DirectionalLightDirection).
+        // Direction from this surface point toward the sun.
         float3 vToSun = normalize( -g_DirectionalLightDirection.xyz );
 
-        // Accumulate every ball's tint subtractively; union their masks.
+        // Project every ball's surface colour, stacking subtractively; union the masks.
         float3 filter = float3( 1, 1, 1 );
         float mask = 0.0f;
-        AccumBall( vWorldPos, vToSun, g_vBallA0, g_vBallT0, g_vBallR0, filter, mask );
-        AccumBall( vWorldPos, vToSun, g_vBallA1, g_vBallT1, g_vBallR1, filter, mask );
-        AccumBall( vWorldPos, vToSun, g_vBallA2, g_vBallT2, g_vBallR2, filter, mask );
-        AccumBall( vWorldPos, vToSun, g_vBallA3, g_vBallT3, g_vBallR3, filter, mask );
+        float occ = 0.0f;
+        AccumBall( g_tBall0, vWorldPos, vToSun, g_vBallA0, g_vBallT0, g_vBallR0, filter, mask, occ );
+        AccumBall( g_tBall1, vWorldPos, vToSun, g_vBallA1, g_vBallT1, g_vBallR1, filter, mask, occ );
+        AccumBall( g_tBall2, vWorldPos, vToSun, g_vBallA2, g_vBallT2, g_vBallR2, filter, mask, occ );
+        AccumBall( g_tBall3, vWorldPos, vToSun, g_vBallA3, g_vBallT3, g_vBallR3, filter, mask, occ );
 
         if ( g_nDebugMode == 5 )
             return float4( mask.xxx, 1.0f );
 
-        // Opaque occupants (Terry) render solid in the shadow map (flShadow ~1) while dithered glass stays
-        // fractional - so where occlusion saturates past the cut, drive the tint to black (all light blocked).
-        float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow );
+        // Opaque occupant (Terry) inside an occupant ball reads black: where THAT ball's mask overlaps a
+        // saturated real shadow, force the tint to black. Colour balls (no occupant) keep their colour.
+        float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow ) * occ;
         filter = lerp( filter, float3( 0, 0, 0 ), opaque );
 
-        // FINAL: paint the ball's hue across its WHOLE shadow footprint (mask) - NOT gated by flShadow, so
-        // clear glass still reads green. The gradient comes for free from the already-shadowed scene
-        // brightness (baseLuma): dark at the dense rim -> dark green, light at the clear centre -> light
-        // green, Terry (filter forced to 0) -> black. Colorize so it reads as colour, not a gray print.
+        // Paint the projected colour across the whole footprint; the already-shadowed brightness (baseLuma)
+        // gives the light/dark gradient. Colorize so the hue reads instead of a gray print.
         float baseLuma = dot( color.rgb, float3( 0.299f, 0.587f, 0.114f ) );
         float3 tinted = lerp( color.rgb * filter, baseLuma * filter, g_flColorize );
-        float t = mask * g_flStrength;
-        color.rgb = lerp( color.rgb, tinted, t );
+        color.rgb = lerp( color.rgb, tinted, mask * g_flStrength );
         return color;
     }
 }

@@ -5,12 +5,12 @@ using System.Linq;
 namespace Terryball;
 
 /// <summary>
-/// Recolours the ball's REAL shadow in screen space (see PLAN.md). A fullscreen pass runs after opaque,
-/// reconstructs each pixel's world position from depth, reads the engine's real directional-shadow term
-/// (preserving its grading + Terry silhouette), masks to the ball's analytic shadow volume, and tints it
-/// with the exact galaxy texel the sun ray passed through — so the shadow reads as the ball's own colour.
+/// Projects each ball's surface colour into its REAL shadow, in screen space (see PLAN.md). A fullscreen
+/// pass runs after opaque, reconstructs each pixel's world position from depth, reads the engine's real
+/// directional-shadow term, and for every ShadowBall samples its colour map at the point the sun ray
+/// pierced the ball - so the shadow is a spatial projection of the ball (a pokeball casts a two-tone
+/// shadow). Balls mix subtractively where their shadows overlap; opaque occupants (Terry) read black.
 ///
-/// Single-ball / single-sun stage. Per-light iteration and multi-ball arrays are the next steps.
 /// Attach to any camera's GameObject (BasePostProcess is auto-collected per camera).
 /// </summary>
 [Title( "Ball Shadow Tint" )]
@@ -21,24 +21,15 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>Overall recolour strength (0 = off).</summary>
 	[Property, Range( 0f, 1f )] public float Strength { get; set; } = 1f;
 
-	/// <summary>
-	/// Occlusion above this reads as an opaque occluder (Terry inside the ball) and its shadow goes black
-	/// instead of green - he blocks the glass's green transmission too. The dithered glass stays below this,
-	/// so keep it high (only truly-solid silhouettes go dark). Lower = more of the shadow darkens.
-	/// </summary>
+	/// <summary>Under an occupant ball, occlusion above this reads as the opaque occupant (Terry) and goes
+	/// black instead of taking the colour. High so only the solid silhouette darkens, not the dithered glass.</summary>
 	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
 
-	/// <summary>Ball colour texture, sampled per-ray for luminance detail. Defaults to the glass ball's galaxy map.</summary>
-	[Property] public string GalaxyTexturePath { get; set; } = "materials/galaxyball_color.png";
-
-	/// <summary>How much the galaxy swirl modulates shadow brightness (0 = flat tint, 1 = full swirl). Hue always comes from the ball.</summary>
-	[Property, Range( 0f, 1f )] public float GalaxyDetail { get; set; } = 0.4f;
-
-	/// <summary>0 = physical multiply (subtle, can stay gray), 1 = colorize (assertively paints the ball's hue).</summary>
+	/// <summary>0 = physical multiply (subtle), 1 = colorize (assertively paints the projected colour).</summary>
 	[Property, Range( 0f, 1f )] public float Colorize { get; set; } = 1f;
 
-	/// <summary>Max balls the shader handles (unrolled slots). Keep in sync with the shader.</summary>
-	private const int MaxBalls = 4;
+	/// <summary>Blur the colour map (mip level) to kill per-pixel grain; 0 = sharp (good for hard splits).</summary>
+	[Property, Range( 0f, 6f )] public float ColorMip { get; set; } = 0.5f;
 
 	/// <summary>Debug tint for the diagnostic modes (unused by Final).</summary>
 	[Property] public Color DebugTint { get; set; } = Color.Red;
@@ -46,18 +37,17 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>
 	/// Diagnostic view. Final is the real effect; the rest isolate the pipeline:
 	/// 1 whole-screen tint, 2 depth greyscale, 3 shadow-cbuffer bound?, 4 all shadows red,
-	/// 5 ball-shadow mask, 6 the real recolour.
+	/// 5 ball-shadow mask, 6 the real projection.
 	/// </summary>
 	public enum DebugModes { Full = 1, Depth = 2, CascadesBound = 3, AllShadows = 4, BallMask = 5, Final = 6 }
 
 	[Property] public DebugModes DebugMode { get; set; } = DebugModes.Final;
 
 	// --- Shadow-map fidelity ------------------------------------------------------------
-	// The recolour just samples the engine's real sun shadow, so its sharpness is the directional
-	// cascade texel size. The engine defaults spread 2048-texel cascades over 15000 units, so the
-	// ball's small shadow pixelates a couple of diameters out. We pack more resolution onto the lane:
-	// bigger cascades + a much shorter cascade distance (the camera hugs the ball, so shadows far past
-	// it aren't needed). These are global render convars, applied here since this is the shadow feature.
+	// The effect samples the engine's real sun shadow, so its sharpness is the directional cascade texel
+	// size. Engine defaults spread 2048-texel cascades over 15000 units, pixelating the ball's small shadow.
+	// We pack resolution onto the lane: bigger cascades + a shorter cascade distance (the camera hugs the
+	// ball). Global render convars, applied here since this is the shadow feature.
 
 	/// <summary>Per-cascade directional shadow-map resolution (r.shadows.csm.maxresolution). Higher = sharper, more VRAM.</summary>
 	[Property, Group( "Shadow Quality" ), Range( 512, 8192 )] public int CascadeResolution { get; set; } = 4096;
@@ -65,10 +55,11 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>Max distance the sun's cascades cover (r.shadows.csm.distance). Lower packs texels near the camera/ball = sharper.</summary>
 	[Property, Group( "Shadow Quality" ), Range( 1500, 15000 )] public float CascadeDistance { get; set; } = 6000f;
 
+	/// <summary>Max balls the shader handles (unrolled slots). Keep in sync with the shader.</summary>
+	private const int MaxBalls = 4;
+
 	private static readonly Material Shader = Material.FromShader( "shaders/ballshadow_tint.shader" );
 
-	private Texture _galaxy;
-	private string _galaxyLoadedPath;
 	private int _appliedRes = -1;
 	private float _appliedDist = -1f;
 
@@ -94,21 +85,12 @@ public sealed class BallShadowTintPP : BasePostProcess
 
 		ApplyShadowQuality();
 
-		// Cache the galaxy texture; reload only if the path changes.
-		if ( _galaxy is null || _galaxyLoadedPath != GalaxyTexturePath )
-		{
-			_galaxy = Texture.Load( GalaxyTexturePath );
-			_galaxyLoadedPath = GalaxyTexturePath;
-		}
-
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
-		Attributes.Set( "BallShadowGalaxyDetail", GalaxyDetail );
 		Attributes.Set( "BallShadowColorize", Colorize );
+		Attributes.Set( "BallShadowColorMip", ColorMip );
 		Attributes.Set( "BallShadowDebugTint", new Vector3( DebugTint.r, DebugTint.g, DebugTint.b ) );
 		Attributes.Set( "BallShadowDebugMode", (int)DebugMode );
-		if ( _galaxy is not null )
-			Attributes.Set( "BallGalaxyTex", _galaxy );
 
 		// Gather every ShadowBall and fill the shader's unrolled slots (empty slots => radius 0 => skipped).
 		var balls = Scene.GetAllComponents<ShadowBall>().Where( b => b.IsValid() && b.Active ).Take( MaxBalls ).ToList();
@@ -120,8 +102,9 @@ public sealed class BallShadowTintPP : BasePostProcess
 				var p = b.WorldPosition;
 				var rot = b.WorldRotation;
 				Attributes.Set( $"ShadowBallA{i}", new Vector4( p.x, p.y, p.z, b.Radius ) );
-				Attributes.Set( $"ShadowBallT{i}", new Vector4( b.Tint.r, b.Tint.g, b.Tint.b, b.UseGalaxyTexture ? 1f : 0f ) );
+				Attributes.Set( $"ShadowBallT{i}", new Vector4( b.Tint.r, b.Tint.g, b.Tint.b, b.HasOpaqueOccupant ? 1f : 0f ) );
 				Attributes.Set( $"ShadowBallR{i}", new Vector4( rot.x, rot.y, rot.z, rot.w ) );
+				Attributes.Set( $"ShadowBallTex{i}", b.ColorMap ?? Texture.White ); // null map => flat (Tint) colour
 			}
 			else
 			{

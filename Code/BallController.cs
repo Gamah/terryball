@@ -177,9 +177,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// Procedural roll rumble + foul-line throw sound.
 		Components.GetOrCreate<BallAudio>();
 
-		// Cast a green (galaxy) coloured shadow. The BallShadowTintPP post-process gathers every ShadowBall
-		// and recolours its real shadow; radius tracks the ball, tint/texture default to the galaxy green.
-		Components.GetOrCreate<ShadowBall>().Radius = Radius;
+		// Cast a colour-projected shadow: the BallShadowTintPP post-process samples this ball's colour map
+		// per-ray, so the shadow shows the ball's spatial colours (pokeball -> two-tone shadow), with Terry
+		// (opaque occupant) reading black. Uses the same pokeball map the shell renders, so they match.
+		var shadow = Components.GetOrCreate<ShadowBall>();
+		shadow.Radius = Radius;
+		shadow.ColorMap = Texture.Load( "materials/pokeball_color.png" );
+		shadow.HasOpaqueOccupant = true;
 
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.
 		var visual = new GameObject( true, "BallVisual" )
@@ -189,7 +193,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		};
 		var shell = visual.Components.GetOrCreate<ModelRenderer>();
 		shell.Model = Model.Load( "models/dev/sphere.vmdl" );
-		shell.MaterialOverride = Material.Load( "materials/glassball.vmat" );
+		shell.MaterialOverride = Material.Load( "materials/glassball_poke.vmat" );
 
 		var shellBounds = shell.Model.Bounds.Size.x; // dev sphere ≈ 64 across (r 32)
 		visual.LocalScale = new Vector3( (Radius * 2f) / shellBounds );
