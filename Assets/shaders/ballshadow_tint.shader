@@ -72,6 +72,7 @@ PS
     SamplerState g_sGalaxy < Filter( BILINEAR ); AddressU( WRAP ); AddressV( CLAMP ); >;
 
     float  g_flStrength < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
+    float  g_flTerryCut < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this = opaque (Terry) -> black
     float3 g_vGlassTint < Attribute( "BallGlassTint" ); Default3( 0.82f, 1.0f, 0.88f ); >; // vmat g_vColorTint lift
     float3 g_vTintColor < Attribute( "BallShadowDebugTint" ); Default3( 1.0f, 0.0f, 0.0f ); >; // debug modes only
 
@@ -177,6 +178,14 @@ PS
         // FINAL: multiplicative recolour of the REAL shadow, only inside the ball's shadow volume,
         // tinted by the exact galaxy texel the sun ray passed through. flShadow carries the grading.
         float3 vTintFilter = SampleGalaxy( vHit );
+
+        // Terry is an OPAQUE occluder riding inside the glass: where he blocks the sun he blocks the
+        // green transmission too, so his shadow should read black, not green. He renders solid in the
+        // shadow map (flShadow saturates to ~1) while the dithered glass stays fractional even at the
+        // dense rim - so drive the tint to black only where occlusion saturates past g_flTerryCut.
+        float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow );
+        vTintFilter = lerp( vTintFilter, float3( 0.0f, 0.0f, 0.0f ), opaque );
+
         float t = flShadow * mask * g_flStrength;
         color.rgb = lerp( color.rgb, color.rgb * vTintFilter, t );
         return color;

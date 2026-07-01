@@ -21,6 +21,13 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>Overall recolour strength (0 = off).</summary>
 	[Property, Range( 0f, 1f )] public float Strength { get; set; } = 1f;
 
+	/// <summary>
+	/// Occlusion above this reads as an opaque occluder (Terry inside the ball) and its shadow goes black
+	/// instead of green - he blocks the glass's green transmission too. The dithered glass stays below this,
+	/// so keep it high (only truly-solid silhouettes go dark). Lower = more of the shadow darkens.
+	/// </summary>
+	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
+
 	/// <summary>Static tint lift on top of the sampled galaxy colour (matches the vmat's g_vColorTint).</summary>
 	[Property] public Color GlassTint { get; set; } = new Color( 0.82f, 1f, 0.88f );
 
@@ -60,6 +67,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 		var ball = Scene.GetAllComponents<BallController>().FirstOrDefault( b => b.IsValid() && b.Active );
 
 		Attributes.Set( "BallShadowStrength", Strength );
+		Attributes.Set( "BallShadowTerryCut", TerryCut );
 		Attributes.Set( "BallGlassTint", new Vector3( GlassTint.r, GlassTint.g, GlassTint.b ) );
 		Attributes.Set( "BallShadowDebugTint", new Vector3( DebugTint.r, DebugTint.g, DebugTint.b ) );
 		Attributes.Set( "BallShadowDebugMode", (int)DebugMode );
