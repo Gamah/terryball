@@ -177,6 +177,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// Procedural roll rumble + foul-line throw sound.
 		Components.GetOrCreate<BallAudio>();
 
+		// Cast a green (galaxy) coloured shadow. The BallShadowTintPP post-process gathers every ShadowBall
+		// and recolours its real shadow; radius tracks the ball, tint/texture default to the galaxy green.
+		Components.GetOrCreate<ShadowBall>().Radius = Radius;
+
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.
 		var visual = new GameObject( true, "BallVisual" )
 		{

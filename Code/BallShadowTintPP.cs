@@ -28,11 +28,11 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// </summary>
 	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
 
-	/// <summary>Static tint lift on top of the sampled galaxy colour (matches the vmat's g_vColorTint).</summary>
-	[Property] public Color GlassTint { get; set; } = new Color( 0.82f, 1f, 0.88f );
-
 	/// <summary>Ball colour texture, sampled per-ray. Defaults to the glass ball's galaxy map.</summary>
 	[Property] public string GalaxyTexturePath { get; set; } = "materials/galaxyball_color.png";
+
+	/// <summary>Max balls the shader handles (unrolled slots). Keep in sync with the shader.</summary>
+	private const int MaxBalls = 4;
 
 	/// <summary>Debug tint for the diagnostic modes (unused by Final).</summary>
 	[Property] public Color DebugTint { get; set; } = Color.Red;
@@ -95,27 +95,30 @@ public sealed class BallShadowTintPP : BasePostProcess
 			_galaxyLoadedPath = GalaxyTexturePath;
 		}
 
-		// Find a ball to cast a tinted shadow. Single-ball stage: the first enabled one drives it.
-		var ball = Scene.GetAllComponents<BallController>().FirstOrDefault( b => b.IsValid() && b.Active );
-
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
-		Attributes.Set( "BallGlassTint", new Vector3( GlassTint.r, GlassTint.g, GlassTint.b ) );
 		Attributes.Set( "BallShadowDebugTint", new Vector3( DebugTint.r, DebugTint.g, DebugTint.b ) );
 		Attributes.Set( "BallShadowDebugMode", (int)DebugMode );
 		if ( _galaxy is not null )
 			Attributes.Set( "BallGalaxyTex", _galaxy );
 
-		if ( ball is not null )
+		// Gather every ShadowBall and fill the shader's unrolled slots (empty slots => radius 0 => skipped).
+		var balls = Scene.GetAllComponents<ShadowBall>().Where( b => b.IsValid() && b.Active ).Take( MaxBalls ).ToList();
+		for ( int i = 0; i < MaxBalls; i++ )
 		{
-			var rot = ball.WorldRotation;
-			Attributes.Set( "BallShadowCenter", ball.WorldPosition );
-			Attributes.Set( "BallShadowRadius", ball.Radius );
-			Attributes.Set( "BallShadowRot", new Vector4( rot.x, rot.y, rot.z, rot.w ) );
-		}
-		else
-		{
-			Attributes.Set( "BallShadowRadius", 0f ); // shader bails
+			if ( i < balls.Count )
+			{
+				var b = balls[i];
+				var p = b.WorldPosition;
+				var rot = b.WorldRotation;
+				Attributes.Set( $"ShadowBallA{i}", new Vector4( p.x, p.y, p.z, b.Radius ) );
+				Attributes.Set( $"ShadowBallT{i}", new Vector4( b.Tint.r, b.Tint.g, b.Tint.b, b.UseGalaxyTexture ? 1f : 0f ) );
+				Attributes.Set( $"ShadowBallR{i}", new Vector4( rot.x, rot.y, rot.z, rot.w ) );
+			}
+			else
+			{
+				Attributes.Set( $"ShadowBallA{i}", new Vector4( 0f, 0f, 0f, 0f ) ); // empty slot
+			}
 		}
 
 		// AfterOpaque: shadow-map + light constants are still bound here.

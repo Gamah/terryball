@@ -130,6 +130,23 @@
               "DisplacementThresholdInches": 4
             }
           ]
+        },
+        {
+          "__guid": "b000000a-0000-4000-8000-00000000000a",
+          "Name": "ShadowTestBall",
+          "Position": "0,0,0",
+          "Enabled": true,
+          "Components": [
+            {
+              "__type": "Terryball.ShadowTestBall",
+              "__guid": "b000000a-0001-4000-8000-00000000000a",
+              "__enabled": true,
+              "Radius": 100,
+              "Tint": "0.3,0.45,1,1",
+              "SideOffset": 240,
+              "ForwardOffset": 0
+            }
+          ]
         }
       ]
     },
