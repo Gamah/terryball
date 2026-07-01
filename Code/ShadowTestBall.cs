@@ -17,9 +17,9 @@ public sealed class ShadowTestBall : Component
 {
 	[Property] public float Radius { get; set; } = 100f;
 	/// <summary>Shadow tint - blue by default so green + blue overlap reads clearly dark (subtractive).</summary>
-	[Property] public Color Tint { get; set; } = new Color( 0.30f, 0.45f, 1f );
-	/// <summary>Lateral offset (units) from the run-up centre; ~1.2 diameters so shadows can overlap at an angle.</summary>
-	[Property] public float SideOffset { get; set; } = 240f;
+	[Property] public Color Tint { get; set; } = new Color( 0.20f, 0.40f, 1f );
+	/// <summary>Lateral offset (units) from the run-up centre; ~1 diameter so the shadows meet/overlap. Tune to taste.</summary>
+	[Property] public float SideOffset { get; set; } = 200f;
 	/// <summary>Forward offset (units) along the lane from the run-up centre.</summary>
 	[Property] public float ForwardOffset { get; set; } = 0f;
 

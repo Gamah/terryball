@@ -142,8 +142,8 @@
               "__guid": "b000000a-0001-4000-8000-00000000000a",
               "__enabled": true,
               "Radius": 100,
-              "Tint": "0.3,0.45,1,1",
-              "SideOffset": 240,
+              "Tint": "0.2,0.4,1,1",
+              "SideOffset": 200,
               "ForwardOffset": 0
             }
           ]

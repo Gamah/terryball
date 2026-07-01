@@ -5,10 +5,11 @@
 	"shader"		"shaders/glass.shader_c"
 	"F_TRANSLUCENT"		"1"
 
-	// Blue tint over the nebula texture so the ball reads blue.
+	// Flat blue: neutral (white) colour texture so the blue tint reads as BLUE, not teal (the green
+	// galaxy texture x blue tint muddied it). The test ball trades the swirl for a clear, distinct colour.
 	"g_flModelTintAmount"		"1.000000"
-	"g_vColorTint"		"[0.300000 0.450000 1.000000 1.000000]"
-	"TextureColor"		"materials/galaxyball_color.png"
+	"g_vColorTint"		"[0.200000 0.400000 1.000000 1.000000]"
+	"TextureColor"		"[1.000000 1.000000 1.000000 1.000000]"
 
 	"g_flOpacityScale"		"0.220000"
 	"TextureTranslucency"		"materials/default/default_trans.tga"
