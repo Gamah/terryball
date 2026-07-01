@@ -43,6 +43,7 @@ public sealed class ShadowTestBall : Component
 		var shell = _ball.Components.Create<ModelRenderer>();
 		shell.Model = Model.Load( "models/dev/sphere.vmdl" );
 		shell.MaterialOverride = Material.Load( "materials/glassball.vmat" );
+		shell.Tint = Tint; // visually distinguish it from the green ball (shadow tint set below)
 		var shellBounds = shell.Model.Bounds.Size.x; // dev sphere ~64 across
 		_ball.LocalScale = new Vector3( (Radius * 2f) / shellBounds );
 

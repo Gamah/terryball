@@ -28,8 +28,14 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// </summary>
 	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
 
-	/// <summary>Ball colour texture, sampled per-ray. Defaults to the glass ball's galaxy map.</summary>
+	/// <summary>Ball colour texture, sampled per-ray for luminance detail. Defaults to the glass ball's galaxy map.</summary>
 	[Property] public string GalaxyTexturePath { get; set; } = "materials/galaxyball_color.png";
+
+	/// <summary>How much the galaxy swirl modulates shadow brightness (0 = flat tint, 1 = full swirl). Hue always comes from the ball.</summary>
+	[Property, Range( 0f, 1f )] public float GalaxyDetail { get; set; } = 0.4f;
+
+	/// <summary>0 = physical multiply (subtle, can stay gray), 1 = colorize (assertively paints the ball's hue).</summary>
+	[Property, Range( 0f, 1f )] public float Colorize { get; set; } = 1f;
 
 	/// <summary>Max balls the shader handles (unrolled slots). Keep in sync with the shader.</summary>
 	private const int MaxBalls = 4;
@@ -97,6 +103,8 @@ public sealed class BallShadowTintPP : BasePostProcess
 
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
+		Attributes.Set( "BallShadowGalaxyDetail", GalaxyDetail );
+		Attributes.Set( "BallShadowColorize", Colorize );
 		Attributes.Set( "BallShadowDebugTint", new Vector3( DebugTint.r, DebugTint.g, DebugTint.b ) );
 		Attributes.Set( "BallShadowDebugMode", (int)DebugMode );
 		if ( _galaxy is not null )

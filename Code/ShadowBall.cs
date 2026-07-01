@@ -18,8 +18,9 @@ public sealed class ShadowBall : Component
 	/// <summary>World radius of the ball's shadow volume (units).</summary>
 	[Property] public float Radius { get; set; } = 100f;
 
-	/// <summary>The colour the shadow is tinted toward (the glass colour). Defaults to the galaxy green.</summary>
-	[Property] public Color Tint { get; set; } = new Color( 0.82f, 1f, 0.88f );
+	/// <summary>The colour the shadow is tinted toward. Saturated so it reads clearly (the pale vmat lift
+	/// washed out); defaults to the ball's edge-green. Later this comes automatically from the ball's material.</summary>
+	[Property] public Color Tint { get; set; } = new Color( 0.25f, 0.95f, 0.45f );
 
 	/// <summary>Modulate the tint by the per-ray galaxy texel (texture detail) vs a flat tint.</summary>
 	[Property] public bool UseGalaxyTexture { get; set; } = true;

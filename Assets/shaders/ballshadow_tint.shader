@@ -71,9 +71,11 @@ PS
     Texture2D g_tGalaxy < Attribute( "BallGalaxyTex" ); SrgbRead( true ); >;
     SamplerState g_sGalaxy < Filter( BILINEAR ); AddressU( WRAP ); AddressV( CLAMP ); >;
 
-    float  g_flStrength < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
-    float  g_flTerryCut < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this = opaque -> black
-    float3 g_vTintColor < Attribute( "BallShadowDebugTint" ); Default3( 1.0f, 0.0f, 0.0f ); >; // debug modes only
+    float  g_flStrength     < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
+    float  g_flTerryCut     < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this = opaque -> black
+    float  g_flGalaxyDetail < Attribute( "BallShadowGalaxyDetail" ); Default( 0.4f ); >; // 0 = flat tint, 1 = full swirl luminance
+    float  g_flColorize     < Attribute( "BallShadowColorize" ); Default( 1.0f ); >; // 0 = multiply (physical), 1 = colorize (assertive)
+    float3 g_vTintColor     < Attribute( "BallShadowDebugTint" ); Default3( 1.0f, 0.0f, 0.0f ); >; // debug modes only
 
     // Up to 4 balls. Per slot: A = (center.xyz, radius); Tint = (rgb, useGalaxy); Rot = world quat.
     // radius <= 0 => empty slot.
@@ -135,7 +137,8 @@ PS
         float3 nl = normalize( QuatRotate( float4( -rot.xyz, rot.w ), n ) );
         float u = atan2( nl.y, nl.x ) * 0.15915494f + 0.5f;
         float v = acos( clamp( nl.z, -1.0f, 1.0f ) ) * 0.31830989f;
-        return g_tGalaxy.Sample( g_sGalaxy, float2( u, v ) ).rgb;
+        // Sample a blurred mip: a fullscreen pass has no UV gradient so mip 0 prints the texture's grain.
+        return g_tGalaxy.SampleLevel( g_sGalaxy, float2( u, v ), 2.0f ).rgb;
     }
 
     // Stack one ball's tint into the subtractive filter and grow the union mask.
@@ -150,9 +153,13 @@ PS
         if ( m <= 0.0f )
             return;
 
-        float3 col = tint.rgb;
-        if ( tint.w > 0.5f )                            // useGalaxy: modulate the tint by the per-ray texel
-            col *= SampleGalaxy( hit, a.xyz, rot );
+        float3 col = tint.rgb;                          // HUE comes from the ball's own colour
+        if ( tint.w > 0.5f )                            // useGalaxy: modulate only the BRIGHTNESS by the swirl (keeps hue)
+        {
+            float3 g = SampleGalaxy( hit, a.xyz, rot );
+            float gl = dot( g, float3( 0.299f, 0.587f, 0.114f ) );
+            col *= lerp( 1.0f, saturate( gl * 1.6f ), g_flGalaxyDetail );
+        }
 
         filter *= lerp( float3( 1, 1, 1 ), col, m );    // subtractive: overlapping balls multiply
         mask = max( mask, m );
@@ -210,9 +217,13 @@ PS
         float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow );
         filter = lerp( filter, float3( 0, 0, 0 ), opaque );
 
-        // FINAL: multiplicative recolour of the REAL shadow, only inside the balls' shadow volumes.
+        // FINAL: recolour the REAL shadow toward the balls' hue. Colorize (pixel luminance x hue) so the
+        // colour reads even in dark/bright areas instead of a gray texture print; blended with a plain
+        // multiply for control. flShadow rides through as the shadow's shape/grading.
+        float baseLuma = dot( color.rgb, float3( 0.299f, 0.587f, 0.114f ) );
+        float3 tinted = lerp( color.rgb * filter, baseLuma * filter, g_flColorize );
         float t = flShadow * mask * g_flStrength;
-        color.rgb = lerp( color.rgb, color.rgb * filter, t );
+        color.rgb = lerp( color.rgb, tinted, t );
         return color;
     }
 }
