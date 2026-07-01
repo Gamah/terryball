@@ -104,6 +104,13 @@
               "Height": 60,
               "MinPitch": -5,
               "MaxPitch": 15
+            },
+            {
+              "__type": "Terryball.BallShadowTintPP",
+              "__guid": "b0000004-0003-4000-8000-000000000004",
+              "__enabled": true,
+              "DebugTint": "1,0,0,1",
+              "Strength": 1
             }
           ]
         },
