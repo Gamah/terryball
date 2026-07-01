@@ -194,7 +194,7 @@
           "FogMode": "Disabled",
           "LightColor": "0.94419,0.97767,1,1",
           "Shadows": true,
-          "SkyColor": "0.2532,0.32006,0.35349,1"
+          "SkyColor": "0.15,0.19,0.21,1"
         }
       ]
     },

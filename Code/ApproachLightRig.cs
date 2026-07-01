@@ -5,9 +5,9 @@ namespace Terryball;
 
 /// <summary>
 /// Builds four coloured light posts at the corners of the ball's approach/spawn area (R, G, B, W). Each post
-/// is a slim box "pole" with a box "head" aimed DOWN at the run-up point, holding a coloured PointLight - so
+/// is a slim box "pole" with a box "head" aimed DOWN at the run-up point, holding a coloured SpotLight - so
 /// the lights point down at the approach (short shadows on the run-up) rather than raking across the lane.
-/// Each PointLight casts REAL engine shadows, so the ball + Terry throw four genuine, grounded coloured
+/// Each SpotLight casts REAL engine shadows, so the ball + Terry throw four genuine, grounded coloured
 /// shadows fanning out over the approach (the coloured penumbrae come from the lights overlapping - blocking
 /// the red light leaves a cyan-ish shadow, etc.). They're HDR-bright so they compete with the sun/sky ambient.
 ///
@@ -28,7 +28,7 @@ public sealed class ApproachLightRig : Component
 	/// <summary>Corner distance across the lane from the spawn (units).</summary>
 	[Property] public float SpanSide { get; set; } = 450f;
 
-	/// <summary>Reach of each coloured PointLight (units).</summary>
+	/// <summary>Reach of each coloured SpotLight (units).</summary>
 	[Property] public float LightRadius { get; set; } = 2500f;
 
 	/// <summary>HDR brightness multiplier on each coloured light. Brightness lives in the LightColor magnitude
@@ -95,7 +95,7 @@ public sealed class ApproachLightRig : Component
 			pole.LocalScale = new Vector3( PostThickness / bs.x, PostThickness / bs.y, Height / bs.z );
 
 			// Head: a box aimed down at the run-up point (stretched along its aim => reads as a downlight can),
-			// tinted its colour, carrying the coloured PointLight the shadow post-process reads.
+			// tinted its colour, carrying the coloured SpotLight (aimed along this head's forward = the aim).
 			var aim = (origin - headPos).Normal;
 			var head = new GameObject( true, $"LightHead_{tag}" )
 			{
@@ -112,10 +112,16 @@ public sealed class ApproachLightRig : Component
 			hr.RenderType = ModelRenderer.ShadowRenderType.Off;
 			head.LocalScale = new Vector3( (HeadSize * 1.7f) / bs.x, HeadSize / bs.y, HeadSize / bs.z );
 
-			var light = head.Components.Create<PointLight>();
-			light.LightColor = col * Brightness; // HDR: brightness is baked into the colour magnitude
+			// SpotLight (not PointLight): the head already aims DOWN at the run-up, and a spotlight casts a
+			// projected (frustum) shadow - the standard, reliable path - instead of a PointLight's expensive
+			// omnidirectional cube shadow (which wasn't rendering). The cone also concentrates the light on the
+			// approach, giving the coloured shadows real contrast.
+			var light = head.Components.Create<SpotLight>();
+			light.LightColor = col * Brightness;  // HDR: brightness is baked into the colour magnitude
 			light.Radius = LightRadius;
-			light.Shadows = true; // REAL engine shadows: the ball + Terry cast genuine, grounded coloured shadows on the approach
+			light.ConeInner = 35f;                // degrees: fully-lit inner cone
+			light.ConeOuter = 55f;                // degrees: soft outer edge - wide enough to cover the run-up from height
+			light.Shadows = true;                 // REAL engine shadow: the ball + Terry cast genuine coloured shadows on the approach
 		}
 	}
 }
