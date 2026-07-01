@@ -182,7 +182,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// (opaque occupant) reading black. Uses the same pokeball map the shell renders, so they match.
 		var shadow = Components.GetOrCreate<ShadowBall>();
 		shadow.Radius = Radius;
-		shadow.ColorMap = Texture.Load( "materials/pokeball_color.png" );
+		shadow.ColorMapPath = "materials/pokeball_color.png"; // resolved in the post-process (after asset load)
 		shadow.HasOpaqueOccupant = true;
 
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.

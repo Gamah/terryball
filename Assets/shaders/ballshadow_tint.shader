@@ -203,6 +203,9 @@ PS
         if ( g_nDebugMode == 5 )
             return float4( mask.xxx, 1.0f );
 
+        if ( g_nDebugMode == 7 )
+            return float4( filter * mask, 1.0f ); // raw projected ball colour (isolates texture vs composite)
+
         // Opaque occupant (Terry) inside an occupant ball reads black: where THAT ball's mask overlaps a
         // saturated real shadow, force the tint to black. Colour balls (no occupant) keep their colour.
         float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow ) * occ;

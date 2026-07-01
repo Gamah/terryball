@@ -22,6 +22,10 @@ public sealed class ShadowBall : Component
 	/// (so <see cref="Tint"/> alone gives a flat-coloured shadow). Ideally the same map the ball renders.</summary>
 	[Property] public Texture ColorMap { get; set; }
 
+	/// <summary>Path to load <see cref="ColorMap"/> from if it isn't set directly (resolved in the post-process,
+	/// which runs after asset load - a runtime Texture.Load during OnEnabled can come back null).</summary>
+	[Property] public string ColorMapPath { get; set; } = "";
+
 	/// <summary>Multiplier over the sampled colour map (leave white to use the map as-is).</summary>
 	[Property] public Color Tint { get; set; } = Color.White;
 

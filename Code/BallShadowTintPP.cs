@@ -1,5 +1,6 @@
 using Sandbox;
 using Sandbox.Rendering;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Terryball;
@@ -39,7 +40,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// 1 whole-screen tint, 2 depth greyscale, 3 shadow-cbuffer bound?, 4 all shadows red,
 	/// 5 ball-shadow mask, 6 the real projection.
 	/// </summary>
-	public enum DebugModes { Full = 1, Depth = 2, CascadesBound = 3, AllShadows = 4, BallMask = 5, Final = 6 }
+	public enum DebugModes { Full = 1, Depth = 2, CascadesBound = 3, AllShadows = 4, BallMask = 5, Final = 6, ProjectedColor = 7 }
 
 	[Property] public DebugModes DebugMode { get; set; } = DebugModes.Final;
 
@@ -62,6 +63,19 @@ public sealed class BallShadowTintPP : BasePostProcess
 
 	private int _appliedRes = -1;
 	private float _appliedDist = -1f;
+
+	// Resolve colour maps by path in the post-process (runs after asset load, unlike OnEnabled), cached.
+	private static readonly Dictionary<string, Texture> _mapCache = new();
+	private static Texture ResolveMap( string path )
+	{
+		if ( string.IsNullOrEmpty( path ) ) return null;
+		if ( !_mapCache.TryGetValue( path, out var t ) )
+		{
+			t = Texture.Load( path );
+			_mapCache[path] = t;
+		}
+		return t;
+	}
 
 	// Push the shadow-quality convars, but only when they actually change (SetValue every frame is wasteful).
 	private void ApplyShadowQuality()
@@ -104,7 +118,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 				Attributes.Set( $"ShadowBallA{i}", new Vector4( p.x, p.y, p.z, b.Radius ) );
 				Attributes.Set( $"ShadowBallT{i}", new Vector4( b.Tint.r, b.Tint.g, b.Tint.b, b.HasOpaqueOccupant ? 1f : 0f ) );
 				Attributes.Set( $"ShadowBallR{i}", new Vector4( rot.x, rot.y, rot.z, rot.w ) );
-				Attributes.Set( $"ShadowBallTex{i}", b.ColorMap ?? Texture.White ); // null map => flat (Tint) colour
+				Attributes.Set( $"ShadowBallTex{i}", b.ColorMap ?? ResolveMap( b.ColorMapPath ) ?? Texture.White ); // null => flat (Tint)
 			}
 			else
 			{
