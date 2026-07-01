@@ -23,6 +23,15 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>Overall recolour strength (0 = off).</summary>
 	[Property, Range( 0f, 1f )] public float Strength { get; set; } = 1f;
 
+	/// <summary>
+	/// SPIKE diagnostic. Flip this in the inspector to isolate the chain:
+	/// 1 = tint whole screen (pass runs?), 2 = depth greyscale (depth bound?),
+	/// 3 = green/red (shadow cbuffer bound?), 4 = the real shadow tint.
+	/// </summary>
+	public enum DebugModes { Full = 1, Depth = 2, CascadesBound = 3, Shadow = 4 }
+
+	[Property] public DebugModes DebugMode { get; set; } = DebugModes.Full;
+
 	private static readonly Material Shader = Material.FromShader( "shaders/ballshadow_tint.shader" );
 
 	public override void Render()
@@ -32,6 +41,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 
 		Attributes.Set( "BallShadowDebugTint", new Vector3( DebugTint.r, DebugTint.g, DebugTint.b ) );
 		Attributes.Set( "BallShadowStrength", Strength );
+		Attributes.Set( "BallShadowDebugMode", (int)DebugMode );
 
 		// AfterOpaque: shadow-map + light constants are still bound here (post-process stages later may not be).
 		var blit = BlitMode.WithBackbuffer( Shader, Stage.AfterOpaque, 1 );
