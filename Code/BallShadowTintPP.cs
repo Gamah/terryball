@@ -26,6 +26,9 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// black instead of taking the colour. High so only the solid silhouette darkens, not the dithered glass.</summary>
 	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
 
+	/// <summary>How dark the opaque occupant (Terry) reads: 0 = pure black, higher = deep grey (ambient fill).</summary>
+	[Property, Range( 0f, 0.5f )] public float OccupantDark { get; set; } = 0.1f;
+
 	/// <summary>0 = multiply (dark, shadow-like), 1 = colorize (bright/vibrant). Lower reads more like a shadow.</summary>
 	[Property, Range( 0f, 1f )] public float Colorize { get; set; } = 0.5f;
 
@@ -104,6 +107,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 
 		Attributes.Set( "BallShadowStrength", Strength );
 		Attributes.Set( "BallShadowTerryCut", TerryCut );
+		Attributes.Set( "BallShadowOccupantDark", OccupantDark );
 		Attributes.Set( "BallShadowColorize", Colorize );
 		Attributes.Set( "BallShadowSaturation", Saturation );
 		Attributes.Set( "BallShadowColorMip", ColorMip );

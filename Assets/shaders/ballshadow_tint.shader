@@ -76,7 +76,8 @@ PS
     SamplerState g_sBall < Filter( BILINEAR ); AddressU( WRAP ); AddressV( CLAMP ); >;
 
     float g_flStrength < Attribute( "BallShadowStrength" ); Default( 1.0f ); >;
-    float g_flTerryCut < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this, under an occupant ball, = black
+    float g_flTerryCut < Attribute( "BallShadowTerryCut" ); Default( 0.92f ); >; // occlusion above this, under an occupant ball, darkens
+    float g_flOccupantDark < Attribute( "BallShadowOccupantDark" ); Default( 0.1f ); >; // opaque-occupant darkness (0 = pure black)
     float g_flColorize < Attribute( "BallShadowColorize" ); Default( 0.5f ); >;   // 0 = multiply (dark, shadow-like), 1 = colorize (vibrant)
     float g_flSaturation < Attribute( "BallShadowSaturation" ); Default( 0.65f ); >; // 1 = full colour, 0 = greyscale shadow
     float g_flColorMip < Attribute( "BallShadowColorMip" ); Default( 0.0f ); >;  // >0 blurs the colour map (kills grain)
@@ -107,8 +108,9 @@ PS
     }
 
     // Analytic soft mask: is worldPos in this ball's shadow volume for a light in direction vToLight?
-    // 0..1 (thin AA edge) and outputs the light-facing surface hit point on the ball.
-    float BallShadowMask( float3 vWorldPos, float3 vToLight, float3 center, float radius, out float3 vHit )
+    // 0..1 (thin AA edge) and outputs BOTH surface points the ray crosses: vHitFar (sun-facing entry) and
+    // vHitNear (ground-facing exit). Sampling both captures light that passed through two colours.
+    float BallShadowMask( float3 vWorldPos, float3 vToLight, float3 center, float radius, out float3 vHitFar, out float3 vHitNear )
     {
         float3 oc = vWorldPos - center;
         float b = dot( oc, vToLight );
@@ -117,8 +119,9 @@ PS
 
         float c = dot( oc, oc ) - radius * radius;
         float disc = b * b - c;
-        float tFar = -b + sqrt( max( disc, 0.0f ) ); // far intersection = surface the light enters
-        vHit = vWorldPos + vToLight * tFar;
+        float s = sqrt( max( disc, 0.0f ) );
+        vHitFar  = vWorldPos + vToLight * ( -b + s ); // sun-facing surface
+        vHitNear = vWorldPos + vToLight * ( -b - s ); // ground-facing surface
 
         float ahead = step( 0.0f, -b ); // ball is toward the light
         float mask = 1.0f - smoothstep( radius * 0.97f, radius * 1.02f, d );
@@ -144,12 +147,14 @@ PS
         if ( radius <= 0.0f )
             return;
 
-        float3 hit;
-        float m = BallShadowMask( wp, toL, a.xyz, radius, hit );
+        float3 hitFar, hitNear;
+        float m = BallShadowMask( wp, toL, a.xyz, radius, hitFar, hitNear );
         if ( m <= 0.0f )
             return;
 
-        float3 col = SampleBall( tex, hit, a.xyz, rot ) * t.rgb; // surface colour x optional tint
+        // Average the entry + exit surface colours: same-colour chord keeps its colour, a chord crossing
+        // two colours greys toward their mean (light passed through both) rather than picking just one.
+        float3 col = 0.5f * ( SampleBall( tex, hitFar, a.xyz, rot ) + SampleBall( tex, hitNear, a.xyz, rot ) ) * t.rgb;
         filter *= lerp( float3( 1, 1, 1 ), col, m );             // subtractive: overlapping balls multiply
         mask = max( mask, m );
         if ( t.w > 0.5f )
@@ -210,7 +215,7 @@ PS
         // Opaque occupant (Terry) inside an occupant ball reads black: where THAT ball's mask overlaps a
         // saturated real shadow, force the tint to black. Colour balls (no occupant) keep their colour.
         float opaque = smoothstep( g_flTerryCut, 1.0f, flShadow ) * occ;
-        filter = lerp( filter, float3( 0, 0, 0 ), opaque );
+        filter = lerp( filter, float3( g_flOccupantDark, g_flOccupantDark, g_flOccupantDark ), opaque ); // deep grey, not pure black
 
         // Desaturate the projected colour toward its own luminance so the shadow reads muted, not neon.
         float flum = dot( filter, float3( 0.299f, 0.587f, 0.114f ) );
