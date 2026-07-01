@@ -46,15 +46,47 @@ public sealed class BallShadowTintPP : BasePostProcess
 
 	[Property] public DebugModes DebugMode { get; set; } = DebugModes.Final;
 
+	// --- Shadow-map fidelity ------------------------------------------------------------
+	// The recolour just samples the engine's real sun shadow, so its sharpness is the directional
+	// cascade texel size. The engine defaults spread 2048-texel cascades over 15000 units, so the
+	// ball's small shadow pixelates a couple of diameters out. We pack more resolution onto the lane:
+	// bigger cascades + a much shorter cascade distance (the camera hugs the ball, so shadows far past
+	// it aren't needed). These are global render convars, applied here since this is the shadow feature.
+
+	/// <summary>Per-cascade directional shadow-map resolution (r.shadows.csm.maxresolution). Higher = sharper, more VRAM.</summary>
+	[Property, Group( "Shadow Quality" ), Range( 512, 8192 )] public int CascadeResolution { get; set; } = 4096;
+
+	/// <summary>Max distance the sun's cascades cover (r.shadows.csm.distance). Lower packs texels near the camera/ball = sharper.</summary>
+	[Property, Group( "Shadow Quality" ), Range( 1500, 15000 )] public float CascadeDistance { get; set; } = 6000f;
+
 	private static readonly Material Shader = Material.FromShader( "shaders/ballshadow_tint.shader" );
 
 	private Texture _galaxy;
 	private string _galaxyLoadedPath;
+	private int _appliedRes = -1;
+	private float _appliedDist = -1f;
+
+	// Push the shadow-quality convars, but only when they actually change (SetValue every frame is wasteful).
+	private void ApplyShadowQuality()
+	{
+		if ( _appliedRes != CascadeResolution )
+		{
+			ConsoleSystem.SetValue( "r.shadows.csm.maxresolution", CascadeResolution );
+			_appliedRes = CascadeResolution;
+		}
+		if ( _appliedDist != CascadeDistance )
+		{
+			ConsoleSystem.SetValue( "r.shadows.csm.distance", CascadeDistance );
+			_appliedDist = CascadeDistance;
+		}
+	}
 
 	public override void Render()
 	{
 		if ( Strength <= 0f || !Shader.IsValid() )
 			return;
+
+		ApplyShadowQuality();
 
 		// Cache the galaxy texture; reload only if the path changes.
 		if ( _galaxy is null || _galaxyLoadedPath != GalaxyTexturePath )
