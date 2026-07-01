@@ -1,78 +1,113 @@
-# PLAN: tint the ball's shadow green (via a floor shader)
+# PLAN: tint the ball's shadow green (recolour the REAL shadow, screen-space)
 
-**Goal.** The ball already casts a clean, soft, correctly-angled **gray** shadow on the lane (the
-reference screenshot — it comes from an opaque `ShadowsOnly` proxy sphere under the directional Sun, see
-[info.md](info.md)). Take **that** shadow and tint it **green**, where:
+**Goal.** The ball is a translucent green galaxy marble. We want the shadow it casts on the lane to read
+**green** — as if sunlight were filtered through the green glass — instead of grey. The green must:
 
-- the green is read from a **property on the ball** (a single `Color`) — so changing it changes the
-  shadow, and a (future) differently-coloured ball casts a differently-coloured shadow. **One colour per
-  ball** is fine (a multi-coloured galaxy ball still casts a single-colour shadow).
-- **only the ball's shadow** is tinted — pins / Terry / lane structure keep normal **gray** shadows.
-- the mechanism is a **custom lane/floor shader** (no spot-light rig, no projected decals).
+- come from a **property on the ball** (a single `Color`), so changing it changes the shadow;
+- apply to **only the ball's shadow** — pins / Terry / lane structure keep normal grey shadows;
+- **preserve the real shadow's detail** (see below): its soft penumbra, the Terry silhouette inside it,
+  and the **graded grey levels** the glass shader casts.
 
-Decisions already made (this session): scope = ball-only; colour = from the ball; mechanism = floor
-shader; abandoned the per-light spot-cookie and the "tint every shadow" shader (see info.md).
+## The core insight (why this plan is different from every prior attempt)
 
-## What we keep
+Every previous approach **reconstructed** a shadow (a projected decal, an analytic ray/sphere ellipse in a
+floor shader). By definition a reconstruction can't contain detail it didn't itself generate — so none of
+them matched the real shadow. **This plan does not reconstruct the shadow. It recolours the real one.**
 
-- The ball's invisible **`ShadowsOnly` proxy sphere** (same size as the ball). The glass shell can't cast
-  (its depth pass dithers occlusion away), so the proxy is what makes the gray shadow we're colouring.
+The real shadow already has everything we want and it's already on screen. We just shift its hue, and we
+mask *where* we shift it to "the sphere's shadow only." We take:
 
-## The core challenge — "ball only"
+- **the shape/detail** from the engine's real directional shadow term (`GetVisibility`), and
+- **the "belongs to the sphere?" mask** from a cheap analytic ray/sphere test.
 
-The engine's directional shadow map is shared by every caster and stores **no caster identity**, so a
-shader that just tints "wherever this surface is shadowed" also tints pin/Terry shadows. We need a
-**ball-specific signal** the shader can test. Recommended path, then simpler fallbacks:
+This is the "screen-space shader that tints the shadow belonging to the sphere" idea, done as a
+**post-process** pass so it needs **no per-surface material assignment** (the thing that made the old
+`shadow_receiver` floor-shader painful).
 
-### Recommended — a ball-shadow MASK that gates the tint
+## What we KEEP — and what we REVERSE from the old plan
 
-1. **Mask render (per frame).** Render only the ball's proxy from the **Sun's direction** into a small
-   render target = where the ball blocks the Sun. Also compute its world→light projection matrix. (This
-   is **one** RT and **one** projection — far lighter than the abandoned per-light cookie.)
-2. **Bind globally.** Push the mask texture + matrix + the ball's tint colour as **global shader
-   attributes** (`Graphics.Attributes`), so any lane material can read them.
-3. **Lane shader.** A forked standard lit shader (`shadow_receiver.shader`) that:
-   - shades normally (so surfaces look unchanged),
-   - reads the engine's **directional shadow** for the nice soft shadow **shape**,
-   - samples the **ball-mask** at this world position,
-   - tints toward the ball's colour **only where the surface is shadowed AND the ball-mask covers it**.
-   → the ball's shadow goes green (keeping the engine's soft shape); pin/Terry shadows stay gray.
+- **KEEP** the glass ball casting its **own graded shadow.** `glass.shader`'s depth pass computes a
+  **Fresnel opacity** and `OpaqueFadeDepth(...)` dithers the ball into the sun shadow map by it — dense at
+  the rim, thin through the centre, plus Terry's solid silhouette. That grading (the "different levels of
+  grey") is exactly the detail we're preserving.
+- **REVERSE the old plan / info.md:** do **NOT** add an opaque `ShadowsOnly` proxy sphere. A solid proxy
+  casts a *uniform binary* shadow, which would **flatten and destroy** the Fresnel grading we like. If the
+  glass shadow reads too faint after recolouring, strengthen it by nudging the **opacity / `OpaqueFadeDepth`
+  in `glass.shader`'s `S_MODE_DEPTH` block** — that keeps the grading while making it denser. Never swap in
+  a flat proxy.
 
-### Simpler fallbacks (if the mask proves fiddly)
+## The algorithm (per screen pixel, in the post-process)
 
-- **A. Tint by location.** Apply the tint shader only to surfaces the ball roams alone (building floor,
-  ramp, approach, lane bed) and **not** the pin deck. Then "tint every shadow here" ≈ ball-only, because
-  no pins stand there. Gap: the ball's shadow isn't tinted once it reaches the deck.
-- **B. Ball is the only caster.** Tint every directional shadow, but disable shadow-casting on
-  pins/Terry/structure so the ball is the only thing casting. Simplest, but those objects lose their
-  shadows entirely.
+```
+worldPos   = Depth::GetWorldPosition(screenPos)                 // reconstruct from depth  (CONFIRMED usable in a post pass)
+realShadow = 1 - DirectionalLightShadow::GetVisibility(worldPos, screenPos)
+                                                               // the REAL sun shadow term — FRACTIONAL, so the
+                                                               // graded greys + Terry silhouette + penumbra ride through
+ballMask   = softRaySphere(worldPos, sunDir, ballCenter, ballRadius)
+                                                               // 0..1: is this point in the sphere's shadow volume?
+tint       = realShadow * ballMask
+color      = lerp(color, color * ballTintColor, tint)          // multiplicative hue shift; keeps luminance/grading
+```
+
+Because `GetVisibility` returns a **fractional** value (dither resolved through PCF), the green strength
+**tracks the grey level** — faint shadow → faint green, dense rim → strong green, Terry → full green. The
+analytic sphere test is only a **mask** (where to recolour), never the shape (what to recolour), and it
+generously encloses the ball+Terry footprint (Terry rides inside the sphere).
+
+## Data flow
+
+`BallController` pushes, each frame, via **global render attributes** (`Scene.RenderAttributes`):
+
+- `BallShadowCenter` (float3, ball world centre)
+- `BallShadowRadius`  (float, 0 = disabled → shader bails and the frame is untouched)
+- `BallShadowToSun`   (float3, = -`DirectionalLight.Forward`, read from the scene sun)
+- `BallShadowTint`    (float4, rgb = ball colour, a = strength)
+
+Only the **local lane's** ball pushes (as the old shader_receiver did), so one ball drives the tint.
 
 ## Pieces to build
 
-- **`BallController`**: a `[Property] Color ShadowTint` (default a galaxy green). Each frame push it to a
-  global shader attribute so the lane shader reads the live ball colour. Keep/add the `ShadowsOnly` proxy.
-- **Ball-shadow-mask component** (recommended path only): renders the ball proxy into an RT from the
-  Sun's direction (read the `DirectionalLight`'s rotation at runtime) and binds RT + matrix globally.
-- **`Assets/shaders/shadow_receiver.shader`**: forked from the engine's standard lit shader
-  (`bark.shader` is a clean template — uses `Material::From` → `ShadingModelStandard::Shade`). Adds the
-  shadow-tint blend (gated by the ball-mask in the recommended path). Reads the global tint colour.
-- **`LaneBuilder` / `FloorBuilder`**: assign this material to every surface the ball rolls over (building
-  floor, ramp, approach shoulders, lane bed, pin deck), preserving each surface's base colour.
+- **`BallController`**: a `[Property] Color ShadowTint` (default galaxy green) + a small update that pushes
+  the four attributes above each frame (resolve the `DirectionalLight` once, cache it). No proxy sphere.
+- **Post-process component** (`BallShadowTintPP` or similar): an `ISceneCustomPass` / post-process effect
+  added to each rendering camera. Binds the colour + depth, runs the fullscreen shader. Must be present on
+  the **4 lane-monitor cameras** and the main view (attributes are global, so the shader side is shared).
+- **`Assets/shaders/ballshadow_tint.shader`**: a post-process shader. Template: `postprocess_bloom.shader`
+  (fullscreen VS + `postprocess/common.hlsl`), plus `common/classes/Depth.hlsl` for `GetWorldPosition`
+  (CONFIRMED: `postprocess_standard_p1.shader` does exactly this) and `common/Shadow.hlsl` for
+  `DirectionalLightShadow::GetVisibility`.
 
-## Tuning knobs
+## Risks / unknowns (verify in this order)
 
-- `BallController.ShadowTint` (colour), tint strength, and mask softness/resolution.
+1. **Is `GetVisibility` readable in a post-process pass?** World-reconstruction in a post pass is confirmed;
+   the sun **shadow-map + light constants being bound during a post pass is the one open question.**
+   → **De-risk spike first** (below). If it's NOT bound, fall back to an **`ISceneCustomPass` that runs
+   right after opaque**, where shadow bindings are guaranteed, sampling depth via `CommandList` grab.
+2. **Dither shimmer.** PCF smooths the glass dither, so the broad gradient (rim/centre/Terry) is faithful,
+   but a very sparse dither can shimmer at edges — controllable via shadow filtering or glass opacity.
+3. **Multi-camera** ordering / that the pass is on every camera feed.
+4. **Shaders only compile in-editor** — first pass may need syntax fixes (watch for magenta/no-op).
 
-## Risks / notes
+## De-risk spike (do this before the full version)
 
-- **Shaders only compile in the editor** — can't verify here, so the first pass may need syntax fixes
-  (watch for a magenta/error material on the lane = compile failure).
-- The mask needs the **Sun's direction** at runtime (read from the `DirectionalLight` component).
-- All lane surfaces are built procedurally on `models/dev/box.vmdl`; the shader must respect each
-  surface's flat colour.
+Add the post-process that tints **any** shadowed pixel **red** (`color *= red` where `1-GetVisibility > 0`),
+no ball mask, no green. If red lands on the shadow in-editor, `GetVisibility` works in post and the rest
+(green + `ballMask` + strength + the `Scene.RenderAttributes` plumbing) is straightforward. If not, switch
+to the `ISceneCustomPass` fallback and re-test.
+
+## Explicitly ruled out (don't re-tread — see info.md)
+
+- **Projected decals** (branch `ball-shadow-green-tint`): reconstructs the shadow, so it can't carry the
+  real detail, and fighting the projection across the gutter's lane/wall/trough surfaces is a losing battle.
+- **Analytic floor `shadow_receiver.shader`** (old branch `green-ball-shadow`, "massive failure"): analytic
+  ellipse only (no real detail), and needed per-surface material assignment.
+- **Per-light spot-cookie rig**: abandoned as overkill.
+- **Native colored/deep shadow maps or directional cookies**: not possible — the Source 2 shadow-map
+  rasteriser is native/closed; only the *sampling* HLSL is editable, which is what this plan uses.
 
 ## Done when
 
-The ball's shadow reads **green** on every surface it rolls over, the green is driven by the ball's
-`ShadowTint` property (change it → the shadow changes), **pins/Terry keep gray shadows**, there's no
-spot-light rig and no decal, and frame time is unaffected.
+The ball's shadow reads **green** on every surface it falls across, driven by the ball's `ShadowTint`
+property, with the **real shadow's grading, penumbra, and Terry silhouette preserved**; pins/Terry keep grey
+shadows; it's a single screen-space pass (no decal, no proxy, no per-surface material, no spot rig); and
+frame time is unaffected.
