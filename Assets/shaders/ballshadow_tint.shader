@@ -1,5 +1,5 @@
 //
-// Ball shadow tint — SPIKE STAGE.
+// Ball shadow tint - SPIKE STAGE.
 //
 // Goal of this stage (see PLAN.md "De-risk spike"): prove that the engine's real directional-shadow
 // term is readable from a fullscreen post-process blit. We reconstruct world position from depth and
@@ -67,7 +67,7 @@ PS
 
     Texture2D g_tColorBuffer < Attribute( "ColorBuffer" ); SrgbRead( true ); >;
 
-    // The ball's colour texture (galaxy nebula) — sampled per-ray for the shadow tint.
+    // The ball's colour texture (galaxy nebula) - sampled per-ray for the shadow tint.
     Texture2D g_tGalaxy < Attribute( "BallGalaxyTex" ); SrgbRead( true ); >;
     SamplerState g_sGalaxy < Filter( BILINEAR ); AddressU( WRAP ); AddressV( CLAMP ); >;
 
@@ -80,13 +80,13 @@ PS
     float  g_flBallRadius < Attribute( "BallShadowRadius" ); Default( 0.0f ); >; // 0 => no ball, bail
     float4 g_vBallRot    < Attribute( "BallShadowRot" ); Default4( 0.0f, 0.0f, 0.0f, 1.0f ); >; // world rotation quat
 
-    // DIAGNOSTIC MODE (live-switchable uniform — flip in the inspector, no recompile):
+    // DIAGNOSTIC MODE (live-switchable uniform - flip in the inspector, no recompile):
     //   1 FULL       : tint the WHOLE screen (pass runs + blit writes back?)
     //   2 DEPTH      : normalized depth greyscale (depth chain bound?)
     //   3 CASCADES   : GREEN if the directional-shadow cbuffer is bound, else RED
     //   4 ALLSHADOWS : red-tint EVERY shadow (the original spike)
     //   5 BALLMASK   : white where the ball's analytic shadow volume covers this pixel
-    //   6 FINAL      : the real effect — ball shadow recoloured from the per-ray galaxy sample
+    //   6 FINAL      : the real effect - ball shadow recoloured from the per-ray galaxy sample
     int g_nDebugMode < Attribute( "BallShadowDebugMode" ); Default( 6 ); >;
 
     // Rotate vector v by quaternion q (xyz,w).
@@ -104,7 +104,7 @@ PS
         float perp2 = max( dot( oc, oc ) - b * b, 0.0f );
         float d = sqrt( perp2 );
 
-        // The far intersection (toward the light) — the surface the light enters.
+        // The far intersection (toward the light) - the surface the light enters.
         float c = dot( oc, oc ) - g_flBallRadius * g_flBallRadius;
         float disc = b * b - c;
         float tFar = -b + sqrt( max( disc, 0.0f ) );
@@ -119,11 +119,13 @@ PS
     // Sample the galaxy texel the light ray passed through: world hit -> ball-local -> spherical UV.
     float3 SampleGalaxy( float3 vHit )
     {
+        // Inverse-rotate the world hit normal into ball-local space, then spherical UV.
+        // Constants: 0.15915494 = 1 over two pi, 0.31830989 = 1 over pi.
         float3 n = normalize( vHit - g_vBallCenter );
-        float3 nl = normalize( QuatRotate( float4( -g_vBallRot.xyz, g_vBallRot.w ), n ) ); // inverse rotate to ball-local
-        float2 uv = float2( atan2( nl.y, nl.x ) * 0.15915494f + 0.5f,   // 1/(2pi)
-                            acos( clamp( nl.z, -1.0f, 1.0f ) ) * 0.31830989f ); // 1/pi
-        return g_tGalaxy.Sample( g_sGalaxy, uv ).rgb * g_vGlassTint;
+        float3 nl = normalize( QuatRotate( float4( -g_vBallRot.xyz, g_vBallRot.w ), n ) );
+        float u = atan2( nl.y, nl.x ) * 0.15915494f + 0.5f;
+        float v = acos( clamp( nl.z, -1.0f, 1.0f ) ) * 0.31830989f;
+        return g_tGalaxy.Sample( g_sGalaxy, float2( u, v ) ).rgb * g_vGlassTint;
     }
 
     float4 MainPs( PixelInput i ) : SV_Target0
