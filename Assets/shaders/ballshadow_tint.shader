@@ -98,6 +98,13 @@ PS
     float4 g_vBallR2 < Attribute( "ShadowBallR2" ); Default4( 0, 0, 0, 1 ); >;
     float4 g_vBallR3 < Attribute( "ShadowBallR3" ); Default4( 0, 0, 0, 1 ); >;
 
+    // Extra coloured lights (beyond the sun). Pos = (xyz, 1=point / 0=directional); Col = (rgb, w>0 = enabled).
+    // The sun keeps its real engine shadow; these cast an ANALYTIC ball shadow tinted by ball colour x light colour.
+    float4 g_vLightPos0 < Attribute( "ShadowLightPos0" ); Default4( 0, 0, 0, 0 ); >;
+    float4 g_vLightPos1 < Attribute( "ShadowLightPos1" ); Default4( 0, 0, 0, 0 ); >;
+    float4 g_vLightCol0 < Attribute( "ShadowLightCol0" ); Default4( 0, 0, 0, 0 ); >;
+    float4 g_vLightCol1 < Attribute( "ShadowLightCol1" ); Default4( 0, 0, 0, 0 ); >;
+
     // DIAGNOSTIC MODE (live-switchable uniform - flip in the inspector, no recompile):
     //   1 FULL / 2 DEPTH / 3 CASCADES / 4 ALLSHADOWS / 5 BALLMASK / 6 FINAL (the real effect)
     int g_nDebugMode < Attribute( "BallShadowDebugMode" ); Default( 6 ); >;
@@ -159,6 +166,34 @@ PS
         mask = max( mask, m );
         if ( t.w > 0.5f )
             occ = max( occ, m );
+    }
+
+    // Cast one extra light's analytic ball shadow onto the ground colour. The ball colour filters the
+    // light's colour (green light through red glass -> dark), so it reads as that light being blocked.
+    void ApplyLight( float3 wp, float4 lpos, float4 lcol, inout float3 color )
+    {
+        if ( lcol.w <= 0.0f )
+            return;
+
+        float3 toL = ( lpos.w > 0.5f ) ? normalize( lpos.xyz - wp ) : normalize( -lpos.xyz );
+
+        float3 filter = float3( 1, 1, 1 );
+        float mask = 0.0f;
+        float occ = 0.0f;
+        AccumBall( g_tBall0, wp, toL, g_vBallA0, g_vBallT0, g_vBallR0, filter, mask, occ );
+        AccumBall( g_tBall1, wp, toL, g_vBallA1, g_vBallT1, g_vBallR1, filter, mask, occ );
+        AccumBall( g_tBall2, wp, toL, g_vBallA2, g_vBallT2, g_vBallR2, filter, mask, occ );
+        AccumBall( g_tBall3, wp, toL, g_vBallA3, g_vBallT3, g_vBallR3, filter, mask, occ );
+        if ( mask <= 0.0f )
+            return;
+
+        float flum = dot( filter, float3( 0.299f, 0.587f, 0.114f ) );
+        filter = lerp( float3( flum, flum, flum ), filter, g_flSaturation );
+
+        float3 transmit = filter * lcol.rgb; // the ball colour filtering this light's colour
+        float baseLuma = dot( color, float3( 0.299f, 0.587f, 0.114f ) );
+        float3 tinted = lerp( color * transmit, baseLuma * transmit, g_flColorize );
+        color = lerp( color, tinted, mask * g_flStrength );
     }
 
     float4 MainPs( PixelInput i ) : SV_Target0
@@ -226,6 +261,10 @@ PS
         float baseLuma = dot( color.rgb, float3( 0.299f, 0.587f, 0.114f ) );
         float3 tinted = lerp( color.rgb * filter, baseLuma * filter, g_flColorize );
         color.rgb = lerp( color.rgb, tinted, mask * g_flStrength );
+
+        // Extra coloured lights cast their own analytic ball shadows on top.
+        ApplyLight( vWorldPos, g_vLightPos0, g_vLightCol0, color.rgb );
+        ApplyLight( vWorldPos, g_vLightPos1, g_vLightCol1, color.rgb );
         return color;
     }
 }

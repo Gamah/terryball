@@ -65,6 +65,9 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>Max balls the shader handles (unrolled slots). Keep in sync with the shader.</summary>
 	private const int MaxBalls = 4;
 
+	/// <summary>Max extra (point) lights the shader handles beyond the sun. Keep in sync with the shader.</summary>
+	private const int MaxLights = 2;
+
 	private static readonly Material Shader = Material.FromShader( "shaders/ballshadow_tint.shader" );
 
 	private int _appliedRes = -1;
@@ -131,6 +134,24 @@ public sealed class BallShadowTintPP : BasePostProcess
 			else
 			{
 				Attributes.Set( $"ShadowBallA{i}", new Vector4( 0f, 0f, 0f, 0f ) ); // empty slot
+			}
+		}
+
+		// Extra coloured lights (point lights) each cast an analytic ball shadow. The sun (DirectionalLight)
+		// keeps its real engine shadow and isn't pushed here.
+		var lights = Scene.GetAllComponents<PointLight>().Where( l => l.IsValid() && l.Active ).Take( MaxLights ).ToList();
+		for ( int i = 0; i < MaxLights; i++ )
+		{
+			if ( i < lights.Count )
+			{
+				var l = lights[i];
+				var p = l.WorldPosition;
+				Attributes.Set( $"ShadowLightPos{i}", new Vector4( p.x, p.y, p.z, 1f ) ); // point light
+				Attributes.Set( $"ShadowLightCol{i}", new Vector4( l.LightColor.r, l.LightColor.g, l.LightColor.b, 1f ) );
+			}
+			else
+			{
+				Attributes.Set( $"ShadowLightCol{i}", new Vector4( 0f, 0f, 0f, 0f ) ); // disabled
 			}
 		}
 
