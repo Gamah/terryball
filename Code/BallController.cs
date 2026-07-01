@@ -206,7 +206,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 			Flags = GameObjectFlags.NotSaved
 		};
 		_terry.LocalScale = new Vector3( TerryScale );
-		_terry.Tags.Add( "occupant" ); // OccupantSilhouetteCapture renders only this tag => Terry's live silhouette for his coloured shadows
 
 		var renderer = _terry.Components.GetOrCreate<SkinnedModelRenderer>();
 		renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );

@@ -105,7 +105,7 @@ public sealed class ApproachLightRig : Component
 			var light = head.Components.Create<PointLight>();
 			light.LightColor = col;
 			light.Radius = LightRadius;
-			light.Shadows = false; // no engine shadow needed: the post-process projects Terry's captured silhouette + the ball's colour
+			light.Shadows = true; // real shadow maps => the engine casts Terry's actual silhouette; the post-process only adds the ball's colour
 		}
 	}
 }
