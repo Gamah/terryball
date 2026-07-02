@@ -129,7 +129,7 @@ public sealed class Pin : Component
 		var wasHidden = !GameObject.Enabled;
 		if ( wasHidden ) GameObject.Enabled = true; // re-enable the swept pin (replicates); it's still at its fallen pose
 
-		RackDelay = MathF.Max( 0f, delay );         // hold this long before the glide begins (staggered wave)
+		RackDelay = delay < 0f ? 0f : delay;        // hold this long before the glide begins (staggered wave)
 		RackFadeIn = wasHidden;                     // reveal fades tint in; a visible standing pin does not
 		RackFrom = WorldPosition;
 		RackFromRot = WorldRotation;
