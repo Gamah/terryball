@@ -57,9 +57,9 @@ public sealed class TerryAvatar : Component
 	// Each client picks its OWN look in the designer; it's saved client-local (BallDesign.Save) and
 	// mirrored here so the shared ball (BallController) can skin itself to whoever is currently bowling.
 	// Stored as three primitives (not the struct) to keep the sync trivial. Defaults match BallDesign.Default.
-	[Sync] public int BallPatternId { get; set; } = (int)BallDesign.Default.Pattern;
-	[Sync] public float BallPrimaryHue { get; set; } = BallDesign.Default.PrimaryHue;
-	[Sync] public float BallAccentHue { get; set; } = BallDesign.Default.AccentHue;
+	[Sync] public int BallPatternId { get; set; } = (int)BallDesign.DefaultPattern;
+	[Sync] public float BallPrimaryHue { get; set; } = BallDesign.DefaultPrimaryHue;
+	[Sync] public float BallAccentHue { get; set; } = BallDesign.DefaultAccentHue;
 
 	/// <summary>This avatar's ball design, assembled from the synced fields — read by BallController to
 	/// skin the ball, and by the designer preview.</summary>

@@ -32,8 +32,13 @@ public struct BallDesign : IEquatable<BallDesign>
 	/// <summary>Accent hue in degrees (0–360). The dots / second hemisphere / star-nebula colour.</summary>
 	public float AccentHue { get; set; }
 
-	/// <summary>The default look — a red/blue half-and-half, matching the old fixed pokeball ball.</summary>
-	public static BallDesign Default => new() { Pattern = BallPattern.HalfHalf, PrimaryHue = 0f, AccentHue = 220f };
+	// The default look — a red/blue half-and-half, matching the old fixed pokeball ball. Exposed as
+	// consts so they can seed the [Sync] fields on TerryAvatar (whose initializers must be constant).
+	public const BallPattern DefaultPattern = BallPattern.HalfHalf;
+	public const float DefaultPrimaryHue = 0f;
+	public const float DefaultAccentHue = 220f;
+
+	public static BallDesign Default => new() { Pattern = DefaultPattern, PrimaryHue = DefaultPrimaryHue, AccentHue = DefaultAccentHue };
 
 	[JsonIgnore] public readonly Color Primary => new ColorHsv( PrimaryHue, 0.85f, 1.0f ).ToColor();
 	[JsonIgnore] public readonly Color Accent => new ColorHsv( AccentHue, 0.85f, 1.0f ).ToColor();
