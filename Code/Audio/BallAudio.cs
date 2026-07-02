@@ -10,7 +10,8 @@ namespace Terryball;
 ///     CC0 sample set with pitch/volume RNG so it never sounds identical;
 ///   • a continuous ROLL rumble whose level/brightness tracks ball speed, with a per-revolution
 ///     "whump whump whump" pulse (spin rate derived from speed) plus extra "rumble" while the
-///     player is steering (turning) on the approach.
+///     player is steering (turning) on the approach. While the ball is railing down a gutter the
+///     rumble re-colours to a brighter, hollow wooden-channel tone (see the Gutter knobs).
 ///
 /// The roll is synthesised (filtered noise fed through a <see cref="SoundStream"/>) rather than a
 /// looped sample: it's inherently seamless and modulates in real time on speed + steering, which a
@@ -49,6 +50,13 @@ public sealed class BallAudio : Component
 	/// or slowdown decelerates the whumps far faster than they spun up.</summary>
 	[Property, Group( "Roll" )] public float RollSpinDownTime { get; set; } = 0.4f;
 
+	// --- Gutter re-colour: while the ball is railing down the gutter, the deep lane rumble gives way to
+	// a brighter, hollow WOODEN-CHANNEL tone. We lift the noise cutoff (more scrape) and run it through a
+	// tuned comb (a short feedback delay) that rings at ~GutterResonanceHz — the "tube" hollowness.
+	[Property, Group( "Gutter" )] public float GutterCutoffMul { get; set; } = 2.4f; // brighter than the lane rumble
+	[Property, Group( "Gutter" )] public float GutterResonanceHz { get; set; } = 320f; // comb pitch = channel hollowness
+	[Property, Group( "Gutter" )] public float GutterResonance { get; set; } = 0.62f;  // comb feedback (0..<1)
+
 	private const int SR = 44100;
 
 	private BallController _ball;
@@ -74,6 +82,8 @@ public sealed class BallAudio : Component
 	private float _whumpPhase;     // per-revolution "whump" cycle, advanced by spin rate
 	private float _spinRate01;     // ramped spin: 0 at throw, climbs to match speed, falls fast on slowdown
 	private uint _rng = 0x1234567u;
+	private float[] _comb;         // gutter comb delay line (tuned hollow resonance)
+	private int _combIdx;
 
 	protected override void OnEnabled()
 	{
@@ -193,12 +203,19 @@ public sealed class BallAudio : Component
 		}
 
 		float steer01 = _ball.SteerEffort01;            // non-zero only while still steering (pre-lock)
-		// DEEP rumble: a ~40-90 Hz cutoff, not the old ~hundreds-of-Hz hiss that read as wind.
-		float cutoff = 0.006f + speed01 * 0.007f;
+		// DEEP rumble: a ~40-90 Hz cutoff, not the old ~hundreds-of-Hz hiss that read as wind. In the
+		// gutter we open the cutoff right up so it reads as a brighter scrape down the wooden channel.
+		bool gutter = _ball.InGutter;
+		float cutoff = (0.006f + speed01 * 0.007f) * (gutter ? GutterCutoffMul : 1f);
 		float amInc = (24f + steer01 * 26f) / SR;       // wobble rate, faster while steering
 		// "whump whump whump": one amplitude pulse per ball revolution. Spin rate tracks speed, so the
 		// whumps speed up and slow down with the ball — based on velocity, not a real rotation read.
 		float whumpInc = _spinRate01 * RollWhumpRate / SR;
+
+		// Gutter comb: a short feedback delay tuned to GutterResonanceHz gives the hollow "tube" ring of
+		// a ball rolling a wooden trough. Sized once, lazily, to the lowest pitch we might ask for.
+		int combLen = gutter ? Math.Clamp( (int)(SR / MathF.Max( 40f, GutterResonanceHz )), 1, 2048 ) : 0;
+		if ( gutter && (_comb is null || _comb.Length < combLen) ) { _comb = new float[2048]; _combIdx = 0; }
 
 		for ( int n = 0; n < want; n++ )
 		{
@@ -215,6 +232,17 @@ public sealed class BallAudio : Component
 			float whump = 1f + RollWhump * (pulse * pulse * pulse);
 
 			float s = _lp2 * 9f * amp * wobble * whump;  // *9: makeup for the deep double-LP's level loss
+
+			// Run it through the tuned comb while gutter-bound → hollow wooden-channel resonance.
+			if ( gutter && combLen > 0 )
+			{
+				float delayed = _comb[_combIdx];
+				float c = s + delayed * GutterResonance;
+				_comb[_combIdx] = c;
+				_combIdx = (_combIdx + 1) % combLen;
+				s = c;
+			}
+
 			int v = (int)(MathF.Tanh( s ) * 30000f);
 			_rollBuf[n] = (short)Math.Clamp( v, short.MinValue, short.MaxValue );
 		}

@@ -625,7 +625,12 @@ public sealed class GameDirector : Component
 				// Arm watch-mode the moment the ball's centre passes the throw line (unless the
 				// game's already over and the ball is parked). GameComplete is synced, so this is
 				// correct whether or not the bowler is the host.
-				if ( !GameComplete && _ball.WorldPosition.x >= _lane.ThrowLineWorldX )
+				//
+				// Gutter ball: the instant the ball commits to a gutter (BallController.InGutter), cut
+				// STRAIGHT to the watch vantage — the throw-line camera — even though the ball never
+				// reached the throw line, so you snap to that framing and watch it float on down the
+				// trough. (It's funnier to sit at the throw view and watch it trundle by.)
+				if ( !GameComplete && (_ball.InGutter || _ball.WorldPosition.x >= _lane.ThrowLineWorldX) )
 					EnterWatch();
 				break;
 
@@ -919,6 +924,7 @@ public sealed class GameDirector : Component
 	{
 		State = RoundState.Rolling;
 		_ball.ControlsLocked = false;
+		_ball.ExitGutter(); // clear any gutter-float from the previous throw before it rolls from home
 		if ( _camera.IsValid() ) _camera.Watching = false;
 		PlaceBallHome();
 	}

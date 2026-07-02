@@ -116,6 +116,34 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// line so the throw is committed to physics and you can watch it hit the pins.</summary>
 	public bool ControlsLocked { get; set; }
 
+	// --- Gutter float ------------------------------------------------------------------
+	/// <summary>How hard the gutter-floating ball is pulled onto the trough's centre line (1/s).
+	/// High = it snaps into the channel; the player can't wrestle it back onto the lane.</summary>
+	[Property, Group( "Gutter" )] public float GutterRailStiffness { get; set; } = 10f;
+	/// <summary>The whimsical crawl speed (units/s) the gutter ball eases down to right before it
+	/// tips off the end of the trough into the pit.</summary>
+	[Property, Group( "Gutter" )] public float GutterCrawlSpeed { get; set; } = 220f;
+	/// <summary>How far (real inches) before the end of the trough the ball starts its slow-down.</summary>
+	[Property, Group( "Gutter" )] public float GutterSlowInches { get; set; } = 40f;
+
+	/// <summary>True while the ball has committed to a gutter and is being railed down the trough.
+	/// The director watches this to cut the camera and score the throw as a gutter ball.</summary>
+	public bool InGutter { get; private set; }
+	private int _gutterSide; // lane-local y sign of the trough the ball fell into (-1 / +1)
+
+	/// <summary>Commit the ball to the gutter on the given side (lane-local y sign): lock controls
+	/// and hand it to the rail-float in <see cref="OnFixedUpdate"/>. Idempotent.</summary>
+	public void EnterGutter( int side )
+	{
+		if ( InGutter ) return;
+		InGutter = true;
+		_gutterSide = side < 0 ? -1 : 1;
+		ControlsLocked = true; // no steering back onto the lane
+	}
+
+	/// <summary>Clear the gutter float (on rack/respot, when the ball is put back at the run-up).</summary>
+	public void ExitGutter() => InGutter = false;
+
 	// --- Occupant (Terry) visual ride --------------------------------------------------
 	// Terry rides CENTRED in the ball (purely visual — he doesn't drive it). He runs facing the
 	// ball's travel direction and blends into a tucked forward somersault as it speeds up; see
@@ -431,10 +459,20 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 		// Terry rides CENTRED in the ball now (see PlaceTerry) — the old inner-wall climb is gone.
 
+		var lane = Lane.Of( this )?.Builder;
+
+		// --- Gutter ball: detect the commit, then rail it down the trough -----------------
+		// Once the ball's centre has dropped past the edge of the lane bed (into a gutter) while
+		// it's a live throw (past the foul line, before the trough ends), it's a committed gutter
+		// ball — it can't climb back out. Snap into float mode.
+		if ( !InGutter && lane.IsValid() )
+			GutterDetect( lane );
+		if ( InGutter && lane.IsValid() )
+			GutterFloat( lane );
+
 		// Pit catch: once the ball is behind the pin deck (out over the pit) bleed its speed hard, so it
 		// dumps energy into the cushion and settles instead of ricocheting off the dead back wall and
 		// flying back up the lane. Frame-rate-independent exponential decay; only post-throw (coasting).
-		var lane = Lane.Of( this )?.Builder;
 		if ( PitDamping > 0f && ControlsLocked && lane.IsValid() && WorldPosition.x > lane.PinDeckEndWorldX )
 		{
 			var k = MathF.Exp( -PitDamping * dt );
@@ -454,6 +492,59 @@ public sealed class BallController : Component, Component.ICollisionListener
 			Log.Info( $"[terryball][coast] x={WorldPosition.x:F0} y={WorldPosition.y:F0} spd={v.Length:F0} " +
 				$"vx={v.x:F0} vy={v.y:F0} vz={v.z:F0} angVel={_body.AngularVelocity.Length:F1} mass={_body.Mass:F2}" );
 		}
+	}
+
+	// Has the ball's centre dropped off the lane bed into a gutter trough on a live throw? Work in
+	// lane-local coords (lane axis = local +X, cross-lane = local Y) so it's correct at any lane offset.
+	private void GutterDetect( LaneBuilder lane )
+	{
+		if ( !_body.IsValid() ) return;
+		var p = lane.ToLaneLocal( WorldPosition );
+		// Only along the gutter run (past the foul line, before the trough ends over the pit).
+		if ( p.x <= lane.GutterStartLocalX || p.x >= lane.GutterEndLocalX ) return;
+		// Commit once the centre is a bit PAST the bed edge into the trough (a margin so a ball merely
+		// grazing the edge board doesn't false-trigger), and not flung clean over the outer wall.
+		float margin = (lane.GutterOuterOffsetUnits - lane.LaneHalfWidthUnits) * 0.25f;
+		float ay = MathF.Abs( p.y );
+		if ( ay < lane.LaneHalfWidthUnits + margin ) return;
+		if ( ay > lane.GutterOuterOffsetUnits + Radius ) return; // already off the deck entirely — not a gutter
+		EnterGutter( p.y < 0f ? -1 : 1 );
+	}
+
+	// Rail the committed gutter ball down the trough: keep its down-lane momentum, pin it to the trough
+	// centre line, and whimsically ease it to a crawl right before it tips off the end into the pit.
+	private void GutterFloat( LaneBuilder lane )
+	{
+		if ( !_body.IsValid() ) return;
+		var t = lane.Transform.World;
+		var fwd = t.Rotation.Forward;   // lane-local +X (down-lane)
+		var left = t.Rotation.Left;     // lane-local +Y (cross-lane +)
+		var p = lane.ToLaneLocal( WorldPosition );
+		var vel = _body.Velocity;
+
+		// Keep whatever down-lane momentum it carried in (option "keep momentum"), but never let it
+		// stall or reverse — a gutter ball always trundles to the pit.
+		float vFwd = MathF.Max( vel.Dot( fwd ), GutterCrawlSpeed );
+
+		// Whimsical slow-down: as it nears the end of the trough, ease the down-lane speed toward the
+		// crawl so it creeps up to the lip and tips over almost reluctantly.
+		float slowStart = lane.GutterEndLocalX - GutterSlowInches * lane.UnitsPerInch;
+		if ( p.x > slowStart )
+		{
+			float k = ( (lane.GutterEndLocalX - p.x) / MathF.Max( 1f, lane.GutterEndLocalX - slowStart ) ).Clamp( 0f, 1f );
+			vFwd = MathX.Lerp( GutterCrawlSpeed, vFwd, k * k ); // ease-in, so most of the slowing is late
+		}
+
+		// Rail cross-lane: spring the lane-local y onto the trough centre on our side.
+		float targetY = _gutterSide * lane.GutterCenterOffsetUnits;
+		float vCross = ( targetY - p.y ) * GutterRailStiffness;
+
+		// Recompose: down-lane + cross-lane in the lane plane, keep vertical velocity so gravity still
+		// drops it into the trough / pit.
+		var newVel = fwd * vFwd + left * vCross;
+		newVel.z = vel.z;
+		_body.Velocity = newVel;
+		_body.Sleeping = false;
 	}
 
 	protected override void OnUpdate()

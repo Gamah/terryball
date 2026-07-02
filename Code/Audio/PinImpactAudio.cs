@@ -13,9 +13,9 @@ namespace Terryball;
 /// recordings carry their own room ambience, which is our reverb.)
 ///
 /// One of these lives on the lane; every pin carries a <see cref="PinImpactListener"/> that funnels
-/// its collisions here. This component owns classification (wood clack vs low thud), the per-frame
-/// burst cap, and spatial/temporal coalescing; the random pick + pitch/volume spread is handled by
-/// s&amp;box's <see cref="SoundEvent"/>.
+/// its collisions here. This component owns the per-collision-type banks (pin↔pin clack, ball↔pin
+/// smash, pin↔deck/pit/backstop/gutter), the per-frame burst cap, and spatial/temporal coalescing;
+/// the random pick + pitch/volume spread is handled by s&amp;box's <see cref="SoundEvent"/>.
 /// </summary>
 public sealed class PinImpactAudio : Component
 {
@@ -54,24 +54,43 @@ public sealed class PinImpactAudio : Component
 	[Property] public float CoalesceWindow { get; set; } = 0.03f;
 	[Property] public float CoalesceRadius { get; set; } = 55f;
 
-	private SoundEvent _clack; // pin-on-pin wood hit
-	private SoundEvent _thud;  // pin/ball against deck, backstop, pit — the low whump
+	// One bank per collision type — each a palette of real CC0 recordings picked at random with a
+	// pitch/volume spread. See Assets/sounds/SOURCES.txt for provenance.
+	private SoundEvent _clack;    // pin<->pin: the sharp/woody knock
+	private SoundEvent _smash;    // ball<->pin: the ball crushing into the pack (dark, low-heavy)
+	private SoundEvent _deck;     // pin<->lane bed: bright close-mic pin bouncing on maple
+	private SoundEvent _pit;      // pin<->pit floor: dead, muffled tumble
+	private SoundEvent _backstop; // pin<->backboard: dull heavy slam
+	private SoundEvent _gutter;   // pin<->gutter trough: hollow wooden channel knock
+	private SoundEvent _thud;     // legacy low whump — fallback for any unclassified structure
 	private bool _ready;
 
 	private readonly List<(float time, Vector3 pos)> _recent = new();
 	private int _playsThisFrame;
 	private float _lastFrameTime;
 
-	// EXACT counts of the shipped clackN.wav / thudN.wav files. Must match what's in
+	// EXACT counts of the shipped <prefix>N.wav files per bank. Must match what's in
 	// Assets/sounds/pins/ — SoundFile.Load returns a BROKEN (non-null) handle for a missing file
 	// rather than null, so probing past the real count fills the random pool with silent picks.
-	[Property] public int ClackVariants { get; set; } = 6;
+	[Property] public int ClackVariants { get; set; } = 12;
+	[Property] public int SmashVariants { get; set; } = 4;
+	[Property] public int DeckVariants { get; set; } = 6;
+	[Property] public int PitVariants { get; set; } = 3;
+	[Property] public int BackstopVariants { get; set; } = 2;
+	[Property] public int GutterVariants { get; set; } = 2;
 	[Property] public int ThudVariants { get; set; } = 2;
 
 	protected override void OnEnabled()
 	{
 		_clack = BuildEvent( "clack", ClackVariants );
+		_smash = BuildEvent( "smash", SmashVariants );
+		_deck = BuildEvent( "deck", DeckVariants );
+		_pit = BuildEvent( "pit", PitVariants );
+		_backstop = BuildEvent( "backstop", BackstopVariants );
+		_gutter = BuildEvent( "gutter", GutterVariants );
 		_thud = BuildEvent( "thud", ThudVariants );
+		// clack + thud are the irreducible minimum (every other bank falls back to one of them if its
+		// files are missing); require at least those so we don't silently ship a broken pin crash.
 		_ready = _clack != null && _thud != null;
 		if ( !_ready )
 			Log.Warning( "[terryball] PinImpactAudio: no pin sounds loaded from Assets/sounds/pins/ — pins will be silent." );
@@ -98,12 +117,13 @@ public sealed class PinImpactAudio : Component
 		};
 	}
 
-	/// <summary>What a pin struck — the three read very differently.</summary>
-	public enum ContactKind { Pin, Ball, Structure }
+	/// <summary>What a pin (or the ball) struck — each voices a different bank. <see cref="Structure"/>
+	/// is the catch-all for hard surfaces the listener couldn't place (falls back to the low thud).</summary>
+	public enum ContactKind { Pin, Ball, Deck, Pit, Backstop, Gutter, Structure }
 
-	/// <summary>Funnelled here by a pin's listener. <see cref="ContactKind"/> picks the voicing:
-	/// pin↔pin = wood clack; ball↔pin = the pocket smash (prominent clack + low boom); pin↔deck/
-	/// backstop = low thud.</summary>
+	/// <summary>Funnelled here by a pin's listener. <see cref="ContactKind"/> picks the bank:
+	/// pin↔pin = wood clack; ball↔pin = the pocket smash; pin↔deck = bright maple bounce; pin↔pit =
+	/// dead tumble; pin↔backboard = dull slam; pin↔gutter = hollow channel knock.</summary>
 	public void ReportImpact( Vector3 worldPos, float normalSpeed, float impulse, ContactKind kind )
 	{
 		if ( !_ready ) return;
@@ -174,21 +194,43 @@ public sealed class PinImpactAudio : Component
 
 	/// <summary>Actually voice an impact locally (positional). Called on every client from the director's
 	/// <see cref="GameDirector.NetPinImpact"/> broadcast, so spectators and adjacent lanes hear it too.
-	/// The <see cref="ContactKind"/> picks the voicing: pin↔pin = wood clack; ball↔pin = pocket smash
-	/// (clack + low boom); pin↔deck/backstop = low thud.</summary>
+	/// The <see cref="ContactKind"/> selects the bank (see <see cref="ReportImpact"/>).</summary>
 	public void PlayRaw( Vector3 worldPos, ContactKind kind, float amplitude )
 	{
 		if ( !_ready ) return;
 		switch ( kind )
 		{
 			case ContactKind.Ball:
-				// pocket smash: the wood cracks AND the low body booms; bias loud, it's the headline hit
-				Play( _clack, worldPos, MathF.Max( 0.6f, amplitude ) );
-				Play( _thud, worldPos, MathF.Max( 0.5f, amplitude ) );
+				// The pocket smash: a single dedicated ball-into-pack recording (attack crack + low body
+				// in one clip). Bias loud — it's the headline hit. Falls back to clack+thud if unshipped.
+				if ( _smash != null )
+					Play( _smash, worldPos, MathF.Max( 0.6f, amplitude ) );
+				else
+				{
+					Play( _clack, worldPos, MathF.Max( 0.6f, amplitude ) );
+					Play( _thud, worldPos, MathF.Max( 0.5f, amplitude ) );
+				}
+				break;
+			case ContactKind.Deck:
+				// bright close-mic pin bouncing on the maple deck; a hard landing also cracks a little
+				Play( _deck ?? _clack, worldPos, amplitude );
+				break;
+			case ContactKind.Pit:
+				// dead, muffled tumble into the pit cushion
+				Play( _pit ?? _thud, worldPos, amplitude );
+				break;
+			case ContactKind.Backstop:
+				// dull heavy slam against the padded backboard
+				Play( _backstop ?? _thud, worldPos, amplitude );
+				break;
+			case ContactKind.Gutter:
+				// hollow wooden knock in the gutter channel
+				Play( _gutter ?? _thud, worldPos, amplitude );
 				break;
 			case ContactKind.Structure:
+				// unplaced hard surface: the low whump, plus a crack on a hard slam
 				Play( _thud, worldPos, amplitude );
-				if ( amplitude > 0.6f * Volume ) Play( _clack, worldPos, amplitude * 0.6f ); // hard deck slam cracks too
+				if ( amplitude > 0.6f * Volume ) Play( _clack, worldPos, amplitude * 0.6f );
 				break;
 			default: // Pin
 				Play( _clack, worldPos, amplitude );
@@ -251,7 +293,9 @@ public sealed class PinImpactListener : Component, Component.ICollisionListener
 		else if ( other.IsValid() && other.Components.Get<BallController>() is not null )
 			kind = PinImpactAudio.ContactKind.Ball; // the ball striking the rack — the headline hit
 		else
-			kind = PinImpactAudio.ContactKind.Structure; // deck, backstop, gutter, pit
+			// A lane structure: LaneBuilder tags each box with the surface kind (see LaneBuilder.MakeBox).
+			// Anything we can't place falls back to the generic low thud.
+			kind = ClassifyStructure( other );
 
 		if ( Bank.Debug )
 			Log.Info( $"[pinaudio] contact {GameObject.Name} <- {kind} ({other?.Name}) " +
@@ -269,5 +313,19 @@ public sealed class PinImpactListener : Component, Component.ICollisionListener
 		// single side — if that side were on cooldown the clack would be dropped; instead both report
 		// and the bank coalesces the duplicate by position + time.
 		Bank.ReportImpact( c.Contact.Point, c.Contact.NormalSpeed, c.Contact.Impulse, kind );
+	}
+
+	// The lane's structural boxes carry a surface tag (added in LaneBuilder.MakeBox). Map it to the
+	// bank that surface should voice; anything untagged (or a surface we don't special-case) is the
+	// generic low thud. Tag constants live on LaneBuilder so the producer and consumer can't drift.
+	private static PinImpactAudio.ContactKind ClassifyStructure( GameObject other )
+	{
+		if ( !other.IsValid() ) return PinImpactAudio.ContactKind.Structure;
+		var t = other.Tags;
+		if ( t.Has( LaneBuilder.SurfaceGutter ) )   return PinImpactAudio.ContactKind.Gutter;
+		if ( t.Has( LaneBuilder.SurfacePit ) )       return PinImpactAudio.ContactKind.Pit;
+		if ( t.Has( LaneBuilder.SurfaceBackstop ) )  return PinImpactAudio.ContactKind.Backstop;
+		if ( t.Has( LaneBuilder.SurfaceDeck ) )      return PinImpactAudio.ContactKind.Deck;
+		return PinImpactAudio.ContactKind.Structure;
 	}
 }

@@ -231,6 +231,30 @@ public sealed class LaneBuilder : Component
 	/// cleared the whole rack (how much momentum it lost to the pins).</summary>
 	public float PinDeckEndWorldX { get; private set; }
 
+	// ---- Surface tags: LaneBuilder stamps each structural box with one of these; PinImpactAudio's
+	// listener maps the tag back to a ContactKind so a struck surface voices the right bank. Kept here
+	// (one source of truth) so the producer and consumer can't drift.
+	public const string SurfaceDeck = "surf_deck";
+	public const string SurfaceGutter = "surf_gutter";
+	public const string SurfacePit = "surf_pit";
+	public const string SurfaceBackstop = "surf_backstop";
+
+	/// <summary>Half the LANE BED width (units), out from the centre line — the edge of the rolling
+	/// surface. Beyond this (cross-lane) the ball has dropped off the bed into a gutter.</summary>
+	public float LaneHalfWidthUnits { get; private set; }
+	/// <summary>Lane-local |y| (units) of a gutter trough's centre line — where a gutter ball rails to.</summary>
+	public float GutterCenterOffsetUnits { get; private set; }
+	/// <summary>Lane-local |y| (units) of a gutter's OUTER wall — past this the ball has left the trough.</summary>
+	public float GutterOuterOffsetUnits { get; private set; }
+	/// <summary>Lane-local X where the gutters begin (the foul line) and end (past the pin deck).</summary>
+	public float GutterStartLocalX { get; private set; }
+	public float GutterEndLocalX { get; private set; }
+
+	/// <summary>World → lane-local point (lane axis = local +X, cross-lane = local Y).</summary>
+	public Vector3 ToLaneLocal( Vector3 world ) => Transform.World.PointToLocal( world );
+	/// <summary>Lane-local → world point.</summary>
+	public Vector3 FromLaneLocal( Vector3 local ) => Transform.World.PointToWorld( local );
+
 	/// <summary>Centre of the settee carpet (on its top surface), where the director spawns walking
 	/// bowlers.</summary>
 	public Vector3 SetteeFloorCenter { get; private set; }
@@ -327,6 +351,8 @@ public sealed class LaneBuilder : Component
 		ApproachEntryWorldPosition = ToWorld( new Vector3( approachBackX, 0f, H ) );
 		PlatformTopWorldZ = ApproachEntryWorldPosition.z;
 		PlatformHalfWidthUnits = platformHalf;
+		LaneHalfWidthUnits = laneHalf;
+		GutterOuterOffsetUnits = gutterOuter;
 		var pitEndX = pinDeckEndX + PitLengthInches * u;
 
 		// ---- Ramp: one sloped slab whose TOP surface runs from the floor (z = 0) up to the
@@ -349,7 +375,7 @@ public sealed class LaneBuilder : Component
 		var laneCx = (approachBackX + pinDeckEndX) * 0.5f;
 		var laneLenX = pinDeckEndX - approachBackX;
 		MakeBox( "LaneBed", new Vector3( laneCx, 0f, H * 0.5f ),
-			new Vector3( laneLenX, laneHalf * 2f, H ), LaneColorA );
+			new Vector3( laneLenX, laneHalf * 2f, H ), LaneColorA, surface: SurfaceDeck );
 
 		// ---- Approach shoulders: fill the run-up out to full platform width either side of the bed
 		// (the gutters haven't started yet here). Flush top at z = H.
@@ -368,10 +394,13 @@ public sealed class LaneBuilder : Component
 		var laneRegionLenX = pinDeckEndX - foulX;
 		var gutterCy = laneHalf + gutterW * 0.5f;
 		var gutterTop = H - gutterD;
+		GutterCenterOffsetUnits = gutterCy;
+		GutterStartLocalX = foulX;
+		GutterEndLocalX = pinDeckEndX;
 		MakeBox( "GutterLeft", new Vector3( laneRegionCx, -gutterCy, gutterTop * 0.5f ),
-			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor );
+			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor, surface: SurfaceGutter );
 		MakeBox( "GutterRight", new Vector3( laneRegionCx, gutterCy, gutterTop * 0.5f ),
-			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor );
+			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor, surface: SurfaceGutter );
 
 		// ---- Barrier curbs + buffer margins, foul line through the pit. Barriers are low rails just
 		// outboard of each gutter; buffers are flat margin for future decoration. Both start at the
@@ -380,9 +409,9 @@ public sealed class LaneBuilder : Component
 		var sideLenX = pitEndX - foulX;
 		var barrierCy = gutterOuter + barrierW * 0.5f;
 		MakeBox( "BarrierLeft", new Vector3( sideCx, -barrierCy, (H + barrierH) * 0.5f ),
-			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor );
+			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor, surface: SurfaceBackstop );
 		MakeBox( "BarrierRight", new Vector3( sideCx, barrierCy, (H + barrierH) * 0.5f ),
-			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor );
+			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor, surface: SurfaceBackstop );
 
 		var bufferCy = barrierOuter + bufferW * 0.5f;
 		MakeBox( "BufferLeft", new Vector3( sideCx, -bufferCy, H * 0.5f ),
@@ -409,7 +438,7 @@ public sealed class LaneBuilder : Component
 
 		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitFloorTopZ - pitThk * 0.5f ),
 			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitThk ), PitColor,
-			elasticity: BackstopElasticity, friction: BackstopFriction );
+			elasticity: BackstopElasticity, friction: BackstopFriction, surface: SurfacePit );
 
 		// ---- Backboard: a SHORT, WIDE, DEEP deck behind the pit. Its lane-facing face (at pitEndX) is the
 		// pit's dead catch wall — kept dead so the ball dumps its energy here instead of rebounding. Its
@@ -423,7 +452,7 @@ public sealed class LaneBuilder : Component
 		SetteeDeckBackWorldPosition = ToWorld( new Vector3( deckBackX, 0f, deckTopZ ) );
 		MakeBox( "Backboard", new Vector3( (deckFrontX + deckBackX) * 0.5f, 0f, (pitBottomZ + deckTopZ) * 0.5f ),
 			new Vector3( deckDepth, platformHalf * 2f, deckTopZ - pitBottomZ ), BarrierColor,
-			elasticity: BackstopElasticity, friction: BackstopFriction );
+			elasticity: BackstopElasticity, friction: BackstopFriction, surface: SurfaceBackstop );
 
 		// ---- Backstop readout: a LARGE, lane-width pin board floating above the backboard, facing back
 		// at the bowler. Same director data as the corner overlay, blown up so the leave reads from the
@@ -824,11 +853,16 @@ public sealed class LaneBuilder : Component
 	// Positions are LANE-LOCAL (relative to this builder's GameObject = the lane root): the whole lane
 	// rides its root transform, so a second lane is just the same subtree dropped at another spot.
 	private void MakeBox( string name, Vector3 localPos, Vector3 size, Color tint, Rotation? rot = null,
-		float? elasticity = null, float? friction = null )
+		float? elasticity = null, float? friction = null, string surface = null )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.LocalPosition = localPos;
 		if ( rot.HasValue ) go.LocalRotation = rot.Value;
+
+		// Stamp the surface kind BEFORE the collider is built — collision shapes snapshot GameObject.Tags
+		// at build time (same reason the per-lane collision tag is added early in MakePin). The pin audio
+		// listener reads this off the thing a pin hit to pick the right bank.
+		if ( surface is not null ) go.Tags.Add( surface );
 
 		var col = go.Components.GetOrCreate<BoxCollider>();
 		col.Scale = size;

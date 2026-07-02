@@ -1,10 +1,24 @@
 Terryball sound sources (all CC0 1.0 Universal / public domain; attribution NOT required).
 Recorded into short one-shots from these Freesound uploads, then sliced/normalized.
 
-pins/  (pin crash):
-  clack0-5  <- Freesound #499788 "Single bowling pin knock" by Rvgerxini      (CC0)
-  thud0     <- Freesound #128969 "Bowling Ball" by driftworks                 (CC0)
-  thud1     <- Freesound #441856 "Bowling ball striking pins" by Yarmonics    (CC0)
+pins/  (pin crash — one bank per collision type; PinImpactAudio picks the bank by ContactKind):
+  clack0-5    pin<->pin  <- Freesound #499788 "Single bowling pin knock" by Rvgerxini    (CC0)
+  clack6-11   pin<->pin  <- Freesound #578136 "Knocking wood" by ATG65 (deeper wood, sliced) (CC0)
+  smash0      ball<->pin <- Freesound #441856 "Bowling ball striking pins" by Yarmonics    (CC0)
+  smash1      ball<->pin <- Freesound #766871 "Int_BowlingStrike_Hard" by ZusIsKing        (CC0)
+  smash2      ball<->pin <- Freesound #792203 "bowling ball strike" by mrrockcandy         (CC0)
+  smash3      ball<->pin <- Freesound #514385 "Bowling Strike" by SieuAmThanh              (CC0)
+  deck0-5     pin<->deck <- Freesound #847043 / #847044 "CU_Bowling" (close-mic pin fall) by designerschoice (CC0)
+  backstop0-1 pin<->back <- Freesound #37863 "bowlthud" by mw_1984 (low-passed to a dull slam) (CC0)
+  pit0-2      pin<->pit  <- derived (low-passed/dead) from #37863, #847043, and thud0 (#128969)
+  gutter0-1   pin<->gutter <- derived (hollow/resonant) from #847043 and #578136
+  thud0       (legacy fallback) <- Freesound #128969 "Bowling Ball" by driftworks          (CC0)
+  thud1       (legacy fallback) <- Freesound #441856 "Bowling ball striking pins" by Yarmonics (CC0)
+
+  Derived banks (pit, gutter) are DSP shapes of the real bowling recordings above — no
+  clean isolated CC0 recording of a pin in the pit / gutter exists, so we colour a genuine
+  bowling hit (low-pass + dead decay for the pit cushion; band-pass resonance + slapback for
+  the hollow gutter channel) rather than substitute an unrelated sound.
 
 ball/  (throw / lane entry one-shot — single CLEAN ball clip, varied by pitch/volume RNG):
   throw0    <- Freesound #128969 "Bowling Ball" by driftworks                 (CC0)
