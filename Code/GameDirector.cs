@@ -270,6 +270,10 @@ public sealed class GameDirector : Component
 	}
 	private CraneJob _craneJob;
 	private bool _ballCraned;     // ball currently in kinematic crane mode (collider on ⟺ rolling)
+	// After a throw we keep the camera on the pin-deck watch view while the pins fade/reset and the ball
+	// floats up out of the pit; only once the ball tops out at its lift apex do we release the camera onto
+	// it (so it eases on at the top and follows it back, instead of swinging down to the ball in the pit).
+	private bool _releaseWatchAtApex;
 	private readonly List<CraneStep> _craneSteps = new();
 	private int _craneStep;
 	private float _craneStepElapsed, _craneStepDuration;
@@ -1036,9 +1040,14 @@ public sealed class GameDirector : Component
 		_craneJob = job;
 		State = RoundState.Craning;
 		_ball.ControlsLocked = true;
-		if ( _camera.IsValid() ) _camera.Watching = false;
 		_ball.SetCraneMode( true );
 		_ballCraned = true;
+
+		// Return/Dropoff both start by lifting the ball straight up out of the pit (step 0), so hold the
+		// pin-deck watch view through that rise and release it at the apex (UpdateCrane). A fresh Pickup has
+		// the camera on the walking Terry anyway, and a crane-disabled reset just snaps — both release now.
+		_releaseWatchAtApex = CraneEnabled && (job == CraneJob.Return || job == CraneJob.Dropoff);
+		if ( _camera.IsValid() && !_releaseWatchAtApex ) _camera.Watching = false;
 
 		BuildCraneSteps( job );
 		BeginStep( 0 );
@@ -1131,7 +1140,17 @@ public sealed class GameDirector : Component
 			}
 		}
 
-		if ( t >= 1f ) BeginStep( _craneStep + 1 );
+		if ( t >= 1f )
+		{
+			// The ball just topped out at its lift apex (step 0, the rise out of the pit) — release the camera
+			// off the pin-deck watch view so it eases onto the ball and follows it back to the run-up.
+			if ( _releaseWatchAtApex && _craneStep == 0 )
+			{
+				_releaseWatchAtApex = false;
+				if ( _camera.IsValid() ) _camera.Watching = false;
+			}
+			BeginStep( _craneStep + 1 );
+		}
 	}
 
 	// A flight that ends at the lane start: restore physics and roll.
@@ -1160,6 +1179,7 @@ public sealed class GameDirector : Component
 		_craneJob = CraneJob.None;
 		_craneSteps.Clear();
 		_craneStep = 0;
+		_releaseWatchAtApex = false;
 		if ( _ballCraned && _ball.IsValid() ) _ball.SetCraneMode( false );
 		_ballCraned = false;
 		if ( State == RoundState.Craning ) State = RoundState.Rolling;
