@@ -167,6 +167,8 @@ public sealed class SpawnAreaBuilder : Component
 		var signZ = baseTopZ + podiumH + 14f * cu + signH * 0.5f;
 
 		var sign = new GameObject( true, $"{name}Sign" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		// Client-local UI: don't replicate a duplicate (empty-Label) StationSign into the parent's snapshot.
+		sign.NetworkMode = NetworkMode.Never;
 		sign.WorldPosition = new Vector3( x, y, signZ );
 		sign.WorldScale = scale;
 

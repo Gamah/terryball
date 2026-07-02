@@ -640,6 +640,10 @@ public sealed class LaneBuilder : Component
 		var signZ = baseTopZ + podiumH + 14f * cu + signH * 0.5f;
 
 		var sign = new GameObject( true, $"{name}Sign" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		// Client-local UI. Every client builds this sign itself, so it must NOT replicate: a runtime child of
+		// the networked lane root defaults to NetworkMode.Snapshot, and the replicated StationSign arrives with
+		// its non-synced Label unset — an empty bordered box overlapping the real sign (see the arrows' note).
+		sign.NetworkMode = NetworkMode.Never;
 		sign.LocalPosition = new Vector3( x, y, signZ );
 		sign.LocalScale = scale;
 
@@ -688,6 +692,7 @@ public sealed class LaneBuilder : Component
 
 		// The WorldPanel itself, facing -x (toward the bowler). A PinReadout razor rides it.
 		var screen = new GameObject( true, "BackstopReadoutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		screen.NetworkMode = NetworkMode.Never; // client-local UI — don't replicate an empty duplicate panel
 		screen.LocalPosition = new Vector3( frontX - 0.02f * D, 0f, centerZ );
 		screen.LocalRotation = Rotation.FromYaw( 180f ); // identity WorldPanel faces +x; flip to face the approach
 		screen.LocalScale = scale;
@@ -724,6 +729,7 @@ public sealed class LaneBuilder : Component
 		var centerZ = baseZ + worldH * 0.5f + 0.3f * D;
 
 		var screen = new GameObject( true, "AnnouncerCalloutScreen" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		screen.NetworkMode = NetworkMode.Never; // client-local UI — don't replicate an empty duplicate panel
 		screen.LocalPosition = new Vector3( bannerX, 0f, centerZ );
 		screen.LocalScale = scale;
 
@@ -794,6 +800,7 @@ public sealed class LaneBuilder : Component
 
 		// The WorldPanel itself, facing the seats (+away). LocalScale is what sizes the board.
 		var screen = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		screen.NetworkMode = NetworkMode.Never; // client-local UI — don't replicate an empty duplicate panel
 		screen.LocalPosition = new Vector3( screenX + away * 0.5f * cu, centerY, centerZ );
 		screen.LocalRotation = Rotation.FromYaw( faceYaw );
 		screen.LocalScale = scale;
