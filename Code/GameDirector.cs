@@ -411,8 +411,9 @@ public sealed class GameDirector : Component
 
 		// Host owns the rack in the gap: present a clean, settled deck BEFORE spotlighting the first
 		// bowler, so they grab an already-good rack (no contested respot). They roll on their own machine
-		// (BeginTurn) the moment their spotlight (ActiveBowlerId) lands.
-		HostRackForNextBowler();
+		// (BeginTurn) the moment their spotlight (ActiveBowlerId) lands. Snap it (instant) — the game's just
+		// starting, there's no throw to watch the rack glide in from.
+		HostRackForNextBowler( instant: true );
 		SetActiveBowler();
 		PublishScores();
 		Log.Info( $"[terryball][game] START — {_players.Count} bowler(s), frame 1" );
@@ -435,7 +436,7 @@ public sealed class GameDirector : Component
 
 		if ( _camera.IsValid() ) _camera.Watching = false;
 		HostReclaimThrowOwnership(); // take the ball + rack back before we re-rack/park them
-		FullRack();
+		FullRack( instant: true );   // straight back to a clean deck — we're dropping to the lobby
 		PlaceBallHome();
 		PublishScores();
 		RelinquishDirector();        // hand the lane back to the host lobby
@@ -864,11 +865,11 @@ public sealed class GameDirector : Component
 	// DIRECTOR: in the gap between turns the director owns the ball + rack. Take them back from the bowler
 	// who just finished, drop a clean full deck and park the ball, so the next bowler grabs a stable,
 	// already-correct rack (no contested writes, no leftover pins). No-op outside a live session.
-	private void HostRackForNextBowler()
+	private void HostRackForNextBowler( bool instant = false )
 	{
 		if ( !IsDirector ) return;
 		HostReclaimThrowOwnership();
-		FullRack();
+		FullRack( instant );
 		// No PlaceBallHome: the ball isn't reset to the start between turns. It sits where the last crane
 		// left it (the pit, or the previous bowler's seat) and the next bowler's pickup flies it on.
 	}
@@ -1242,6 +1243,14 @@ public sealed class GameDirector : Component
 			{
 				down = true; // swept off the deck (disabled by the bowler, replicated to us)
 			}
+			else if ( p.Pin.IsValid() && p.Pin.Phase == Pin.PinPhase.Racking )
+			{
+				down = false; // being re-racked (fading in / gliding home) — counts as standing
+			}
+			else if ( p.Pin.IsValid() && p.Pin.Phase == Pin.PinPhase.Down )
+			{
+				down = true; // fading out where it fell, about to be swept off the deck
+			}
 			else
 			{
 				var tilted = p.Object.WorldRotation.Up.Dot( Vector3.Up ) < cosTilt;
@@ -1300,30 +1309,31 @@ public sealed class GameDirector : Component
 		AdvanceTurn();
 	}
 
-	// Drop every pin back onto its spot, enabled, upright and dead still — a clean rack.
-	private void FullRack()
+	// Drop every pin back onto its spot, upright and dead still — a clean rack. Animated by default (pins
+	// fade/glide home); instant snaps them for lobby transitions where there's no throw to watch it play.
+	private void FullRack( bool instant = false )
 	{
 		_sweptPins.Clear();
 		foreach ( var p in _lane.Pins )
-			RespotPin( p );
+			RespotPin( p, instant );
 	}
 
-	// Sweep the pins this ball knocked down (disable them so they're off the deck and can't foul
-	// the next ball) and respot the ones still standing back onto their exact spots.
+	// Sweep the pins this ball knocked down (fade them out then off the deck so they can't foul the next
+	// ball) and glide the ones still standing back onto their exact spots — the between-ball respot.
 	private void SweepAndRespot()
 	{
 		foreach ( var s in _statuses )
 		{
 			var p = _lane.Pins.FirstOrDefault( pp => pp.Number == s.Number );
-			if ( !p.Object.IsValid() ) continue;
+			if ( !p.Pin.IsValid() ) continue;
 			if ( s.Down )
 			{
 				_sweptPins.Add( p.Number );
-				p.Object.Enabled = false; // off the deck
+				p.Pin.Sweep(); // fade out where it fell, then off the deck
 			}
 			else
 			{
-				RespotPin( p ); // nudged-but-standing pin returns to its home spot
+				RespotPin( p, instant: false ); // nudged-but-standing pin glides back onto its home spot
 			}
 		}
 	}
@@ -1337,20 +1347,14 @@ public sealed class GameDirector : Component
 	/// pins to settle onto the deck without clacking.</summary>
 	[Property, Group( "Settle" )] public float PinRackQuietSeconds { get; set; } = 0.5f;
 
-	// Place one pin on its home spot, enabled, upright and motionless.
-	private void RespotPin( LaneBuilder.PinPlacement p )
+	// Respot one pin onto its home spot. Animated (default): the pin fades in (if it was swept) and glides
+	// kinematically back onto its spot from wherever it lies — see Pin.RackTo. instant snaps it there with
+	// no animation (lobby / first placement). The pin owns the motion; we just kick it off.
+	private void RespotPin( LaneBuilder.PinPlacement p, bool instant )
 	{
-		if ( !p.Object.IsValid() ) return;
-		p.Object.Enabled = true;
-		p.Object.WorldPosition = p.Home;
-		p.Object.WorldRotation = Rotation.Identity;
-		var rb = p.Object.Components.Get<Rigidbody>();
-		if ( rb.IsValid() )
-		{
-			rb.Velocity = Vector3.Zero;
-			rb.AngularVelocity = Vector3.Zero;
-		}
-		// Mute the settling clacks from the teleport onto the spot.
+		if ( !p.Pin.IsValid() ) return;
+		p.Pin.RackTo( p.Home, instant );
+		// Mute the settling clacks from the glide onto the spot.
 		PinAudioQuietUntil = Time.Now + PinRackQuietSeconds;
 	}
 
@@ -1385,6 +1389,12 @@ public sealed class GameDirector : Component
 			if ( _sweptPins.Contains( p.Number ) )
 			{
 				down = true;
+			}
+			// Mid re-rack (fading in / gliding onto its spot): it's on its way to standing, so read it as
+			// UP — otherwise the readout flickers "down" while a reset pin is still tilted mid-glide.
+			else if ( p.Pin.IsValid() && p.Pin.Phase == Pin.PinPhase.Racking )
+			{
+				down = false;
 			}
 			else if ( p.Object.IsValid() )
 			{

@@ -160,8 +160,9 @@ public sealed class LaneBuilder : Component
 	private float _pinGravityScale = 1f; // resolved per-pin GravityScale (scale-correct × feel knob)
 
 	/// <summary>A pin and the spot it was racked on, for the director's "is it still standing?"
-	/// scoring and for re-racking after a throw.</summary>
-	public readonly record struct PinPlacement( int Number, GameObject Object, Vector3 Home );
+	/// scoring and for re-racking after a throw. <see cref="Pin"/> is the component itself, which owns the
+	/// fade/glide re-rack animation (see <see cref="Pin.Sweep"/> / <see cref="Pin.RackTo"/>).</summary>
+	public readonly record struct PinPlacement( int Number, GameObject Object, Vector3 Home, Pin Pin );
 
 	// The pins are now NETWORKED objects (see Pin.cs): the host spawns them, the engine replicates them.
 	// So this lane doesn't own a private list — it RESOLVES its pins live from the Pin components in its
@@ -192,7 +193,7 @@ public sealed class LaneBuilder : Component
 			var view = new List<PinPlacement>( _pinComponents.Count );
 			foreach ( var pin in _pinComponents )
 				if ( pin.IsValid() )
-					view.Add( new PinPlacement( pin.Number, pin.GameObject, pin.Home ) );
+					view.Add( new PinPlacement( pin.Number, pin.GameObject, pin.Home, pin ) );
 			view.Sort( static ( a, b ) => a.Number.CompareTo( b.Number ) );
 			return view;
 		}
