@@ -71,6 +71,18 @@
 						settee if you get stuck walking around.
 					</div>
 
+					<div style="font-size: 17px; font-weight: 800; color: #f1c40f; margin-bottom: 6px;">4 — INVITE YOUR FRIENDS!</div>
+					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 10px;">
+						Terryball is multiplayer — up to 16 players share the alley, take turns on the roster and
+						watch each other bowl. Invite friends through the Steam overlay, and come hang out:
+					</div>
+					<div style="pointer-events: all; align-self: flex-start; padding: 10px 22px; border-radius: 9px;
+					            font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 20px;
+					            background-color: rgba(88,101,242,0.85);"
+					     onclick=@CopyDiscord>
+						@DiscordLabel
+					</div>
+
 					<div style="flex-direction: row;">
 						<div style="flex-grow: 1;"></div>
 						<div style="pointer-events: all; padding: 12px 28px; border-radius: 9px;
@@ -93,9 +105,22 @@
 
 	private void CloseHelp() => LocalAvatar?.RequestCloseHelp();
 
+	// Discord invite (same community as rotaliate) — click to copy, with a brief "copied" confirmation.
+	private const string DiscordUrl = "https://discord.gg/GG8HWUfFpD";
+	private RealTimeSince _sinceCopied = 999f;
+
+	private string DiscordLabel => _sinceCopied < 2f
+		? "✓  Discord invite copied to clipboard"
+		: "Join the Discord: discord.gg/GG8HWUfFpD  ·  click to copy";
+
+	private void CopyDiscord()
+	{
+		try { Clipboard.SetText( DiscordUrl ); _sinceCopied = 0f; } catch { }
+	}
+
 	protected override int BuildHash()
 	{
 		var me = LocalAvatar;
-		return System.HashCode.Combine( me?.NearHelp, me?.HelpOpen );
+		return System.HashCode.Combine( me?.NearHelp, me?.HelpOpen, _sinceCopied < 2f );
 	}
 }
