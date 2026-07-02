@@ -18,32 +18,6 @@
       ]
     },
     {
-      "__guid": "b000000b-0000-4000-8000-00000000000b",
-      "Name": "ApproachLightRig",
-      "Position": "0,0,0",
-      "Enabled": true,
-      "Components": [
-        {
-          "__type": "Terryball.ApproachLightRig",
-          "__guid": "b000000b-0002-4000-8000-00000000000b",
-          "__enabled": true
-        }
-      ]
-    },
-    {
-      "__guid": "b000000c-0000-4000-8000-00000000000c",
-      "Name": "ShadowTestBall",
-      "Position": "0,0,0",
-      "Enabled": true,
-      "Components": [
-        {
-          "__type": "Terryball.ShadowTestBall",
-          "__guid": "b000000c-0001-4000-8000-00000000000c",
-          "__enabled": true
-        }
-      ]
-    },
-    {
       "__guid": "b000000d-0000-4000-8000-00000000000d",
       "Name": "OccupantSilhouetteCapture",
       "Position": "0,0,0",
