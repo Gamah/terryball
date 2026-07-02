@@ -60,6 +60,11 @@ public sealed class Pin : Component
 	/// it's just recentering an already-visible standing pin (which must NOT blink out and back).</summary>
 	[Sync] public bool RackFadeIn { get; set; }
 
+	/// <summary>Seconds to hold before this pin's glide/fade-in begins, so the director can stagger the rack
+	/// into a wave rather than every pin landing at once. Synced so the cascade plays identically on every
+	/// client; the pin holds hidden (or at its fallen pose) until the delay elapses.</summary>
+	[Sync] public float RackDelay { get; set; }
+
 	/// <summary>Seconds a knocked pin takes to fade out before it's swept off the deck.</summary>
 	public const float FadeOutSeconds = 0.35f;
 	/// <summary>Seconds a re-racked pin takes to glide onto its spot (and, if revealed, fade in over).</summary>
@@ -108,7 +113,7 @@ public sealed class Pin : Component
 	/// <summary>Bring this pin onto <paramref name="home"/>. A hidden pin is re-enabled and fades in while
 	/// gliding up from where it fell; a standing-but-nudged pin just glides back onto its spot (no fade).
 	/// <paramref name="instant"/> snaps with no animation — for the lobby / first placement.</summary>
-	public void RackTo( Vector3 home, bool instant = false )
+	public void RackTo( Vector3 home, bool instant = false, float delay = 0f )
 	{
 		Home = home;
 
@@ -124,6 +129,7 @@ public sealed class Pin : Component
 		var wasHidden = !GameObject.Enabled;
 		if ( wasHidden ) GameObject.Enabled = true; // re-enable the swept pin (replicates); it's still at its fallen pose
 
+		RackDelay = MathF.Max( 0f, delay );         // hold this long before the glide begins (staggered wave)
 		RackFadeIn = wasHidden;                     // reveal fades tint in; a visible standing pin does not
 		RackFrom = WorldPosition;
 		RackFromRot = WorldRotation;
@@ -167,7 +173,9 @@ public sealed class Pin : Component
 
 			case PinPhase.Racking:
 			{
-				var t = (_animElapsed / RackSeconds).Clamp( 0f, 1f );
+				// Hold at the fallen pose (and invisible, if revealing) until this pin's stagger delay elapses,
+				// then run the glide over RackSeconds — so the deck fills in a wave rather than all at once.
+				var t = ((_animElapsed - RackDelay) / RackSeconds).Clamp( 0f, 1f );
 				if ( RackFadeIn ) SetAlpha( t );
 
 				if ( IsSimOwner )
