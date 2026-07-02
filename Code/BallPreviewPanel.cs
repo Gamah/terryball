@@ -30,12 +30,20 @@ public sealed class BallPreviewPanel : ScenePanel
 	{
 		_world = new SceneWorld();
 
-		// A warm key light + soft ambient so the sphere reads as a shaded ball, not a flat disc.
-		_ = new SceneDirectionalLight( _world, Rotation.From( 55, 200, 0 ), new Color( 1.0f, 0.97f, 0.9f ) * 2.2f );
+		// Sun + fill point light + soft ambient so the sphere reads as a shaded ball (same recipe the
+		// engine's own object thumbnails use). A bare SceneWorld has no skybox/reflection probe, so the
+		// preview uses an OPAQUE PBR material (below) rather than the real ball's glass — glass renders
+		// near-black here for want of an environment to reflect.
+		_ = new SceneDirectionalLight( _world, Rotation.From( 55, 200, 0 ), Color.White * 2.5f )
+		{
+			ShadowsEnabled = false,
+		};
+		_ = new ScenePointLight( _world, new Vector3( -60, 60, 60 ), 400f, new Color( 1.0f, 0.95f, 0.9f ) * 8f );
 		_world.AmbientLightColor = new Color( 0.35f, 0.38f, 0.45f );
 
-		_material = Material.Load( "materials/glassball_poke.vmat" ).CreateCopy();
-		_material.Set( "g_flOpacityScale", 1.0f ); // opaque for the preview so the pattern reads clearly
+		// Opaque PBR sphere so the pattern + hues read clearly and lit, regardless of the design.
+		_material = Material.Create( "ballpreview", "shaders/complex.shader" );
+		_material.Set( "g_flMetalness", 0.0f );
 
 		_ball = new SceneModel( _world, "models/dev/sphere.vmdl", Transform.Zero );
 		_ball.SetMaterialOverride( _material );
