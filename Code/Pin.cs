@@ -65,6 +65,12 @@ public sealed class Pin : Component
 	/// client; the pin holds hidden (or at its fallen pose) until the delay elapses.</summary>
 	[Sync] public float RackDelay { get; set; }
 
+	/// <summary>Seconds after the rack starts (i.e. in <see cref="_animElapsed"/> terms) when physics is
+	/// handed back to this pin. The director sets the SAME value for every pin in a batch — the moment the
+	/// LAST pin has landed — so an early-arriving pin stays frozen kinematically on its spot instead of
+	/// going live while the rest of the deck is still gliding in. Synced so all clients release together.</summary>
+	[Sync] public float RackReleaseAt { get; set; }
+
 	/// <summary>Seconds a knocked pin takes to fade out before it's swept off the deck.</summary>
 	public const float FadeOutSeconds = 0.35f;
 	/// <summary>Seconds a re-racked pin takes to glide onto its spot (and, if revealed, fade in over).</summary>
@@ -113,7 +119,7 @@ public sealed class Pin : Component
 	/// <summary>Bring this pin onto <paramref name="home"/>. A hidden pin is re-enabled and fades in while
 	/// gliding up from where it fell; a standing-but-nudged pin just glides back onto its spot (no fade).
 	/// <paramref name="instant"/> snaps with no animation — for the lobby / first placement.</summary>
-	public void RackTo( Vector3 home, bool instant = false, float delay = 0f )
+	public void RackTo( Vector3 home, bool instant = false, float delay = 0f, float releaseAt = 0f )
 	{
 		Home = home;
 
@@ -130,6 +136,10 @@ public sealed class Pin : Component
 		if ( wasHidden ) GameObject.Enabled = true; // re-enable the swept pin (replicates); it's still at its fallen pose
 
 		RackDelay = delay < 0f ? 0f : delay;        // hold this long before the glide begins (staggered wave)
+		// Physics comes back for the whole rack at once, when the last pin lands — never before this pin's own
+		// glide finishes (delay + RackSeconds), so clamp up to that if the director didn't pass a later time.
+		var ownFinish = RackDelay + RackSeconds;
+		RackReleaseAt = releaseAt > ownFinish ? releaseAt : ownFinish;
 		RackFadeIn = wasHidden;                     // reveal fades tint in; a visible standing pin does not
 		RackFrom = WorldPosition;
 		RackFromRot = WorldRotation;
@@ -185,10 +195,13 @@ public sealed class Pin : Component
 					var e = EaseInOut( t );
 					WorldPosition = Vector3.Lerp( RackFrom, Home, e );
 					WorldRotation = Rotation.Lerp( RackFromRot, Rotation.Identity, e );
+					if ( t >= 1f ) { ZeroVelocity(); SetAlpha( 1f ); } // landed: hold frozen on the spot
 
-					if ( t >= 1f )
+					// Don't go live until the WHOLE rack has landed — otherwise an early pin would be dynamic
+					// (and bump-able) while its neighbours are still gliding in.
+					if ( _animElapsed >= RackReleaseAt )
 					{
-						SetKinematic( false ); // hand it back to physics, settled on its spot
+						SetKinematic( false ); // hand the settled deck back to physics, all pins together
 						ZeroVelocity();
 						SetAlpha( 1f );
 						Phase = PinPhase.Up;

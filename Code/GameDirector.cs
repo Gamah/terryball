@@ -1334,14 +1334,17 @@ public sealed class GameDirector : Component
 	private void FullRack( bool instant = false )
 	{
 		_sweptPins.Clear();
+		var release = instant ? 0f : RackReleaseTime( _lane.Pins.Select( p => p.Number ) );
 		foreach ( var p in _lane.Pins )
-			RespotPin( p, instant );
+			RespotPin( p, instant, release );
 	}
 
 	// Sweep the pins this ball knocked down (fade them out then off the deck so they can't foul the next
 	// ball) and glide the ones still standing back onto their exact spots — the between-ball respot.
 	private void SweepAndRespot()
 	{
+		// The standing pins all go live together once the last of THEM has glided home.
+		var release = RackReleaseTime( _statuses.Where( s => !s.Down ).Select( s => s.Number ) );
 		foreach ( var s in _statuses )
 		{
 			var p = _lane.Pins.FirstOrDefault( pp => pp.Number == s.Number );
@@ -1353,7 +1356,7 @@ public sealed class GameDirector : Component
 			}
 			else
 			{
-				RespotPin( p, instant: false ); // nudged-but-standing pin glides back onto its home spot
+				RespotPin( p, instant: false, release ); // nudged-but-standing pin glides back onto its home spot
 			}
 		}
 	}
@@ -1376,17 +1379,30 @@ public sealed class GameDirector : Component
 	// RackStaggerSeconds for the per-pin start delay.
 	private static int RackOrder( int number ) => 10 - number;
 
+	// When (in seconds after the rack starts) the whole batch goes live: the last pin's start delay plus its
+	// glide. Every pin in the batch is handed back to physics at this same instant, so an early-landing pin
+	// stays frozen on its spot until its neighbours have arrived.
+	private float RackReleaseTime( IEnumerable<int> numbers )
+	{
+		var maxDelay = 0f;
+		foreach ( var n in numbers )
+		{
+			var d = RackOrder( n ) * RackStaggerSeconds;
+			if ( d > maxDelay ) maxDelay = d;
+		}
+		return maxDelay + Pin.RackSeconds;
+	}
+
 	// Respot one pin onto its home spot. Animated (default): the pin fades in (if it was swept) and glides
 	// kinematically back onto its spot from wherever it lies — see Pin.RackTo. instant snaps it there with
 	// no animation (lobby / first placement). The pin owns the motion; we just kick it off.
-	private void RespotPin( LaneBuilder.PinPlacement p, bool instant )
+	private void RespotPin( LaneBuilder.PinPlacement p, bool instant, float releaseAt = 0f )
 	{
 		if ( !p.Pin.IsValid() ) return;
 		var delay = instant ? 0f : RackOrder( p.Number ) * RackStaggerSeconds;
-		p.Pin.RackTo( p.Home, instant, delay );
-		// Mute the settling clacks from the glide onto the spot — extend past this pin's stagger so the
-		// last row to land is still covered.
-		PinAudioQuietUntil = MathF.Max( PinAudioQuietUntil, Time.Now + delay + PinRackQuietSeconds );
+		p.Pin.RackTo( p.Home, instant, delay, releaseAt );
+		// Mute the settling clacks until the whole deck has landed and gone live.
+		PinAudioQuietUntil = MathF.Max( PinAudioQuietUntil, Time.Now + releaseAt + PinRackQuietSeconds );
 	}
 
 	// Drop the ball on its run-up spot, upright and dead still.
