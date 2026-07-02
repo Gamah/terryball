@@ -40,8 +40,9 @@
 				            padding: 30px 38px; border-radius: 18px; background-color: rgba(8,10,16,0.97);
 				            border-width: 2px; border-color: rgba(241,196,15,0.5);">
 
-					<div style="font-size: 32px; font-weight: 800; letter-spacing: 1px; margin-bottom: 18px;">
-						HOW TO <span style="color: #f1c40f;">PLAY</span>
+					<div style="flex-direction: row; font-size: 32px; font-weight: 800; letter-spacing: 1px; margin-bottom: 18px;">
+						<div>HOW TO&nbsp;</div>
+						<div style="color: #f1c40f;">PLAY</div>
 					</div>
 
 					<div style="font-size: 17px; font-weight: 800; color: #5aa0e6; margin-bottom: 6px;">1 — JOIN &amp; START (the LANE podium)</div>
@@ -61,14 +62,18 @@
 					</div>
 
 					<div style="font-size: 17px; font-weight: 800; color: #2ecc71; margin-bottom: 6px;">3 — BOWL!</div>
-					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 20px;">
-						When it's your turn you ride INSIDE the ball. Steer with
-						<span style="color: #f1c40f; font-weight: 700;">W A S D</span> (mouse to look) and build up
-						speed down the approach — once you cross the foul line the throw is committed and physics
-						takes over, so line it up and give it some pace. Knock down all ten! Press
-						<span style="color: #f1c40f; font-weight: 700;">G</span> if you need to bail out of the
-						ball, and <span style="color: #f1c40f; font-weight: 700;">R</span> respawns you on the
-						settee if you get stuck walking around.
+					@* NOTE: no inline <span>s here — s&box panels lay children out as flex items, not inline
+					   text flow, so mixed spans shatter the paragraph into columns. Plain text lines only. *@
+					<div style="flex-direction: column; margin-bottom: 20px;">
+						<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 8px;">
+							When it's your turn you ride INSIDE the ball. Steer with WASD (mouse to look) — you have
+							full control all the way down the approach, right up until the blue THROW line. Crossing
+							it commits the throw and hands the ball to physics, so line it up and give it some pace.
+							Knock down all ten! (New throw styles coming soon.)
+						</div>
+						<div style="font-size: 15px; color: rgba(255,255,255,0.85);">
+							G bails you out of the ball; R respawns you on the settee if you get stuck walking around.
+						</div>
 					</div>
 
 					<div style="font-size: 17px; font-weight: 800; color: #f1c40f; margin-bottom: 6px;">4 — INVITE YOUR FRIENDS!</div>
@@ -111,7 +116,7 @@
 
 	private string DiscordLabel => _sinceCopied < 2f
 		? "✓  Discord invite copied to clipboard"
-		: "Join the Discord: discord.gg/GG8HWUfFpD  ·  click to copy";
+		: "Join the Discord  ·  click to copy invite";
 
 	private void CopyDiscord()
 	{
