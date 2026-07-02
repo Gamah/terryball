@@ -44,9 +44,13 @@ public sealed class LaneMonitorCamera : Component
 		Feed = Texture.CreateRenderTarget( "lane-feed", ImageFormat.RGBA8888, new Vector2( Width, Height ) );
 
 		var go = new GameObject( true, "MonitorCam" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		_cam = go.Components.Create<CameraComponent>();
-		_cam.IsMainCamera = false;          // render to our texture only; never take over the screen
-		_cam.RenderTarget = Feed;
+		// CRITICAL: a DISABLED camera driven by on-demand RenderToTexture, NOT a live/enabled one. An enabled
+		// runtime CameraComponent joins the screen render list (OnEnabled -> UpdateMainCamera) and can HIJACK
+		// the main screen — with N lanes there are N of these, and a hijacked view shows a lane's ball feed
+		// instead of the player's own camera (see OccupantSilhouetteCapture for the same fix). Disabled: it
+		// never enters the screen path, yet RenderToTexture still renders it each frame.
+		_cam = go.Components.Create<CameraComponent>( false ); // startEnabled: false => out of the main render path
+		_cam.IsMainCamera = false;
 		_cam.FieldOfView = Fov;
 		_cam.ZFar = ZFar;
 		_cam.BackgroundColor = Color.Black;
@@ -58,7 +62,7 @@ public sealed class LaneMonitorCamera : Component
 
 	protected override void OnUpdate()
 	{
-		if ( !_cam.IsValid() ) return;
+		if ( !_cam.IsValid() || Feed is null ) return;
 
 		// Resolve the feed's TARGET transform: the active bowler's eye view if someone's up, else a chase
 		// of the ball. Then ease toward it (below) so the feed never snaps/jitters.
@@ -68,6 +72,18 @@ public sealed class LaneMonitorCamera : Component
 		var t = Math.Min( 1f, FollowLerp * Time.Delta );
 		_cam.WorldPosition = Vector3.Lerp( _cam.WorldPosition, targetPos, t );
 		_cam.WorldRotation = Rotation.Slerp( _cam.WorldRotation, targetRot, t );
+
+		// On-demand render into the feed RT (game thread) — the disabled camera renders here without ever
+		// touching the screen.
+		_cam.RenderToTexture( Feed );
+	}
+
+	protected override void OnDisabled()
+	{
+		if ( _cam.IsValid() ) _cam.GameObject.Destroy();
+		_cam = null;
+		Feed?.Dispose();
+		Feed = null;
 	}
 
 	private bool TryGetTarget( out Vector3 pos, out Rotation rot )
