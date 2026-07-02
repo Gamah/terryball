@@ -117,6 +117,8 @@ public sealed class TerryAvatar : Component
 	private Lane _engagedLane;   // (local) the lane whose station we're currently walked up to
 	private bool _designerOpen;  // (local) the ball-designer screen is up (cursor freed)
 	private bool _nearDesigner;  // (local) standing in the design table's range (show the prompt)
+	private bool _helpOpen;      // (local) the how-to-play screen is up (cursor freed)
+	private bool _nearHelp;      // (local) standing in the help podium's range (show the prompt)
 
 	/// <summary>True while this (local) player has the lane-controls panel open and the cursor freed.</summary>
 	public bool ControlsOpen => _controlsOpen;
@@ -126,6 +128,10 @@ public sealed class TerryAvatar : Component
 	public bool DesignerOpen => _designerOpen;
 	/// <summary>True while this (local) player is standing in a BallDesignerStation's range.</summary>
 	public bool NearDesigner => _nearDesigner;
+	/// <summary>True while this (local) player has the how-to-play screen open and the cursor freed.</summary>
+	public bool HelpOpen => _helpOpen;
+	/// <summary>True while this (local) player is standing in a HelpStation's range.</summary>
+	public bool NearHelp => _nearHelp;
 
 	/// <summary>The lane whose HUD / controls THIS (local) player should see: the lane they've joined if
 	/// any, else the lane of the station they're currently walked up to, else null. The HUD reads this
@@ -280,31 +286,44 @@ public sealed class TerryAvatar : Component
 	// engage/disengage its cursor on E. The two share the E key, so whichever is closer owns the prompt.
 	private void UpdateControlsStation()
 	{
-		// No fiddling with either panel while you're riding the ball.
+		// No fiddling with any panel while you're riding the ball.
 		if ( Bowling )
 		{
 			if ( _controlsOpen ) CloseControls();
 			if ( _designerOpen ) CloseDesigner();
-			_nearStation = false;
-			_nearDesigner = false;
+			if ( _helpOpen ) CloseHelp();
+			_nearStation = _nearDesigner = _nearHelp = false;
 			return;
 		}
 
 		// A panel that's already open owns input until it's closed (E again / Esc / walking out of range).
 		if ( _controlsOpen ) { ServiceOpen( NearestStation( out _ ) is not null, CloseControls ); UpdateEngagedLane(); return; }
 		if ( _designerOpen ) { ServiceOpen( NearestDesigner( out _ ) is not null, CloseDesigner ); return; }
+		if ( _helpOpen ) { ServiceOpen( NearestHelp( out _ ) is not null, CloseHelp ); return; }
 
-		// Nothing open: pick the nearest station of either kind; it owns the prompt + the E press.
+		// Nothing open: pick the nearest of the three podiums; it owns the prompt + the E press.
 		var lane = NearestStation( out var laneDist );
 		var designer = NearestDesigner( out var designerDist );
-		if ( lane is not null ) _engagedLane = Lane.Of( lane ); // keep the HUD on this lane even if the designer wins the prompt
+		var help = NearestHelp( out var helpDist );
+		if ( lane is not null ) _engagedLane = Lane.Of( lane ); // keep the HUD on this lane even if another podium wins the prompt
 
-		bool designerWins = designer is not null && (lane is null || designerDist <= laneDist);
-		_nearDesigner = designerWins;
-		_nearStation = lane is not null && !designerWins;
+		_nearStation = _nearDesigner = _nearHelp = false;
+		var best = float.MaxValue;
+		int kind = 0; // 1 = lane, 2 = designer, 3 = help
+		if ( lane is not null && laneDist < best ) { best = laneDist; kind = 1; }
+		if ( designer is not null && designerDist < best ) { best = designerDist; kind = 2; }
+		if ( help is not null && helpDist < best ) { best = helpDist; kind = 3; }
 
-		if ( _nearDesigner && Input.Pressed( "use" ) ) OpenDesigner();
-		else if ( _nearStation && Input.Pressed( "use" ) ) OpenControls();
+		_nearStation = kind == 1;
+		_nearDesigner = kind == 2;
+		_nearHelp = kind == 3;
+
+		if ( Input.Pressed( "use" ) )
+		{
+			if ( kind == 1 ) OpenControls();
+			else if ( kind == 2 ) OpenDesigner();
+			else if ( kind == 3 ) OpenHelp();
+		}
 	}
 
 	// Shared open-panel servicing: keep the cursor freed, and close on E / Esc / walking out of range.
@@ -341,6 +360,12 @@ public sealed class TerryAvatar : Component
 		if ( _designerOpen ) CloseDesigner();
 	}
 
+	/// <summary>Close the help screen from its own CLOSE button (restores look + cursor).</summary>
+	public void RequestCloseHelp()
+	{
+		if ( _helpOpen ) CloseHelp();
+	}
+
 	private LaneStation NearestStation( out float bestDist )
 	{
 		LaneStation best = null;
@@ -365,6 +390,24 @@ public sealed class TerryAvatar : Component
 		bestDist = float.MaxValue;
 		var me = GameObject.WorldPosition;
 		foreach ( var s in Scene.GetAllComponents<BallDesignerStation>() )
+		{
+			if ( !s.IsValid() ) continue;
+			var dist = s.WorldPosition.Distance( me );
+			if ( dist < s.InteractRange && dist < bestDist )
+			{
+				best = s;
+				bestDist = dist;
+			}
+		}
+		return best;
+	}
+
+	private HelpStation NearestHelp( out float bestDist )
+	{
+		HelpStation best = null;
+		bestDist = float.MaxValue;
+		var me = GameObject.WorldPosition;
+		foreach ( var s in Scene.GetAllComponents<HelpStation>() )
 		{
 			if ( !s.IsValid() ) continue;
 			var dist = s.WorldPosition.Distance( me );
@@ -411,17 +454,34 @@ public sealed class TerryAvatar : Component
 		if ( !IsProxy ) Design.Save();
 	}
 
+	// How-to-play screen: same cursor/look handling as the other podiums (read-only, nothing to save).
+	private void OpenHelp()
+	{
+		_helpOpen = true;
+		if ( _player.IsValid() ) _player.UseLookControls = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+	}
+
+	private void CloseHelp()
+	{
+		_helpOpen = false;
+		if ( _player.IsValid() ) _player.UseLookControls = true;
+		Mouse.Visibility = MouseVisibility.Auto;
+	}
+
 	// Never leave the cursor freed / look disabled if our avatar goes away while engaged.
 	protected override void OnDisabled()
 	{
 		if ( _controlsOpen ) CloseControls();
 		if ( _designerOpen ) CloseDesigner();
+		if ( _helpOpen ) CloseHelp();
 	}
 
 	protected override void OnDestroy()
 	{
 		if ( _controlsOpen ) CloseControls();
 		if ( _designerOpen ) CloseDesigner();
+		if ( _helpOpen ) CloseHelp();
 		_dressCts?.Cancel();
 	}
 
