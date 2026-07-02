@@ -54,9 +54,16 @@ public sealed class AlleyServer : Component, Component.INetworkListener
 	{
 		if ( !Networking.IsHost ) return;
 
+		// Make sure the spawn concourse is built so the spawn point is positioned (not still at its authored
+		// placeholder) before we read it.
+		Scene.GetAllComponents<SpawnAreaBuilder>().FirstOrDefault()?.EnsureBuilt();
+
+		var pos = NextSpawnPosition( out var facing );
+		Log.Info( $"[terryball] AlleyServer spawning avatar for {channel.DisplayName} at {pos}" );
+
 		var go = new GameObject( true, $"Terry_{channel.DisplayName}" )
 		{
-			WorldPosition = NextSpawnPosition( out var facing ),
+			WorldPosition = pos,
 			WorldRotation = facing,
 		};
 

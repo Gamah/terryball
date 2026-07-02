@@ -131,6 +131,8 @@ public sealed class TerryAvatar : Component
 	private bool _nearDesigner;  // (local) standing in the design table's range (show the prompt)
 	private bool _helpOpen;      // (local) the how-to-play screen is up (cursor freed)
 	private bool _nearHelp;      // (local) standing in the help podium's range (show the prompt)
+	private bool _teleportOpen;  // (local) the lane-teleport screen is up (cursor freed)
+	private bool _nearTeleport;  // (local) standing in the teleport podium's range (show the prompt)
 
 	/// <summary>True while this (local) player has the lane-controls panel open and the cursor freed.</summary>
 	public bool ControlsOpen => _controlsOpen;
@@ -144,6 +146,10 @@ public sealed class TerryAvatar : Component
 	public bool HelpOpen => _helpOpen;
 	/// <summary>True while this (local) player is standing in a HelpStation's range.</summary>
 	public bool NearHelp => _nearHelp;
+	/// <summary>True while this (local) player has the lane-teleport screen open and the cursor freed.</summary>
+	public bool TeleportOpen => _teleportOpen;
+	/// <summary>True while this (local) player is standing in a TeleportStation's range.</summary>
+	public bool NearTeleport => _nearTeleport;
 
 	/// <summary>The lane whose HUD / controls THIS (local) player should see: the lane they've joined if
 	/// any, else the lane of the station they're currently walked up to, else null. The HUD reads this
@@ -330,7 +336,8 @@ public sealed class TerryAvatar : Component
 			if ( _controlsOpen ) CloseControls();
 			if ( _designerOpen ) CloseDesigner();
 			if ( _helpOpen ) CloseHelp();
-			_nearStation = _nearDesigner = _nearHelp = false;
+			if ( _teleportOpen ) CloseTeleport();
+			_nearStation = _nearDesigner = _nearHelp = _nearTeleport = false;
 			return;
 		}
 
@@ -338,29 +345,34 @@ public sealed class TerryAvatar : Component
 		if ( _controlsOpen ) { ServiceOpen( NearestStation( out _ ) is not null, CloseControls ); UpdateEngagedLane(); return; }
 		if ( _designerOpen ) { ServiceOpen( NearestDesigner( out _ ) is not null, CloseDesigner ); return; }
 		if ( _helpOpen ) { ServiceOpen( NearestHelp( out _ ) is not null, CloseHelp ); return; }
+		if ( _teleportOpen ) { ServiceOpen( NearestTeleport( out _ ) is not null, CloseTeleport ); return; }
 
-		// Nothing open: pick the nearest of the three podiums; it owns the prompt + the E press.
+		// Nothing open: pick the nearest of the podiums; it owns the prompt + the E press.
 		var lane = NearestStation( out var laneDist );
 		var designer = NearestDesigner( out var designerDist );
 		var help = NearestHelp( out var helpDist );
+		var teleport = NearestTeleport( out var teleportDist );
 		if ( lane is not null ) _engagedLane = Lane.Of( lane ); // keep the HUD on this lane even if another podium wins the prompt
 
-		_nearStation = _nearDesigner = _nearHelp = false;
+		_nearStation = _nearDesigner = _nearHelp = _nearTeleport = false;
 		var best = float.MaxValue;
-		int kind = 0; // 1 = lane, 2 = designer, 3 = help
+		int kind = 0; // 1 = lane, 2 = designer, 3 = help, 4 = teleport
 		if ( lane is not null && laneDist < best ) { best = laneDist; kind = 1; }
 		if ( designer is not null && designerDist < best ) { best = designerDist; kind = 2; }
 		if ( help is not null && helpDist < best ) { best = helpDist; kind = 3; }
+		if ( teleport is not null && teleportDist < best ) { best = teleportDist; kind = 4; }
 
 		_nearStation = kind == 1;
 		_nearDesigner = kind == 2;
 		_nearHelp = kind == 3;
+		_nearTeleport = kind == 4;
 
 		if ( Input.Pressed( "use" ) )
 		{
 			if ( kind == 1 ) OpenControls();
 			else if ( kind == 2 ) OpenDesigner();
 			else if ( kind == 3 ) OpenHelp();
+			else if ( kind == 4 ) OpenTeleport();
 		}
 	}
 
@@ -402,6 +414,26 @@ public sealed class TerryAvatar : Component
 	public void RequestCloseHelp()
 	{
 		if ( _helpOpen ) CloseHelp();
+	}
+
+	/// <summary>Close the teleport screen from its own CLOSE button (restores look + cursor).</summary>
+	public void RequestCloseTeleport()
+	{
+		if ( _teleportOpen ) CloseTeleport();
+	}
+
+	/// <summary>Teleport (local player) to a lane's settee — the destination the teleport panel's buttons
+	/// call. Drops onto the carpet fanned by a stable per-player offset, and closes the panel.</summary>
+	public void TeleportToLane( Lane lane )
+	{
+		var builder = lane?.Builder;
+		if ( !builder.IsValid() || builder.SetteeHalfWidthUnits <= 0f ) return;
+		var half = builder.SetteeHalfWidthUnits;
+		var spread = (Math.Abs( Network.Owner?.Id.GetHashCode() ?? 0 ) % 1000) / 1000f; // 0..1, stable
+		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, spread );
+		GameObject.WorldPosition = builder.SetteeFloorCenter + new Vector3( 0f, y, 0f );
+		GameObject.WorldRotation = builder.SetteeFaceRotation;
+		if ( _teleportOpen ) CloseTeleport();
 	}
 
 	private LaneStation NearestStation( out float bestDist )
@@ -446,6 +478,24 @@ public sealed class TerryAvatar : Component
 		bestDist = float.MaxValue;
 		var me = GameObject.WorldPosition;
 		foreach ( var s in Scene.GetAllComponents<HelpStation>() )
+		{
+			if ( !s.IsValid() ) continue;
+			var dist = s.WorldPosition.Distance( me );
+			if ( dist < s.InteractRange && dist < bestDist )
+			{
+				best = s;
+				bestDist = dist;
+			}
+		}
+		return best;
+	}
+
+	private TeleportStation NearestTeleport( out float bestDist )
+	{
+		TeleportStation best = null;
+		bestDist = float.MaxValue;
+		var me = GameObject.WorldPosition;
+		foreach ( var s in Scene.GetAllComponents<TeleportStation>() )
 		{
 			if ( !s.IsValid() ) continue;
 			var dist = s.WorldPosition.Distance( me );
@@ -507,12 +557,28 @@ public sealed class TerryAvatar : Component
 		Mouse.Visibility = MouseVisibility.Auto;
 	}
 
+	// Lane-teleport screen: same cursor/look handling as the other podiums.
+	private void OpenTeleport()
+	{
+		_teleportOpen = true;
+		if ( _player.IsValid() ) _player.UseLookControls = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+	}
+
+	private void CloseTeleport()
+	{
+		_teleportOpen = false;
+		if ( _player.IsValid() ) _player.UseLookControls = true;
+		Mouse.Visibility = MouseVisibility.Auto;
+	}
+
 	// Never leave the cursor freed / look disabled if our avatar goes away while engaged.
 	protected override void OnDisabled()
 	{
 		if ( _controlsOpen ) CloseControls();
 		if ( _designerOpen ) CloseDesigner();
 		if ( _helpOpen ) CloseHelp();
+		if ( _teleportOpen ) CloseTeleport();
 	}
 
 	protected override void OnDestroy()
@@ -520,6 +586,7 @@ public sealed class TerryAvatar : Component
 		if ( _controlsOpen ) CloseControls();
 		if ( _designerOpen ) CloseDesigner();
 		if ( _helpOpen ) CloseHelp();
+		if ( _teleportOpen ) CloseTeleport();
 		_dressCts?.Cancel();
 	}
 

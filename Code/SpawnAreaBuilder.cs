@@ -42,10 +42,16 @@ public sealed class SpawnAreaBuilder : Component
 	[Property, Group( "Colors" )] public Color PodiumColor { get; set; } = new( 0.16f, 0.17f, 0.22f, 1f );
 	[Property, Group( "Colors" )] public Color DesignTopColor { get; set; } = new( 0.45f, 0.32f, 0.60f, 1f );
 	[Property, Group( "Colors" )] public Color HelpTopColor { get; set; } = new( 0.30f, 0.52f, 0.40f, 1f );
+	[Property, Group( "Colors" )] public Color TeleportTopColor { get; set; } = new( 0.28f, 0.55f, 0.62f, 1f );
 
 	private bool _built;
 
-	protected override void OnUpdate()
+	protected override void OnUpdate() => EnsureBuilt();
+
+	/// <summary>Build the concourse once the lanes are ready. Safe to call repeatedly (guarded); called both
+	/// from OnUpdate and eagerly by <see cref="AlleyServer"/> right before it spawns a player, so the spawn
+	/// point is already positioned on the concourse (not still at its authored placeholder).</summary>
+	public void EnsureBuilt()
 	{
 		if ( _built ) return;
 
@@ -107,7 +113,14 @@ public sealed class SpawnAreaBuilder : Component
 			HelpTopColor, "HELP", "rgba(120,220,160,0.95)" );
 		Attach<HelpStation>( new Vector3( podRow, yMid + podHalf, podiumTopZ ), s => s.InteractRange = 160f );
 
-		// ---- Spawn point: BETWEEN the two podiums (same row, centre Y), facing the lanes (-x).
+		// TELEPORT podium: directly AHEAD of the spawn (toward the lanes) so players face it on spawn.
+		var telePodX = podRow - (300f + PodiumSeparation * 0.5f) * cu;
+		BuildPodium( "SpawnTeleportPodium", cu, telePodX, yMid, podiumTopZ, podiumH,
+			TeleportTopColor, "TELE", "rgba(90,200,220,0.95)" );
+		Attach<TeleportStation>( new Vector3( telePodX, yMid, podiumTopZ ), s => s.InteractRange = 160f );
+
+		// ---- Spawn point: BETWEEN the BALL/HELP podiums (same row, centre Y), facing the lanes (-x) so the
+		// TELEPORT podium is straight ahead.
 		if ( SpawnPoint.IsValid() )
 		{
 			SpawnPoint.WorldPosition = new Vector3( podRow, yMid, slabThk + 2f );

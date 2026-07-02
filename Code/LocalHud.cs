@@ -33,6 +33,7 @@ public sealed class LocalHud : Component
 		Components.Create<LaneControls>();
 		Components.Create<BallDesigner>();
 		Components.Create<HowToPlay>();
+		Components.Create<TeleportPanel>();
 		Components.Create<ChatPanel>();
 		Components.Create<BowlerHud>();
 
