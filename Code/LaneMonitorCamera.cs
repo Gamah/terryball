@@ -85,7 +85,12 @@ public sealed class LaneMonitorCamera : Component
 			return true;
 		}
 
-		var bowler = Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && a.Bowling );
+		// THIS lane's active bowler (not just any bowling avatar anywhere — with N lanes several may be up
+		// at once), matched by the lane director's spotlighted connection id.
+		var dirId = dir?.ActiveBowlerId ?? System.Guid.Empty;
+		var bowler = dirId != System.Guid.Empty
+			? Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && a.GameObject.Network.Owner?.Id == dirId )
+			: null;
 		if ( bowler is not null && bowler.BowlCamPos != Vector3.Zero )
 		{
 			rot = bowler.BowlCamRot;

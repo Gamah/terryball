@@ -60,6 +60,11 @@ public sealed class BallAudio : Component
 	private bool _thrown;
 	private bool _havePrev;
 
+	// world-position-derived speed (proxy-safe; see OnUpdate)
+	private Vector3 _lastPos;
+	private bool _havePos;
+	private float _worldSpeed;
+
 	// roll rumble
 	private SoundStream _roll;
 	private SoundHandle _rollHandle;
@@ -114,6 +119,14 @@ public sealed class BallAudio : Component
 		if ( !_ball.IsValid() ) return;
 		var pos = WorldPosition;
 
+		// Ball SPEED from world-position delta, not Rigidbody.Velocity — position replicates to every client
+		// but a proxy's rigidbody velocity may read ~0, which would silence the roll for spectators (and
+		// adjacent lanes). Deriving it from the transform means everyone hears the same roll.
+		if ( _havePos && Time.Delta > 0f )
+			_worldSpeed = (pos - _lastPos).Length / Time.Delta;
+		_lastPos = pos;
+		_havePos = true;
+
 		ThrowCheck( pos );
 		FeedRoll( pos );
 	}
@@ -162,7 +175,7 @@ public sealed class BallAudio : Component
 
 		// The roll only sounds AFTER the ball crosses the foul line (the throw), until it resets back
 		// behind the line. Before the throw — on the approach — it stays silent.
-		float speed01 = _thrown ? (_ball.Velocity.Length / Math.Max( 1f, RollSpeedRef )).Clamp( 0f, 1f ) : 0f;
+		float speed01 = _thrown ? (_worldSpeed / Math.Max( 1f, RollSpeedRef )).Clamp( 0f, 1f ) : 0f;
 
 		// Whump RATE doesn't follow speed directly: it ramps from 0 at the throw up to the speed target
 		// over a normal shot (the ball revving up off the release), then drops fast if the ball slows.

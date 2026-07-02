@@ -56,19 +56,25 @@ public sealed class BallCamera : Component
 	private Vector3 _appliedPos, _blendFromPos;
 	private Rotation _appliedRot, _blendFromRot;
 
+	// The camera is a SINGLE, client-local view (one main camera for the whole alley), not one per lane —
+	// N main cameras would fight over the screen. It follows whichever lane the LOCAL player is on, so it
+	// resolves its lane dynamically rather than by its parent. Falls back to the single lane before an
+	// avatar exists.
+	private Lane ActiveLane => Lane.ForLocalPlayer( Scene );
+
 	protected override void OnEnabled()
 	{
-		var lane = Lane.Of( this );
+		var lane = ActiveLane;
 		_ball = lane?.Ball;
 		_lane = lane?.Builder;
 	}
 
 	protected override void OnUpdate()
 	{
-		// Only ride the ball when the local player is actually scooped INSIDE it on THIS lane. Otherwise —
-		// walking the settee, OR the bowler mid-crane (claw flying out to fetch them) — the PlayerController
+		// Only ride the ball when the local player is actually scooped INSIDE it on their active lane.
+		// Otherwise — walking, OR the bowler mid-crane (claw flying out to fetch them) — the PlayerController
 		// owns the camera and keeps it on their own Terry, so we bow out and don't fight for Scene.Camera.
-		var lane = Lane.Of( this );
+		var lane = ActiveLane;
 		var director = lane?.Director;
 		var localAv = TerryAvatar.Local( Scene );
 		var inBall = director is not null && director.LocalIsBowling && (localAv?.Carried ?? false);
@@ -86,13 +92,11 @@ public sealed class BallCamera : Component
 
 		if ( director is not null && !inBall ) return;
 
-		if ( !_ball.IsValid() )
-		{
-			_ball = lane?.Ball;
-			if ( !_ball.IsValid() ) return;
-		}
-		if ( !_lane.IsValid() )
-			_lane = lane?.Builder;
+		// Refresh from the active lane every frame (it changes as the player moves between lanes), not just
+		// when the cached refs go invalid — otherwise a still-valid old ball would keep the camera on it.
+		_ball = lane?.Ball;
+		_lane = lane?.Builder;
+		if ( !_ball.IsValid() ) return;
 
 		// Freeze look input while watching OR while the chat box / music board is open (so typing or
 		// clicking the panel doesn't spin the camera); otherwise yaw/pitch follow the mouse as normal.
@@ -133,7 +137,7 @@ public sealed class BallCamera : Component
 		var targetPos = WorldPosition;
 		var targetRot = WorldRotation;
 
-		var director = Lane.Of( this )?.Director;
+		var director = ActiveLane?.Director;
 		var localAv = TerryAvatar.Local( Scene );
 		var inBall = director is not null && director.LocalIsBowling && (localAv?.Carried ?? false);
 

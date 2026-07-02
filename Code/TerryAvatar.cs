@@ -37,8 +37,20 @@ public sealed class TerryAvatar : Component
 	/// assignment — with N lanes a player picks which lane they're playing on.</summary>
 	[Sync] public Guid JoinedLaneId { get; set; }
 
-	/// <summary>Currently up — riding the ball, not walking. The director sets exactly one true.</summary>
-	[Sync( SyncFlags.FromHost )] public bool Bowling { get; set; }
+	/// <summary>Currently up — riding the ball, not walking. DERIVED (not a stored/synced field) from
+	/// this avatar's lane director's <see cref="GameDirector.ActiveBowlerId"/>: this avatar is bowling iff
+	/// its owner is the one the director has spotlighted. It's derived rather than a <c>FromHost</c> flag
+	/// because the director is no longer the host — it's a claimable, player-owned authority, and a
+	/// non-host director can't write another player's avatar field. The single synced source (the
+	/// director's ActiveBowlerId) drives it on every client instead.</summary>
+	public bool Bowling
+	{
+		get
+		{
+			var id = ActiveLane?.Director?.ActiveBowlerId ?? Guid.Empty;
+			return id != Guid.Empty && Network.Owner?.Id == id;
+		}
+	}
 
 	/// <summary>The crane has scooped this bowler INTO the ball: hide their walking body and show the
 	/// in-ball Terry instead. Owner-driven (the bowler runs its own pickup/dropoff crane) and synced so
@@ -485,24 +497,20 @@ public sealed class TerryAvatar : Component
 		_dressCts?.Cancel();
 	}
 
-	/// <summary>Bowler → host: a settled ball knocked <paramref name="knocked"/> pins. The host books it
-	/// onto the scorecard right away (so the board updates the instant the ball settles, not after the
-	/// crane sets us back down). Rotating to the next bowler is a separate step — see <see cref="EndTurn"/>.
-	/// Runs on the host.</summary>
-	[Rpc.Host]
+	/// <summary>Bowler → director: a settled ball knocked <paramref name="knocked"/> pins. Routed to the
+	/// lane's director-OWNER (an [Rpc.Owner] on the director, no longer necessarily the host) which books it
+	/// onto the scorecard right away. Rotating to the next bowler is a separate step — see <see cref="EndTurn"/>.</summary>
 	public void ReportBall( int knocked, int downMask, bool pocket )
-		=> Director?.HostBookBall( knocked, downMask, pocket );
+		=> Director?.BookBall( knocked, downMask, pocket );
 
-	/// <summary>Bowler → host: our turn is fully over — the dropoff crane has set us back on the settee, so
-	/// the host can now rotate to the next bowler (which reclaims + re-racks the ball). Runs on the host.</summary>
-	[Rpc.Host]
+	/// <summary>Bowler → director: our turn is fully over — the dropoff crane has set us back on the settee,
+	/// so the director can now rotate to the next bowler (which reclaims + re-racks the ball).</summary>
 	public void EndTurn()
-		=> Director?.HostEndTurn( Network.Owner );
+		=> Director?.EndTurnRpc();
 
-	/// <summary>Bowler → host: escape hatch — let me out of the ball. The host ends our turn so the game
-	/// moves on (and we drop back to the settee). For unsticking a director that's wedged mid-turn.</summary>
-	[Rpc.Host]
+	/// <summary>Bowler → director: escape hatch — let me out of the ball. The director ends our turn so the
+	/// game moves on (and we drop back to the settee). For unsticking a turn that's wedged mid-flight.</summary>
 	public void RequestLeaveBall()
-		=> Director?.HostLeaveBall( Network.Owner );
+		=> Director?.LeaveBallRpc();
 
 }

@@ -53,8 +53,10 @@ public sealed class Lane : Component
 	public LaneBuilder Builder => _builder.IsValid() ? _builder : (_builder = GetComponentInChildren<LaneBuilder>( true ));
 	/// <summary>This lane's ball.</summary>
 	public BallController Ball => _ball.IsValid() ? _ball : (_ball = GetComponentInChildren<BallController>( true ));
-	/// <summary>This lane's ball camera.</summary>
-	public BallCamera Camera => _camera.IsValid() ? _camera : (_camera = GetComponentInChildren<BallCamera>( true ));
+	/// <summary>The single, shared ball camera (one main view for the whole alley — see BallCamera). It's not
+	/// per-lane, so this resolves it scene-wide rather than within the lane subtree; every lane's director
+	/// drives the same camera's Watching flag when its local bowler is up.</summary>
+	public BallCamera Camera => _camera.IsValid() ? _camera : (_camera = Scene.GetAllComponents<BallCamera>().FirstOrDefault( c => c.IsValid() ));
 	/// <summary>This lane's scoring/turn director (host-authoritative for this lane).</summary>
 	public GameDirector Director => _director.IsValid() ? _director : (_director = GetComponentInChildren<GameDirector>( true ));
 	/// <summary>This lane's settee feed camera (renders the active ball to the right-hand screen).</summary>

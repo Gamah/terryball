@@ -30,14 +30,20 @@ public sealed class Pin : Component
 	/// between balls. Synced so the spot is identical on every client.</summary>
 	[Sync] public Vector3 Home { get; set; }
 
+	/// <summary>The id of the <see cref="Lane"/> root this pin belongs to. Host-set at spawn and synced,
+	/// so a root-spawned pin (which can't resolve its lane by parent) registers with the RIGHT lane's
+	/// builder — essential once there's more than one lane, or lane 2's pins would attach to lane 1.</summary>
+	[Sync] public System.Guid LaneId { get; set; }
+
 	private LaneBuilder _builder;
 
 	protected override void OnStart()
 	{
-		// Resolve our lane (we're root-spawned, so go by the single local lane) and register so the
-		// director can find us even while we're swept off the deck (disabled) — a scene-wide component
-		// scan skips disabled objects, which would lose swept pins and break the re-rack.
-		_builder = (Lane.Of( this ) ?? Lane.Local( Scene ))?.Builder;
+		// Resolve our lane by the synced LaneId (we're root-spawned, so we can't go by parent) and register
+		// so the director can find us even while we're swept off the deck (disabled) — a scene-wide
+		// component scan skips disabled objects, which would lose swept pins and break the re-rack. Fall
+		// back to the single local lane for the pre-multi-lane case / editor.
+		_builder = (Lane.ById( Scene, LaneId ) ?? Lane.Of( this ) ?? Lane.Local( Scene ))?.Builder;
 		_builder?.ConfigurePin( this ); // attach the local procedural mesh + physics (re-skins proxies)
 		_builder?.RegisterPin( this );
 	}

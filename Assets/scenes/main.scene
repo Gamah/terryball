@@ -14,44 +14,41 @@
           "Size": 102400,
           "Thickness": 256,
           "FloorColor": "1,1,1,1"
-        }
-      ]
-    },
-    {
-      "__guid": "b000000d-0000-4000-8000-00000000000d",
-      "Name": "OccupantSilhouetteCapture",
-      "Position": "0,0,0",
-      "Enabled": true,
-      "Components": [
+        },
         {
-          "__type": "Terryball.OccupantSilhouetteCapture",
-          "__guid": "b000000d-0001-4000-8000-00000000000d",
-          "__enabled": true
+          "__type": "Terryball.AlleyServer",
+          "__guid": "3558daa9-34bd-4348-8ce9-3b39088553ae",
+          "__enabled": true,
+          "SpawnArea": {
+            "_type": "gameobject",
+            "go": "3db541a9-4e38-4efe-bc9b-858000feb78e"
+          },
+          "SpawnSpread": 900
         }
       ]
     },
     {
-      "__guid": "b0000009-0000-4000-8000-000000000009",
+      "__guid": "4bc6f29c-a1a1-435d-97d5-9361a97fa0b1",
       "Name": "Lane 1",
-      "Position": "0,0,0",
+      "Position": "0,-4500,0",
       "Enabled": true,
       "Components": [
         {
           "__type": "Terryball.Lane",
-          "__guid": "b0000009-0001-4000-8000-000000000009",
+          "__guid": "03e337c2-a3b3-4cc3-abb1-2e01d888ba38",
           "__enabled": true
         }
       ],
       "Children": [
         {
-          "__guid": "b0000007-0000-4000-8000-000000000007",
+          "__guid": "e2f528fe-2c83-47f4-91d0-30983a518b7a",
           "Name": "LaneGeometry",
           "Position": "0,0,0",
           "Enabled": true,
           "Components": [
             {
               "__type": "Terryball.LaneBuilder",
-              "__guid": "b0000007-0001-4000-8000-000000000007",
+              "__guid": "d76be289-3970-4ba1-9c25-6e1ebde389fa",
               "__enabled": true,
               "BallDiameterInches": 8.5,
               "LaneWidthInches": 41.5,
@@ -66,7 +63,7 @@
           ]
         },
         {
-          "__guid": "b0000006-0000-4000-8000-000000000006",
+          "__guid": "a88f4896-170a-4d6b-92ec-8aebbe82bb6b",
           "Name": "Ball",
           "Position": "0,0,100",
           "Enabled": true,
@@ -74,7 +71,7 @@
           "Components": [
             {
               "__type": "Terryball.BallController",
-              "__guid": "b0000006-0001-4000-8000-000000000006",
+              "__guid": "2db4c007-b04f-470e-88cf-74e3268454f5",
               "__enabled": true,
               "Radius": 100,
               "Friction": 0.3,
@@ -91,7 +88,7 @@
           ]
         },
         {
-          "__guid": "b0000004-0000-4000-8000-000000000004",
+          "__guid": "8369d74b-8fe8-4995-ba4b-5ed4bf2c9b8e",
           "Name": "Camera",
           "Position": "-300,0,200",
           "Rotation": "0,0.18,0,0.98",
@@ -99,7 +96,7 @@
           "Components": [
             {
               "__type": "Sandbox.CameraComponent",
-              "__guid": "b0000004-0001-4000-8000-000000000004",
+              "__guid": "e0040722-6cf1-40f7-bcd8-40bd7e5a71cc",
               "__enabled": true,
               "BackgroundColor": "0.33333,0.46275,0.52157,1",
               "ClearFlags": "All",
@@ -111,7 +108,7 @@
             },
             {
               "__type": "Terryball.BallCamera",
-              "__guid": "b0000004-0002-4000-8000-000000000004",
+              "__guid": "6e50852a-360b-4c0b-a316-80fd9d08131c",
               "__enabled": true,
               "Distance": 700,
               "Height": 60,
@@ -120,7 +117,7 @@
             },
             {
               "__type": "Terryball.BallShadowTintPP",
-              "__guid": "b0000004-0003-4000-8000-000000000004",
+              "__guid": "9c98b243-a7fa-465d-af90-705d7d2f43da",
               "__enabled": true,
               "DebugTint": "1,0,0,1",
               "Strength": 1
@@ -128,7 +125,7 @@
           ]
         },
         {
-          "__guid": "b0000008-0000-4000-8000-000000000008",
+          "__guid": "b2b43a7a-f4c4-4bce-a3d4-9029e2ff57c0",
           "Name": "Director",
           "Position": "0,0,0",
           "Enabled": true,
@@ -136,13 +133,263 @@
           "Components": [
             {
               "__type": "Terryball.GameDirector",
-              "__guid": "b0000008-0001-4000-8000-000000000008",
+              "__guid": "70db6a74-0fd7-4da0-9e41-204ef5da4e7a",
               "__enabled": true,
               "WatchSeconds": 5,
               "TiltThresholdDegrees": 30,
               "DisplacementThresholdInches": 4
             }
           ]
+        }
+      ]
+    },
+    {
+      "__guid": "8c781a52-dbc5-4864-8599-7e5f4371ca89",
+      "Name": "Lane 2",
+      "Position": "0,-1500,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.Lane",
+          "__guid": "a232e2f6-70fb-41a6-a6a4-e5138f173a56",
+          "__enabled": true
+        }
+      ],
+      "Children": [
+        {
+          "__guid": "6f93f0e6-1c87-46fd-93fb-7449de71e244",
+          "Name": "LaneGeometry",
+          "Position": "0,0,0",
+          "Enabled": true,
+          "Components": [
+            {
+              "__type": "Terryball.LaneBuilder",
+              "__guid": "93247fd2-470b-4a8e-bf5f-7fd38ffb0777",
+              "__enabled": true,
+              "BallDiameterInches": 8.5,
+              "LaneWidthInches": 41.5,
+              "LaneLengthInches": 720,
+              "PinSpacingInches": 12,
+              "PinWidthInches": 5,
+              "PinHeightInches": 15,
+              "PinMass": 1.23,
+              "PinFriction": 0.15,
+              "PinColor": "0.95,0.95,0.95,1"
+            }
+          ]
+        },
+        {
+          "__guid": "e4d06547-15bc-4011-aebf-4453af0bf474",
+          "Name": "Ball",
+          "Position": "0,0,100",
+          "Enabled": true,
+          "NetworkMode": 1,
+          "Components": [
+            {
+              "__type": "Terryball.BallController",
+              "__guid": "a471ac38-6e94-47aa-89f1-1243ca8b30e8",
+              "__enabled": true,
+              "Radius": 100,
+              "Friction": 0.3,
+              "AngularDamping": 0.1,
+              "Mass": 5.3,
+              "CubeSize": 26,
+              "CubeColor": "0.92,0.45,0.20,1",
+              "RunAccel": 8,
+              "RestoreAccel": 1,
+              "Damping": 3,
+              "MassOffsetFactor": 0.7,
+              "DriveGain": 6.5
+            }
+          ]
+        },
+        {
+          "__guid": "1cbcfce5-f81f-45aa-b5a3-cc817269a06c",
+          "Name": "Director",
+          "Position": "0,0,0",
+          "Enabled": true,
+          "NetworkMode": 1,
+          "Components": [
+            {
+              "__type": "Terryball.GameDirector",
+              "__guid": "f2a9cfaf-e28f-4b1c-aa00-a533e291219d",
+              "__enabled": true,
+              "WatchSeconds": 5,
+              "TiltThresholdDegrees": 30,
+              "DisplacementThresholdInches": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "__guid": "793e23cc-716b-4088-b018-82c7b4ba1e60",
+      "Name": "Lane 3",
+      "Position": "0,1500,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.Lane",
+          "__guid": "987ca586-7902-4e11-84d4-fd8e328074f2",
+          "__enabled": true
+        }
+      ],
+      "Children": [
+        {
+          "__guid": "01f6a38e-c9d0-45ec-a4e3-722a3d9c0a53",
+          "Name": "LaneGeometry",
+          "Position": "0,0,0",
+          "Enabled": true,
+          "Components": [
+            {
+              "__type": "Terryball.LaneBuilder",
+              "__guid": "7d97528a-9d3c-4942-935e-ecdfe5e12432",
+              "__enabled": true,
+              "BallDiameterInches": 8.5,
+              "LaneWidthInches": 41.5,
+              "LaneLengthInches": 720,
+              "PinSpacingInches": 12,
+              "PinWidthInches": 5,
+              "PinHeightInches": 15,
+              "PinMass": 1.23,
+              "PinFriction": 0.15,
+              "PinColor": "0.95,0.95,0.95,1"
+            }
+          ]
+        },
+        {
+          "__guid": "d33e79d2-4d34-4859-aa88-9145511127d4",
+          "Name": "Ball",
+          "Position": "0,0,100",
+          "Enabled": true,
+          "NetworkMode": 1,
+          "Components": [
+            {
+              "__type": "Terryball.BallController",
+              "__guid": "68ef7e1a-2c5c-416d-a431-81139f64ef7f",
+              "__enabled": true,
+              "Radius": 100,
+              "Friction": 0.3,
+              "AngularDamping": 0.1,
+              "Mass": 5.3,
+              "CubeSize": 26,
+              "CubeColor": "0.92,0.45,0.20,1",
+              "RunAccel": 8,
+              "RestoreAccel": 1,
+              "Damping": 3,
+              "MassOffsetFactor": 0.7,
+              "DriveGain": 6.5
+            }
+          ]
+        },
+        {
+          "__guid": "6eb633ab-3a31-4b54-9d34-0b276d45f1ce",
+          "Name": "Director",
+          "Position": "0,0,0",
+          "Enabled": true,
+          "NetworkMode": 1,
+          "Components": [
+            {
+              "__type": "Terryball.GameDirector",
+              "__guid": "1cd1d72a-f687-426b-9ffe-4d250caebbfb",
+              "__enabled": true,
+              "WatchSeconds": 5,
+              "TiltThresholdDegrees": 30,
+              "DisplacementThresholdInches": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "__guid": "b05b9737-52bf-47a7-af08-451ba847641b",
+      "Name": "Lane 4",
+      "Position": "0,4500,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.Lane",
+          "__guid": "ebfd2fac-ea64-4167-8542-983192760d7f",
+          "__enabled": true
+        }
+      ],
+      "Children": [
+        {
+          "__guid": "03af9329-5e1f-4049-86e9-5594124933bf",
+          "Name": "LaneGeometry",
+          "Position": "0,0,0",
+          "Enabled": true,
+          "Components": [
+            {
+              "__type": "Terryball.LaneBuilder",
+              "__guid": "e0716c02-dd5a-4713-ac20-b0ab87b9ae25",
+              "__enabled": true,
+              "BallDiameterInches": 8.5,
+              "LaneWidthInches": 41.5,
+              "LaneLengthInches": 720,
+              "PinSpacingInches": 12,
+              "PinWidthInches": 5,
+              "PinHeightInches": 15,
+              "PinMass": 1.23,
+              "PinFriction": 0.15,
+              "PinColor": "0.95,0.95,0.95,1"
+            }
+          ]
+        },
+        {
+          "__guid": "962dae01-3214-4b60-bf1b-03cf3694a3e9",
+          "Name": "Ball",
+          "Position": "0,0,100",
+          "Enabled": true,
+          "NetworkMode": 1,
+          "Components": [
+            {
+              "__type": "Terryball.BallController",
+              "__guid": "d107f7bb-c572-4329-840f-414fce7e0d3d",
+              "__enabled": true,
+              "Radius": 100,
+              "Friction": 0.3,
+              "AngularDamping": 0.1,
+              "Mass": 5.3,
+              "CubeSize": 26,
+              "CubeColor": "0.92,0.45,0.20,1",
+              "RunAccel": 8,
+              "RestoreAccel": 1,
+              "Damping": 3,
+              "MassOffsetFactor": 0.7,
+              "DriveGain": 6.5
+            }
+          ]
+        },
+        {
+          "__guid": "0b2cf0a6-b67e-46b3-a4d8-26eaba3f57fb",
+          "Name": "Director",
+          "Position": "0,0,0",
+          "Enabled": true,
+          "NetworkMode": 1,
+          "Components": [
+            {
+              "__type": "Terryball.GameDirector",
+              "__guid": "a90f3f88-87db-405f-b618-672b43b35d4e",
+              "__enabled": true,
+              "WatchSeconds": 5,
+              "TiltThresholdDegrees": 30,
+              "DisplacementThresholdInches": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "__guid": "b000000d-0000-4000-8000-00000000000d",
+      "Name": "OccupantSilhouetteCapture",
+      "Position": "0,0,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.OccupantSilhouetteCapture",
+          "__guid": "b000000d-0001-4000-8000-00000000000d",
+          "__enabled": true
         }
       ]
     },
@@ -203,12 +450,44 @@
           "__guid": "b0000005-0002-4000-8000-000000000005",
           "__enabled": true,
           "Texture": "textures/cubemaps/default2.vtex",
-          "Bounds": { "Mins": "-512,-512,-512", "Maxs": "512,512,512" },
+          "Bounds": {
+            "Mins": "-512,-512,-512",
+            "Maxs": "512,512,512"
+          },
           "Projection": "Sphere",
           "UpdateStrategy": "OnEnabled",
           "TintColor": "1,1,1,1",
           "ZNear": 16,
           "ZFar": 4096
+        }
+      ]
+    },
+    {
+      "__guid": "b8159389-96f1-4944-9a6c-e097e89841f0",
+      "Name": "SpawnArea",
+      "Position": "0,0,0",
+      "Enabled": true,
+      "Components": [
+        {
+          "__type": "Terryball.SpawnAreaBuilder",
+          "__guid": "c3209878-1b08-4c6b-8b6e-f3c1353701e5",
+          "__enabled": true,
+          "SpawnPoint": {
+            "_type": "gameobject",
+            "go": "3db541a9-4e38-4efe-bc9b-858000feb78e"
+          },
+          "StairsRun": 2200,
+          "ConcourseDepth": 2400,
+          "SideMargin": 1200,
+          "TreadRise": 22
+        }
+      ],
+      "Children": [
+        {
+          "__guid": "3db541a9-4e38-4efe-bc9b-858000feb78e",
+          "Name": "SpawnPoint",
+          "Position": "27000,0,20",
+          "Enabled": true
         }
       ]
     }

@@ -50,9 +50,9 @@
 					@* Header: title + game state. *@
 					<div style="flex-direction: row; align-items: center; margin-bottom: 16px;">
 						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 1px;">
-							LANE <span style="color: #5aa0e6;">1</span> CONTROLS
+							LANE <span style="color: #5aa0e6;">@LaneNumber</span> CONTROLS
 						</div>
-						@if ( IsHost )
+						@if ( CanDirect )
 						{
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
@@ -114,7 +114,7 @@
 						@if ( Players.Count == 0 )
 						{
 							<div style="font-size: 16px; color: rgba(255,255,255,0.5); padding: 10px 4px;">
-								No bowlers yet — JOIN, then the host presses START.
+								No bowlers yet — JOIN, then press START to run this lane.
 							</div>
 						}
 					</div>
@@ -130,24 +130,23 @@
 								@(me.Joined ? "LEAVE" : "JOIN")
 							</div>
 						}
-						@if ( IsHost )
+						@* START: any player at the lobby can begin a game — it CLAIMS this lane's director so
+						   they run it. STOP: only the player who claimed the lane (its director-owner). *@
+						@if ( !playing )
 						{
-							@if ( !playing )
-							{
-								<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
-								            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(52,152,219,0.9);"
-								     onclick=@(() => director.StartGame())>
-									START
-								</div>
-							}
-							else
-							{
-								<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
-								            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(155,89,182,0.9);"
-								     onclick=@(() => director.StopGame())>
-									STOP
-								</div>
-							}
+							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+							            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(52,152,219,0.9);"
+							     onclick=@(() => director.StartGame())>
+								START
+							</div>
+						}
+						else if ( CanDirect )
+						{
+							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+							            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(155,89,182,0.9);"
+							     onclick=@(() => director.StopGame())>
+								STOP
+							</div>
 						}
 						<div style="flex-grow: 1;"></div>
 						<div style="pointer-events: all; padding: 12px 28px; border-radius: 9px;
@@ -175,6 +174,27 @@
 		Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
 
 	private bool IsHost => Networking.IsHost;
+
+	// 1-based number of the lane the local player is at, by stable scene order — so each of the N lanes'
+	// controls shows the right "LANE n". Falls back to 1 before an avatar/lane resolves.
+	private int LaneNumber
+	{
+		get
+		{
+			var lane = ActiveLane;
+			if ( lane is null ) return 1;
+			var lanes = Scene.GetAllComponents<Lane>()
+				.Where( l => l.IsValid() )
+				.OrderBy( l => l.WorldPosition.y )
+				.ToList();
+			var idx = lanes.FindIndex( l => l == lane );
+			return idx < 0 ? 1 : idx + 1;
+		}
+	}
+
+	// Does the LOCAL player run this lane (show STOP / crane toggle)? True once they've claimed the lane by
+	// pressing START; in the lobby the host is the default director.
+	private bool CanDirect => Director?.LocalIsDirector ?? false;
 
 	// Count only players joined to THIS lane (the one the local player is at), so the lobby tally is
 	// per-lane with N alleys.
@@ -226,7 +246,7 @@
 	private void ToggleCrane()
 	{
 		var d = Director;
-		if ( d is null || !IsHost ) return;
+		if ( d is null || !d.LocalIsDirector ) return;
 		d.CraneEnabled = !d.CraneEnabled;
 	}
 
@@ -244,6 +264,7 @@
 		hash.Add( JoinedCount );
 		hash.Add( me?.Joined );
 		hash.Add( IsHost );
+		hash.Add( CanDirect );
 		hash.Add( me?.NearStation );
 		hash.Add( me?.ControlsOpen );
 		hash.Add( d?.CraneEnabled );

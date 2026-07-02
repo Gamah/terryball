@@ -21,8 +21,42 @@ namespace Terryball;
 ///
 /// <see cref="PinStatuses"/> and <see cref="State"/> are read live by the top-left overlay panel.
 /// </summary>
-public sealed class GameDirector : Component, Component.INetworkListener
+public sealed class GameDirector : Component
 {
+	// --- Director ownership (claimable per-lane authority) ------------------------------
+	// The director used to be host-authoritative. Now each lane's director is a CLAIMABLE, network-owned
+	// authority: the player who presses START takes ownership of this (networked) director object and runs
+	// the whole game for the lane — scoring, turn rotation, racking — on their machine; the synced fields
+	// below (plain [Sync], owner→everyone) mirror it to every client. Ownership is relinquished back to the
+	// host at the end of the game (STOP / game complete), so the lane returns to the lobby free to be
+	// claimed again. Until claimed the host owns it (it runs the lobby), so solo/host play is unchanged.
+	//
+	// "Am I the authority for this lane?" — true if I own the director object (or there's no live session,
+	// e.g. the editor). Everything that used to gate on Networking.IsHost now gates on this instead.
+	public bool IsDirector => !Networking.IsActive || !GameObject.Network.Active || GameObject.Network.IsOwner;
+
+	/// <summary>UI-facing alias: does the LOCAL client run this lane's game (show STOP / crane toggle)?</summary>
+	public bool LocalIsDirector => IsDirector;
+
+	private bool _dirNetReady; // host: have we tagged the director object Takeover yet?
+
+	// Take ownership of this lane's director so OUR writes to the synced state are authoritative. Called
+	// when a player claims the lane (START). No-op in the editor / if we already own it.
+	private void ClaimDirector()
+	{
+		if ( Networking.IsActive && GameObject.Network.Active && !GameObject.Network.IsOwner )
+			GameObject.Network.TakeOwnership();
+	}
+
+	// Hand the director back to the host at the end of a game, so the lane's lobby is host-run again and
+	// the next player can claim it. Host keeps its own directors (nothing to drop).
+	private void RelinquishDirector()
+	{
+		if ( Networking.IsActive && GameObject.Network.Active && GameObject.Network.IsOwner && !Networking.IsHost )
+			GameObject.Network.DropOwnership();
+	}
+
+
 	/// <summary>Hard CAP (seconds) on the watch view before re-racking. We normally cut it short the
 	/// moment the action settles (see the Settle* knobs); this is just the backstop for the rare case
 	/// where something jitters forever.</summary>
@@ -101,13 +135,13 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	// publishes their connection id here and every client compares it against its own to decide
 	// whether IT drives the ball + ball camera (vs. walking its Terry around the settee). Empty =
 	// nobody up (lobby / between turns), so the ball sits parked and everyone just walks.
-	[Sync( SyncFlags.FromHost )] public Guid ActiveBowlerId { get; set; }
+	[Sync] public Guid ActiveBowlerId { get; set; }
 
 	/// <summary>Bumped by the host every time a turn is (re)assigned — including when the SAME bowler is
 	/// up again (solo play, or two turns in a row). The bowler client begins a fresh turn whenever this
 	/// changes, so back-to-back turns by one player still re-rack and re-roll instead of hanging on the
 	/// parked ball. (Watching ActiveBowlerId alone can't catch a same-bowler hand-back — it never edges.)</summary>
-	[Sync( SyncFlags.FromHost )] public int TurnSerial { get; set; }
+	[Sync] public int TurnSerial { get; set; }
 
 	/// <summary>True if the local client is the bowler currently up. (With no active network session
 	/// — e.g. running the scene raw in the editor before a lobby exists — defaults to true so the
@@ -122,25 +156,25 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	public enum GamePhase { Lobby, Playing }
 	/// <summary>Lobby = players join/leave; Playing = a game is on (START pressed). Host-set.</summary>
-	[Sync( SyncFlags.FromHost )] public GamePhase Phase { get; set; } = GamePhase.Lobby;
+	[Sync] public GamePhase Phase { get; set; } = GamePhase.Lobby;
 	/// <summary>Host toggle (lane controls): when off, the ball is teleported between spots instead of
 	/// flying the choreographed claw animation — the scoop/drop body↔ball swaps and the roll still
 	/// happen, just instantly. Synced so the active bowler (who runs the crane) reads the host's choice.</summary>
-	[Sync( SyncFlags.FromHost )] public bool CraneEnabled { get; set; } = true;
+	[Sync] public bool CraneEnabled { get; set; } = true;
 	/// <summary>The bowlers in this game, in turn order (only meaningful in Playing).</summary>
-	[Sync( SyncFlags.FromHost )] public NetList<string> RosterNames { get; set; } = new();
+	[Sync] public NetList<string> RosterNames { get; set; } = new();
 	/// <summary>Per-roster-player encoded frame data, parallel to <see cref="RosterNames"/>.</summary>
-	[Sync( SyncFlags.FromHost )] public NetList<string> RosterScores { get; set; } = new();
+	[Sync] public NetList<string> RosterScores { get; set; } = new();
 	/// <summary>Per-roster-player split markers, parallel to <see cref="RosterNames"/>: a comma-joined
 	/// list of "frame.ball" tokens (the scoreboard circles those ball boxes). Splits are detected on the
 	/// bowler's leave; this surfaces them so every client circles the same counts.</summary>
-	[Sync( SyncFlags.FromHost )] public NetList<string> RosterSplits { get; set; } = new();
+	[Sync] public NetList<string> RosterSplits { get; set; } = new();
 	/// <summary>Whose turn it is (index into the roster).</summary>
-	[Sync( SyncFlags.FromHost )] public int CurrentPlayer { get; set; }
+	[Sync] public int CurrentPlayer { get; set; }
 	/// <summary>The frame everyone's on (0–9).</summary>
-	[Sync( SyncFlags.FromHost )] public int CurrentFrame { get; set; }
+	[Sync] public int CurrentFrame { get; set; }
 	/// <summary>True once the final frame of the last bowler is complete.</summary>
-	[Sync( SyncFlags.FromHost )] public bool GameComplete { get; set; }
+	[Sync] public bool GameComplete { get; set; }
 
 	/// <summary>A pin's number (1–10) and whether it currently reads as knocked down.</summary>
 	public readonly record struct PinStatus( int Number, bool Down );
@@ -194,7 +228,6 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	private LaneBuilder _lane;
 	private BallController _ball;
 	private BallCamera _camera;
-	private int _spawnCount;   // walking bowlers dropped so far, to fan them across the settee
 
 	// --- Approach-B throw networking (the active bowler is authoritative for their own turn) -------
 	private readonly List<int> _localBalls = new(); // bowler-side: the balls thrown THIS frame, for the rules
@@ -291,11 +324,8 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	protected override void OnStart()
 	{
-		// Auto-host so the scene is playable solo (you become the host + first bowler) and ready to
-		// accept joiners. If the scene was loaded BY joining someone else's lobby, a session is
-		// already active and we leave it alone.
-		if ( !Networking.IsActive )
-			Networking.CreateLobby( new Sandbox.Network.LobbyConfig() );
+		// The lobby is auto-created once by AlleyServer (a single component) — not here: with N lane
+		// directors, N calls would race to create it.
 
 		// Resolve our own lane's parts (siblings under our shared Lane root), never a scene-global scan —
 		// each director runs only its own lane's geometry/ball/camera.
@@ -327,7 +357,7 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_ballStartDown = 0;
 		_sweptPins.Clear();
 		_gameOver = false;
-		if ( Networking.IsHost )
+		if ( IsDirector )
 		{
 			Phase = GamePhase.Lobby;
 			PublishScores();
@@ -336,76 +366,24 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 	// The on-screen HUD is built by LocalHudSystem (a purely-local GameObjectSystem), not here — it's a
 	// client-local, non-networked thing that belongs to the player, not to any director.
-
-	// --- Network roster ----------------------------------------------------------------
-	// INetworkListener fires on the HOST. Every player who joins (the local host included) gets a
-	// walking Terry on the settee; leaving despawns it. Whether they actually BOWL is a separate
-	// opt-in (TerryAvatar.Joined), locked into the scorecard when the host presses START.
-
-	/// <summary>Host-side: a player finished joining — drop them a walking Terry on the settee.</summary>
-	public void OnActive( Connection channel ) => SpawnAvatar( channel );
-
-	/// <summary>Host-side: a player left — remove their Terry (and drop them from a game in progress).</summary>
-	public void OnDisconnected( Connection channel )
-	{
-		foreach ( var av in Scene.GetAllComponents<TerryAvatar>().ToList() )
-			if ( av.IsValid() && av.GameObject.Network.Owner?.Id == channel.Id )
-				av.GameObject.Destroy();
-
-		// If the player who left was the one UP on this lane, their orphaned rack would otherwise sit
-		// there forever. Advance the turn so the host reclaims the ball + rack and the next bowler is up.
-		if ( Networking.IsHost && Phase == GamePhase.Playing
-			&& channel is not null && channel.Id == ActiveBowlerId )
-			AdvanceTurn();
-	}
-
-	/// <summary>Build one player's walking-Terry avatar (a PlayerController Citizen) at a settee spot
-	/// and hand network ownership to them. Host only — the spawn replicates to every client.</summary>
-	private void SpawnAvatar( Connection channel )
-	{
-		if ( !Networking.IsHost ) return;
-
-		var go = new GameObject( true, $"Terry_{channel.DisplayName}" )
-		{
-			WorldPosition = NextSpawnPosition(),
-			WorldRotation = _lane.IsValid() ? _lane.SetteeFaceRotation : Rotation.Identity, // face down the lane from the settee
-		};
-
-		var player = go.Components.Create<PlayerController>();
-
-		// Citizen body the PlayerController animates (mirrors its own CreateBodyRenderer()).
-		var body = new GameObject( true, "Body" ) { Parent = go };
-		var renderer = body.Components.Create<SkinnedModelRenderer>();
-		renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );
-		player.Renderer = renderer;
-
-		var avatar = go.Components.Create<TerryAvatar>();
-		avatar.DisplayName = channel.DisplayName;
-
-		go.NetworkSpawn( channel );
-	}
-
-	/// <summary>Fan spawned bowlers across the settee width so they don't pile on one spot.</summary>
-	private Vector3 NextSpawnPosition()
-	{
-		var center = _lane.IsValid() ? _lane.SetteeFloorCenter : Vector3.Zero;
-		var half = _lane.IsValid() ? _lane.SetteeHalfWidthUnits : 200f;
-		var slots = Math.Max( 1, MaxPlayers );
-		var slot = _spawnCount++;
-		var t = slots > 1 ? (slot % slots) / (float)(slots - 1) : 0.5f; // 0..1 across the seats, then wraps
-		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, t );
-		return center + new Vector3( 0f, y, 0f );
-	}
+	//
+	// Avatar spawn/despawn is NOT here any more — with N lanes, N directors would each spawn a Terry per
+	// joiner. It's a single server-level responsibility now: see AlleyServer (one INetworkListener on the
+	// scene root that spawns exactly one walking Terry per connection).
 
 	// --- Lobby controls (driven by the lane controls panel) -----------------------------
-	// Join/Leave is each client toggling its OWN avatar's (owner-controlled) Joined flag directly —
-	// no RPC. Start/Stop are host-only and called straight on the director by the host's own controls
-	// panel (clients don't show those buttons), so there's no instance-RPC on the scene object.
+	// Join/Leave is each client toggling its OWN avatar's (owner-controlled) Joined flag directly — no RPC.
+	// START claims this lane's director (takes ownership) and runs the game on the presser's machine; STOP
+	// relinquishes it back to the host. Both are called straight on the director from the local controls
+	// panel, so there's no instance-RPC — the presser IS the new authority.
 
-	/// <summary>Host: lock the joined players into a fresh scorecard and tip off frame 1.</summary>
+	/// <summary>Claim this lane and lock the joined players into a fresh scorecard, tipping off frame 1.
+	/// Any player at the lobby can press START — it takes ownership of the director so THEY run the game.</summary>
 	public void StartGame()
 	{
-		if ( !Networking.IsHost || Phase == GamePhase.Playing ) return;
+		if ( Phase == GamePhase.Playing ) return;
+		ClaimDirector();               // become this lane's authority before we write any synced state
+		if ( !IsDirector ) return;     // ownership didn't take (shouldn't happen with Takeover) — bail
 
 		// Only roster players who joined THIS lane (each lane runs its own game), so with N lanes a START
 		// on one alley doesn't sweep up everyone who's joined elsewhere.
@@ -440,10 +418,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		Log.Info( $"[terryball][game] START — {_players.Count} bowler(s), frame 1" );
 	}
 
-	/// <summary>Host: clear the scorecard and drop everyone back to the lobby (walking the settee).</summary>
+	/// <summary>Director: clear the scorecard, drop everyone back to the lobby (walking the settee), and
+	/// relinquish the lane back to the host so it can be claimed again.</summary>
 	public void StopGame()
 	{
-		if ( !Networking.IsHost ) return;
+		if ( !IsDirector ) return;
 
 		Phase = GamePhase.Lobby;
 		_players.Clear();
@@ -451,36 +430,32 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		_current = 0;
 		_frame = 0;
 		_gameOver = false;
-		ActiveBowlerId = Guid.Empty;
+		ActiveBowlerId = Guid.Empty; // clears everyone's derived TerryAvatar.Bowling
 		State = RoundState.Rolling;
 
-		foreach ( var av in Scene.GetAllComponents<TerryAvatar>() )
-			if ( av.IsValid() ) av.Bowling = false;
-
 		if ( _camera.IsValid() ) _camera.Watching = false;
-		HostReclaimThrowOwnership(); // take the ball + rack back before the host re-racks/parks them
+		HostReclaimThrowOwnership(); // take the ball + rack back before we re-rack/park them
 		FullRack();
 		PlaceBallHome();
 		PublishScores();
+		RelinquishDirector();        // hand the lane back to the host lobby
 		Log.Info( "[terryball][game] STOP — back to the lobby" );
 	}
 
-	/// <summary>Point the spotlight at the current roster player: publish their connection id and flip
-	/// exactly their avatar into Bowling (the rest walk/spectate). Host only.</summary>
+	/// <summary>Point the spotlight at the current roster player by publishing their connection id — every
+	/// avatar's <see cref="TerryAvatar.Bowling"/> is DERIVED from this, so there's nothing per-avatar to
+	/// write (a non-host director can't write another player's field anyway).</summary>
 	private void SetActiveBowler()
 	{
 		TurnSerial++; // a new turn is starting — even if it's the same bowler as last turn (see TurnSerial)
 		ActiveBowlerId = (_current >= 0 && _current < _rosterIds.Count) ? _rosterIds[_current] : Guid.Empty;
-		foreach ( var av in Scene.GetAllComponents<TerryAvatar>() )
-			if ( av.IsValid() )
-				av.Bowling = av.GameObject.Network.Owner?.Id == ActiveBowlerId && ActiveBowlerId != Guid.Empty;
 	}
 
-	/// <summary>Host: mirror the authoritative scoring state into the synced (FromHost) fields every
-	/// client renders from. Called after anything that changes the cards or whose turn it is.</summary>
+	/// <summary>Director: mirror the authoritative scoring state into the synced fields every client
+	/// renders from. Called after anything that changes the cards or whose turn it is.</summary>
 	private void PublishScores()
 	{
-		if ( !Networking.IsHost ) return;
+		if ( !IsDirector ) return;
 
 		RosterNames.Clear();
 		RosterScores.Clear();
@@ -543,8 +518,9 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
 		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
 
-		// Host: bring the shared, networked rack online (once the lane is built) and flag the ball
-		// Takeover so the active bowler can grab it for their turn. Both are idempotent.
+		// Host: bring the shared, networked rack online (once the lane is built) and flag the ball AND the
+		// director Takeover-transferable — the bowler grabs the ball/rack for their turn, and any player
+		// can claim the director to run the lane. World setup, independent of who's the director. Idempotent.
 		if ( Networking.IsHost )
 		{
 			_lane.HostSpawnPins();
@@ -552,6 +528,11 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			{
 				_ball.GameObject.Network.SetOwnerTransfer( OwnerTransfer.Takeover );
 				_ballNetReady = true;
+			}
+			if ( !_dirNetReady && GameObject.Network.Active )
+			{
+				GameObject.Network.SetOwnerTransfer( OwnerTransfer.Takeover );
+				_dirNetReady = true;
 			}
 		}
 
@@ -567,6 +548,29 @@ public sealed class GameDirector : Component, Component.INetworkListener
 			// STOP / disconnect / game-end: restore the ball's physics if a crane left it kinematic.
 			if ( _craneJob != CraneJob.None || _ballCraned ) AbortCrane();
 			return;
+		}
+
+		// Director-side housekeeping (only the lane's authority runs this).
+		if ( IsDirector )
+		{
+			// Self-heal: if we just inherited a "Playing" game with no roster — e.g. the previous director
+			// disconnected and ownership reverted to us (the host) — there's no authoritative state left to
+			// run, so drop the lane back to the lobby cleanly rather than wedging.
+			if ( _players.Count == 0 )
+			{
+				StopGame();
+				return;
+			}
+
+			// If the bowler who's UP has left the session, their orphaned rack would sit forever. Advance
+			// the turn so we reclaim the ball + rack and the next bowler is up. (This used to live in the
+			// host's OnDisconnected; the director may not be the host now, so it's polled here instead.)
+			if ( ActiveBowlerId != Guid.Empty && !GameComplete
+				&& !Networking.Connections.Any( c => c.Id == ActiveBowlerId ) )
+			{
+				Log.Info( "[terryball][game] active bowler left — advancing the turn" );
+				AdvanceTurn();
+			}
 		}
 
 		// Whoever is UP owns the lane's one shared networked ball + rack and runs the whole throw on
@@ -857,12 +861,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		PublishScores();
 	}
 
-	// HOST: in the gap between turns the host owns the ball + rack. Take them back from the bowler who
-	// just finished, drop a clean full deck and park the ball, so the next bowler grabs a stable,
+	// DIRECTOR: in the gap between turns the director owns the ball + rack. Take them back from the bowler
+	// who just finished, drop a clean full deck and park the ball, so the next bowler grabs a stable,
 	// already-correct rack (no contested writes, no leftover pins). No-op outside a live session.
 	private void HostRackForNextBowler()
 	{
-		if ( !Networking.IsHost ) return;
+		if ( !IsDirector ) return;
 		HostReclaimThrowOwnership();
 		FullRack();
 		// No PlaceBallHome: the ball isn't reset to the start between turns. It sits where the last crane
@@ -894,13 +898,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		State = RoundState.Rolling;
 		if ( _camera.IsValid() ) _camera.Watching = false;
 		_ball.ControlsLocked = true; // park the ball; STOP returns everyone to the lobby
-		HostReclaimThrowOwnership(); // own the ball + rack so the host can park/hold them on the final board
+		HostReclaimThrowOwnership(); // own the ball + rack so we can park/hold them on the final board
 		PlaceBallHome();
 
-		// Everyone exits the ball and is back to walking; the final board stays up until STOP.
+		// Everyone exits the ball and is back to walking (derived from the cleared ActiveBowlerId); the
+		// final board stays up until STOP, which relinquishes the lane back to the host lobby.
 		ActiveBowlerId = Guid.Empty;
-		foreach ( var av in Scene.GetAllComponents<TerryAvatar>() )
-			if ( av.IsValid() ) av.Bowling = false;
 
 		PublishScores();
 		Log.Info( "[terryball][game] complete — final board up; press STOP for the lobby" );
@@ -1208,11 +1211,12 @@ public sealed class GameDirector : Component, Component.INetworkListener
 				p.Object.Network.TakeOwnership();
 	}
 
-	// HOST: pull the ball + rack back to the host between/after turns (lobby, game over), so the host
-	// can park the ball and re-rack on objects it owns rather than fighting the last bowler's ownership.
+	// DIRECTOR: pull the ball + rack back to the director between/after turns (lobby, game over), so it can
+	// park the ball and re-rack on objects it owns rather than fighting the last bowler's ownership. The
+	// ball + pins are Takeover, so a non-host director can grab them too.
 	private void HostReclaimThrowOwnership()
 	{
-		if ( !Networking.IsHost ) return;
+		if ( !IsDirector ) return;
 		if ( _ball.IsValid() && _ball.GameObject.Network.Active && !_ball.GameObject.Network.IsOwner )
 			_ball.GameObject.Network.TakeOwnership();
 		foreach ( var p in _lane.Pins )
@@ -1249,12 +1253,13 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		return bits;
 	}
 
-	/// <summary>Host side (called from the bowler's ReportBall RPC): book a settled ball's pinfall onto
-	/// the active player's card, reflect the leave on the host's own panels, and rotate when the
-	/// bowler says their turn is done.</summary>
-	public void HostBookBall( int knocked, int downMask, bool pocket )
+	/// <summary>Director side (routed here from the bowler's TerryAvatar.ReportBall): book a settled ball's
+	/// pinfall onto the active player's card, reflect the leave on our own panels, and classify the call.
+	/// [Rpc.Owner] — invoked by the bowler client, runs on whichever player owns this lane's director.</summary>
+	[Rpc.Owner]
+	public void BookBall( int knocked, int downMask, bool pocket )
 	{
-		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
+		if ( !IsDirector || Phase != GamePhase.Playing ) return;
 
 		PinDownBits = downMask;
 		if ( _current >= 0 && _current < _players.Count && _frame >= 0 && _frame < 10 )
@@ -1272,22 +1277,25 @@ public sealed class GameDirector : Component, Component.INetworkListener
 		PublishScores();
 	}
 
-	/// <summary>Host side (called from the bowler's EndTurn RPC once their dropoff crane has set them back
-	/// on the settee): rotate to the next bowler — which reclaims + re-racks the ball for the pickup.</summary>
-	public void HostEndTurn( Connection caller )
+	/// <summary>Director side (routed from the bowler's TerryAvatar.EndTurn once their dropoff crane has set
+	/// them back on the settee): rotate to the next bowler — which reclaims + re-racks the ball for the
+	/// pickup. [Rpc.Owner], runs on this lane's director owner.</summary>
+	[Rpc.Owner]
+	public void EndTurnRpc()
 	{
-		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
-		if ( caller is null || caller.Id != ActiveBowlerId ) return; // only the player who's up can end it
+		if ( !IsDirector || Phase != GamePhase.Playing ) return;
+		if ( Rpc.Caller is null || Rpc.Caller.Id != ActiveBowlerId ) return; // only the player who's up can end it
 		AdvanceTurn();
 	}
 
-	/// <summary>Host side (called from the bowler's RequestLeaveBall RPC): the active bowler hit the
-	/// escape hatch — end their turn so the game moves on and they drop out of the ball. Recovers from a
-	/// wedged turn without anyone having to restart the game.</summary>
-	public void HostLeaveBall( Connection caller )
+	/// <summary>Director side (routed from the bowler's TerryAvatar.RequestLeaveBall): the active bowler hit
+	/// the escape hatch — end their turn so the game moves on and they drop out of the ball. Recovers from a
+	/// wedged turn without anyone having to restart the game. [Rpc.Owner].</summary>
+	[Rpc.Owner]
+	public void LeaveBallRpc()
 	{
-		if ( !Networking.IsHost || Phase != GamePhase.Playing ) return;
-		if ( caller is null || caller.Id != ActiveBowlerId ) return; // only the player who's up can bail
+		if ( !IsDirector || Phase != GamePhase.Playing ) return;
+		if ( Rpc.Caller is null || Rpc.Caller.Id != ActiveBowlerId ) return; // only the player who's up can bail
 		Log.Info( "[terryball][game] bowler bailed out of the ball — advancing the turn" );
 		AdvanceTurn();
 	}
@@ -1554,15 +1562,16 @@ public sealed class GameDirector : Component, Component.INetworkListener
 	}
 
 	// --- Announcer call-outs -------------------------------------------------------------
-	// The host classifies each settled ball (HostBookBall) into a single call id and broadcasts it.
+	// The director classifies each settled ball (BookBall) into a single call id and broadcasts it.
 	// Every client plays the matching VO clip (2D, gated to its own lane) and pops the lane banner.
 
 	private readonly Random _callRng = new();
 
 	/// <summary>Broadcast: an announcer call fired for this lane. On every client, play the clip (only
 	/// if this is the LOCAL player's lane, so it can't carry across lanes) and pop the call-out banner
-	/// (always — the banner is physically on this lane).</summary>
-	[Rpc.Broadcast( NetFlags.HostOnly )]
+	/// (always — the banner is physically on this lane). Plain Broadcast now — the director owner (which
+	/// may not be the host) is the caller.</summary>
+	[Rpc.Broadcast]
 	public void Announce( string callId )
 	{
 		var myLane = Lane.Of( this );
@@ -1571,6 +1580,20 @@ public sealed class GameDirector : Component, Component.INetworkListener
 
 		CalloutText = CallText( callId );
 		CalloutAt = Time.Now;
+	}
+
+	/// <summary>Broadcast: play one of this lane's pin/ball impact sounds on EVERY client at
+	/// <paramref name="worldPos"/>. Pin collisions only fire on the machine simulating the throw (the
+	/// bowler owns the rack), so without this only the bowler would hear the crash. The sound is positional
+	/// with a large falloff, so spectators and even adjacent lanes hear it, quieter with distance. The
+	/// bowler (pins owner) is the only one whose listeners fire, so exactly one client broadcasts — no
+	/// double-play. Routed through the director because <see cref="PinImpactAudio"/> lives on the (non-
+	/// networked) lane geometry and can't host an RPC itself.</summary>
+	[Rpc.Broadcast( NetFlags.Unreliable )]
+	public void NetPinImpact( Vector3 worldPos, int kind, float amplitude )
+	{
+		var bank = Lane.Of( this )?.Builder?.PinAudio;
+		bank?.PlayRaw( worldPos, (PinImpactAudio.ContactKind)kind, amplitude );
 	}
 
 	// Pin adjacency (immediate neighbours) for split detection: a split is the head pin down plus the

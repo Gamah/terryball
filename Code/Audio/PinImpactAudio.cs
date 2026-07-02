@@ -45,7 +45,9 @@ public sealed class PinImpactAudio : Component
 	// Diagnostic logging of every contact + play/skip decision, on its OWN toggle
 	// (GameDirector.LogPinAudio) so it isn't drowned by the per-frame physics [coast] spam.
 	private GameDirector _director;
-	public bool Debug => (_director.IsValid() ? _director : (_director = Lane.Of( this )?.Director))?.LogPinAudio ?? false;
+	// This lane's director — the networked object we broadcast impact sounds through (and the debug toggle).
+	private GameDirector Director => _director.IsValid() ? _director : (_director = Lane.Of( this )?.Director);
+	public bool Debug => Director?.LogPinAudio ?? false;
 
 	/// <summary>A new impact within this time AND <see cref="CoalesceRadius"/> of a recent one is
 	/// dropped — the many micro-contacts of a scatter collapse into distinct clacks, not a buzz.</summary>
@@ -146,6 +148,28 @@ public sealed class PinImpactAudio : Component
 		// ease so soft taps aren't silent and hard hits don't all pin to full
 		float amplitude = MathF.Sqrt( strength ) * Volume;
 
+		if ( Debug ) Log.Info( $"[pinaudio] PLAY {kind} normalSpeed={normalSpeed:F0} amp={amplitude:F2}" );
+
+		// The physics only run on the machine that owns the rack (the bowler), so a bare local Sound.Play
+		// would only be heard by them. Route the final play decision through the lane's director as a
+		// networked broadcast so EVERY client (spectators + adjacent lanes) hears the crash. Editor/offline
+		// (no live session): play it straight here.
+		if ( Networking.IsActive && Director.IsValid() )
+			Director.NetPinImpact( worldPos, (int)kind, amplitude );
+		else
+			PlayRaw( worldPos, kind, amplitude );
+
+		_playsThisFrame++;
+		_recent.Add( (Time.Now, worldPos) );
+	}
+
+	/// <summary>Actually voice an impact locally (positional). Called on every client from the director's
+	/// <see cref="GameDirector.NetPinImpact"/> broadcast, so spectators and adjacent lanes hear it too.
+	/// The <see cref="ContactKind"/> picks the voicing: pin↔pin = wood clack; ball↔pin = pocket smash
+	/// (clack + low boom); pin↔deck/backstop = low thud.</summary>
+	public void PlayRaw( Vector3 worldPos, ContactKind kind, float amplitude )
+	{
+		if ( !_ready ) return;
 		switch ( kind )
 		{
 			case ContactKind.Ball:
@@ -155,17 +179,12 @@ public sealed class PinImpactAudio : Component
 				break;
 			case ContactKind.Structure:
 				Play( _thud, worldPos, amplitude );
-				if ( strength > 0.6f ) Play( _clack, worldPos, amplitude * 0.6f ); // hard deck slam cracks too
+				if ( amplitude > 0.6f * Volume ) Play( _clack, worldPos, amplitude * 0.6f ); // hard deck slam cracks too
 				break;
 			default: // Pin
 				Play( _clack, worldPos, amplitude );
 				break;
 		}
-
-		if ( Debug ) Log.Info( $"[pinaudio] PLAY {kind} normalSpeed={normalSpeed:F0} amp={amplitude:F2}" );
-
-		_playsThisFrame++;
-		_recent.Add( (Time.Now, worldPos) );
 	}
 
 	private void Play( SoundEvent ev, Vector3 pos, float volume )

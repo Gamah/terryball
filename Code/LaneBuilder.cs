@@ -149,6 +149,10 @@ public sealed class LaneBuilder : Component
 	private bool _built;
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private PinImpactAudio _pinAudio; // shared procedural-crash bank; pins route collisions here
+
+	/// <summary>This lane's shared pin/ball impact-sound bank — the director's NetPinImpact broadcast plays
+	/// through it so every client (not just the simulating bowler) hears the crash.</summary>
+	public PinImpactAudio PinAudio => _pinAudio;
 	private Model _arrowModel; // shared by the seven targeting arrows
 	private readonly List<ModelRenderer> _arrowRenderers = new(); // re-skinned in OnStart (see note there)
 	private Material _pinMat;       // glossy white pin body
@@ -207,6 +211,18 @@ public sealed class LaneBuilder : Component
 	/// ball is spawned/re-racked. Add the ball's radius to sit it on the surface.</summary>
 	public Vector3 RunUpWorldPosition { get; private set; }
 
+	/// <summary>World Z of the lane's play-surface (platform) top — what stairs from the spawn plaza climb
+	/// up to.</summary>
+	public float PlatformTopWorldZ { get; private set; }
+
+	/// <summary>World position at the BACK edge of the approach (behind the run-up), on the platform top and
+	/// on the lane centre line — the mouth of the lane a player steps onto from the stairs.</summary>
+	public Vector3 ApproachEntryWorldPosition { get; private set; }
+
+	/// <summary>Half-width (units) of the lane PLATFORM — the widest part of a lane's footprint. Used to
+	/// size/space the spawn-area stairs to each lane.</summary>
+	public float PlatformHalfWidthUnits { get; private set; }
+
 	/// <summary>Centre of the pin triangle on the platform top — what the camera frames.</summary>
 	public Vector3 PinDeckWorldCenter { get; private set; }
 
@@ -225,6 +241,14 @@ public sealed class LaneBuilder : Component
 	/// <summary>Half the settee's usable DEPTH (units, along the lane axis) — paired with the half-width
 	/// for the on-settee footprint test (<see cref="IsOnSettee"/>).</summary>
 	public float SetteeHalfDepthUnits { get; private set; }
+
+	/// <summary>World Z of the settee/backboard deck top — the raised level the spawn-area stairs climb up
+	/// to reach this lane's settee (where its LANE controls live).</summary>
+	public float SetteeDeckTopWorldZ { get; private set; }
+
+	/// <summary>World position at the BACK edge of the settee deck (behind the seats, on the deck top, on the
+	/// lane centre line) — where the spawn-concourse stairs meet this lane.</summary>
+	public Vector3 SetteeDeckBackWorldPosition { get; private set; }
 
 	/// <summary>Is <paramref name="worldPos"/> standing on the settee carpet footprint? The crane sets a
 	/// bowler back down on the exact spot it grabbed them ONLY when that spot was on the settee; a bowler
@@ -299,6 +323,9 @@ public sealed class LaneBuilder : Component
 		RunUpWorldPosition = ToWorld( new Vector3( approachBackX + approachLen * 0.25f, 0f, H ) );
 		PinDeckWorldCenter = ToWorld( new Vector3( (headPinX + backRowX) * 0.5f, 0f, H ) );
 		PinDeckEndWorldX = ToWorld( new Vector3( pinDeckEndX, 0f, 0f ) ).x;
+		ApproachEntryWorldPosition = ToWorld( new Vector3( approachBackX, 0f, H ) );
+		PlatformTopWorldZ = ApproachEntryWorldPosition.z;
+		PlatformHalfWidthUnits = platformHalf;
 		var pitEndX = pinDeckEndX + PitLengthInches * u;
 
 		// ---- Ramp: one sloped slab whose TOP surface runs from the floor (z = 0) up to the
@@ -391,6 +418,8 @@ public sealed class LaneBuilder : Component
 		var deckFrontX = pitEndX;                          // lane-facing edge = the catch wall
 		var deckDepth = SetteeDepthInches * cu * 1.25f;     // settee footprint + walking margin
 		var deckBackX = deckFrontX + deckDepth;
+		SetteeDeckTopWorldZ = ToWorld( new Vector3( deckBackX, 0f, deckTopZ ) ).z;
+		SetteeDeckBackWorldPosition = ToWorld( new Vector3( deckBackX, 0f, deckTopZ ) );
 		MakeBox( "Backboard", new Vector3( (deckFrontX + deckBackX) * 0.5f, 0f, (pitBottomZ + deckTopZ) * 0.5f ),
 			new Vector3( deckDepth, platformHalf * 2f, deckTopZ - pitBottomZ ), BarrierColor,
 			elasticity: BackstopElasticity, friction: BackstopFriction );
@@ -904,6 +933,8 @@ public sealed class LaneBuilder : Component
 		if ( !_built ) OnEnabled();
 		if ( _pinSpots.Count == 0 ) return;
 
+		var laneId = Lane.Of( this )?.GameObject.Id ?? System.Guid.Empty;
+
 		foreach ( var (number, home) in _pinSpots )
 		{
 			// Root-spawned (NOT parented into the lane): a networked object under a non-networked scene
@@ -915,6 +946,7 @@ public sealed class LaneBuilder : Component
 			var pin = go.Components.Create<Pin>();
 			pin.Number = number;
 			pin.Home = home;
+			pin.LaneId = laneId; // so the root-spawned pin registers with THIS lane, not just the first one
 
 			go.Network.SetOwnerTransfer( OwnerTransfer.Takeover ); // the bowler grabs the rack for their turn
 			go.NetworkSpawn(); // host-owned to start; replicates to every client
