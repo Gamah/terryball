@@ -90,7 +90,10 @@ public sealed class BallCamera : Component
 		}
 		_wasInBallUpdate = inBall;
 
-		if ( director is not null && !inBall ) return;
+		// Only drive the camera while the local player is actually riding the ball. Any other time — walking,
+		// spectating, waiting to be picked up — the PlayerController owns the camera and follows the player,
+		// so we must NOT touch it (otherwise a walking player is stranded looking at the parked ball).
+		if ( !inBall ) return;
 
 		// Refresh from the active lane every frame (it changes as the player moves between lanes), not just
 		// when the cached refs go invalid — otherwise a still-valid old ball would keep the camera on it.
@@ -160,6 +163,10 @@ public sealed class BallCamera : Component
 			_blendFromRot = _appliedRot;
 		}
 		_wasInBall = inBall;
+
+		// Neither riding the ball nor mid hand-off → the walking PlayerController owns the camera; leave it
+		// entirely alone. (Without this the passthrough write below would fight it and strand the view.)
+		if ( !inBall && !_blendActive ) return;
 
 		if ( _blendActive )
 		{

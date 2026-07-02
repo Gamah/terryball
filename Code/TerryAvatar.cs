@@ -173,6 +173,13 @@ public sealed class TerryAvatar : Component
 		_renderer = _player.IsValid() ? _player.Renderer : null;
 		_body = _renderer.IsValid() ? _renderer.GameObject : null;
 
+		// DIAGNOSTIC: confirm on each client whether this avatar arrived and who owns it — a walking
+		// player's camera only follows them if their OWN (non-proxy) avatar exists with an enabled
+		// PlayerController. Helps trace "client joins but doesn't spawn / camera stuck".
+		Log.Info( $"[terryball] avatar OnStart '{GameObject.Name}' proxy={IsProxy} " +
+			$"owner={Network.Owner?.DisplayName ?? "none"} localId={Connection.Local?.DisplayName ?? "?"} " +
+			$"hasPlayer={_player.IsValid()} pos={WorldPosition}" );
+
 		// Publish our own saved ball design onto the synced fields so the shared ball skins to it when it's
 		// our turn (proxies are other people's avatars — they receive theirs over the network instead).
 		if ( !IsProxy )
