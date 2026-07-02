@@ -668,7 +668,11 @@ public sealed class LaneBuilder : Component
 		// panelPx.x, so `scale` (and therefore the circle world-size we like) is unchanged — only the
 		// canvas grew. The board ends up ~2.9× the lane width, big and legible from the approach.
 		var panelPx = new Vector2( 1400f, 1900f );
-		var worldW = laneHalf * 2f * 1.6f * (1400f / 760f); // same px:world ratio as the old board → same circle size
+		// 0.6× the previous board — it was a touch overbearing. Scaling worldW carries through scale, worldH
+		// and the bezel, so the whole board (and its pin circles) shrinks uniformly; y stays 0 = centred on
+		// the lane.
+		const float sizeFactor = 0.6f;
+		var worldW = laneHalf * 2f * 1.6f * (1400f / 760f) * sizeFactor; // same px:world ratio as before, scaled down
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
 		// Float it clear above the backstop AND lift it well overhead so it stops sinking into the back
