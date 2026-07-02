@@ -1328,6 +1328,15 @@ public sealed class GameDirector : Component
 		}
 	}
 
+	/// <summary>Pin impact audio is muted until this time — set whenever pins are teleported onto their
+	/// spots (rack/respot), so the settling contacts from re-racking don't clack while the ball resets.
+	/// Read by <see cref="PinImpactAudio"/> (which also skips the network broadcast while muted).</summary>
+	public float PinAudioQuietUntil { get; private set; }
+
+	/// <summary>How long (seconds) pin audio stays muted after a rack/respot — long enough for the teleported
+	/// pins to settle onto the deck without clacking.</summary>
+	[Property, Group( "Settle" )] public float PinRackQuietSeconds { get; set; } = 0.5f;
+
 	// Place one pin on its home spot, enabled, upright and motionless.
 	private void RespotPin( LaneBuilder.PinPlacement p )
 	{
@@ -1341,6 +1350,8 @@ public sealed class GameDirector : Component
 			rb.Velocity = Vector3.Zero;
 			rb.AngularVelocity = Vector3.Zero;
 		}
+		// Mute the settling clacks from the teleport onto the spot.
+		PinAudioQuietUntil = Time.Now + PinRackQuietSeconds;
 	}
 
 	// Drop the ball on its run-up spot, upright and dead still.

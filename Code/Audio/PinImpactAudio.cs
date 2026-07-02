@@ -107,6 +107,15 @@ public sealed class PinImpactAudio : Component
 	public void ReportImpact( Vector3 worldPos, float normalSpeed, float impulse, ContactKind kind )
 	{
 		if ( !_ready ) return;
+
+		// Muted right after a rack/respot: the pins were just teleported onto their spots and their settling
+		// contacts would clack while the ball resets. Skip entirely (so nothing broadcasts either).
+		if ( Director?.PinAudioQuietUntil > Time.Now )
+		{
+			if ( Debug ) Log.Info( $"[pinaudio] skip {kind} — racking (muted)" );
+			return;
+		}
+
 		if ( normalSpeed < MinNormalSpeed )
 		{
 			if ( Debug ) Log.Info( $"[pinaudio] skip {kind} normalSpeed={normalSpeed:F0} < min {MinNormalSpeed}" );
