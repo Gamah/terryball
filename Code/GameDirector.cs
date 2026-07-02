@@ -1369,7 +1369,7 @@ public sealed class GameDirector : Component
 
 	/// <summary>Seconds of delay added per row (back to front) when re-racking, so the deck fills in a quick
 	/// wave instead of every pin landing at once. Kept small — just enough to read as a cascade.</summary>
-	[Property, Group( "Settle" )] public float RackStaggerSeconds { get; set; } = 0.05f;
+	[Property, Group( "Settle" )] public float RackStaggerSeconds { get; set; } = 0.12f;
 
 	// Back-to-front row index for a pin number (back row = 0, head pin = 3), used to stagger the re-rack so
 	// the deck fills from the back forward. Standard 10-pin layout: 7-8-9-10 / 4-5-6 / 2-3 / 1.
