@@ -1,0 +1,29 @@
+@using Sandbox
+@using Sandbox.UI
+@inherits PanelComponent
+
+@*
+	A small in-world label that floats over a settee podium (LANE / BALL / HELP). Rides a WorldPanel the
+	lane builder places above each podium (LookAtCamera, so it always reads). CRITICAL: a WorldPanel's
+	root has Scale == 2, so the CSS layout area is PanelSize / 2 — sized for that below.
+*@
+
+<root style="width: 100%; height: 100%; align-items: center; justify-content: center;
+             font-family: Poppins, sans-serif;">
+	<div style="flex-direction: row; align-items: center; justify-content: center;
+	            padding: 8px 26px; border-radius: 14px;
+	            background-color: rgba(8,10,16,0.9);
+	            border-width: 3px; border-color: @Accent;">
+		<div style="font-size: 44px; font-weight: 800; letter-spacing: 2px; color: white;">@Label</div>
+	</div>
+</root>
+
+@code
+{
+	/// <summary>The word on the sign — set by the lane builder after Create.</summary>
+	public string Label { get; set; } = "";
+	/// <summary>Border/accent colour (CSS), matching the podium's screen theme.</summary>
+	public string Accent { get; set; } = "rgba(120,160,220,0.9)";
+
+	protected override int BuildHash() => System.HashCode.Combine( Label, Accent );
+}

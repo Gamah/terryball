@@ -53,6 +53,33 @@ public sealed class TerryAvatar : Component
 	[Sync] public Vector3 BowlCamPos { get; set; }
 	[Sync] public Rotation BowlCamRot { get; set; } = Rotation.Identity;
 
+	// --- Ball design (owner-chosen, networked so everyone's ball skins the same when they're up) -----
+	// Each client picks its OWN look in the designer; it's saved client-local (BallDesign.Save) and
+	// mirrored here so the shared ball (BallController) can skin itself to whoever is currently bowling.
+	// Stored as three primitives (not the struct) to keep the sync trivial. Defaults match BallDesign.Default.
+	[Sync] public int BallPatternId { get; set; } = (int)BallDesign.DefaultPattern;
+	[Sync] public float BallPrimaryHue { get; set; } = BallDesign.DefaultPrimaryHue;
+	[Sync] public float BallAccentHue { get; set; } = BallDesign.DefaultAccentHue;
+
+	/// <summary>This avatar's ball design, assembled from the synced fields — read by BallController to
+	/// skin the ball, and by the designer preview.</summary>
+	public BallDesign Design => new()
+	{
+		Pattern = (BallPattern)BallPatternId,
+		PrimaryHue = BallPrimaryHue,
+		AccentHue = BallAccentHue,
+	};
+
+	/// <summary>Owner-side: push a new design onto the synced fields AND persist it to the local json.
+	/// The designer panel calls this as sliders/patterns change (live) and on close.</summary>
+	public void ApplyDesign( BallDesign d, bool save = true )
+	{
+		BallPatternId = (int)d.Pattern;
+		BallPrimaryHue = d.PrimaryHue;
+		BallAccentHue = d.AccentHue;
+		if ( save ) d.Save();
+	}
+
 	private PlayerController _player;
 	private GameObject _body;
 	private bool _wasBowling;   // edge-detect the end of our turn, to walk us back to the settee
@@ -88,11 +115,23 @@ public sealed class TerryAvatar : Component
 	private bool _controlsOpen;
 	private bool _nearStation;
 	private Lane _engagedLane;   // (local) the lane whose station we're currently walked up to
+	private bool _designerOpen;  // (local) the ball-designer screen is up (cursor freed)
+	private bool _nearDesigner;  // (local) standing in the design table's range (show the prompt)
+	private bool _helpOpen;      // (local) the how-to-play screen is up (cursor freed)
+	private bool _nearHelp;      // (local) standing in the help podium's range (show the prompt)
 
 	/// <summary>True while this (local) player has the lane-controls panel open and the cursor freed.</summary>
 	public bool ControlsOpen => _controlsOpen;
 	/// <summary>True while this (local) player is standing in a LaneStation's range (show the prompt).</summary>
 	public bool NearStation => _nearStation;
+	/// <summary>True while this (local) player has the ball-designer screen open and the cursor freed.</summary>
+	public bool DesignerOpen => _designerOpen;
+	/// <summary>True while this (local) player is standing in a BallDesignerStation's range.</summary>
+	public bool NearDesigner => _nearDesigner;
+	/// <summary>True while this (local) player has the how-to-play screen open and the cursor freed.</summary>
+	public bool HelpOpen => _helpOpen;
+	/// <summary>True while this (local) player is standing in a HelpStation's range.</summary>
+	public bool NearHelp => _nearHelp;
 
 	/// <summary>The lane whose HUD / controls THIS (local) player should see: the lane they've joined if
 	/// any, else the lane of the station they're currently walked up to, else null. The HUD reads this
@@ -115,6 +154,11 @@ public sealed class TerryAvatar : Component
 		_player = Components.Get<PlayerController>();
 		_renderer = _player.IsValid() ? _player.Renderer : null;
 		_body = _renderer.IsValid() ? _renderer.GameObject : null;
+
+		// Publish our own saved ball design onto the synced fields so the shared ball skins to it when it's
+		// our turn (proxies are other people's avatars — they receive theirs over the network instead).
+		if ( !IsProxy )
+			ApplyDesign( BallDesign.Load(), save: false );
 
 		_ = DressAvatar();
 	}
@@ -238,42 +282,70 @@ public sealed class TerryAvatar : Component
 		GameObject.WorldRotation = builder.SetteeFaceRotation; // face down the lane from the settee
 	}
 
-	// Find the nearest in-range LaneStation and engage/disengage the lane-controls cursor on E.
+	// Find the nearest in-range walk-up station — lane-controls podium OR ball-designer table — and
+	// engage/disengage its cursor on E. The two share the E key, so whichever is closer owns the prompt.
 	private void UpdateControlsStation()
 	{
-		// No fiddling with the panel while you're riding the ball.
+		// No fiddling with any panel while you're riding the ball.
 		if ( Bowling )
 		{
 			if ( _controlsOpen ) CloseControls();
-			_nearStation = false;
+			if ( _designerOpen ) CloseDesigner();
+			if ( _helpOpen ) CloseHelp();
+			_nearStation = _nearDesigner = _nearHelp = false;
 			return;
 		}
 
-		var station = NearestStation();
-		_nearStation = station is not null;
-		// Remember which lane we're walked up to, so the (joined-or-engaged) ActiveLane drives the HUD
-		// and a JOIN press knows which lane to assign. Keep the last engagement while the panel is open.
-		if ( station is not null )
-			_engagedLane = Lane.Of( station );
+		// A panel that's already open owns input until it's closed (E again / Esc / walking out of range).
+		if ( _controlsOpen ) { ServiceOpen( NearestStation( out _ ) is not null, CloseControls ); UpdateEngagedLane(); return; }
+		if ( _designerOpen ) { ServiceOpen( NearestDesigner( out _ ) is not null, CloseDesigner ); return; }
+		if ( _helpOpen ) { ServiceOpen( NearestHelp( out _ ) is not null, CloseHelp ); return; }
 
-		if ( _controlsOpen )
+		// Nothing open: pick the nearest of the three podiums; it owns the prompt + the E press.
+		var lane = NearestStation( out var laneDist );
+		var designer = NearestDesigner( out var designerDist );
+		var help = NearestHelp( out var helpDist );
+		if ( lane is not null ) _engagedLane = Lane.Of( lane ); // keep the HUD on this lane even if another podium wins the prompt
+
+		_nearStation = _nearDesigner = _nearHelp = false;
+		var best = float.MaxValue;
+		int kind = 0; // 1 = lane, 2 = designer, 3 = help
+		if ( lane is not null && laneDist < best ) { best = laneDist; kind = 1; }
+		if ( designer is not null && designerDist < best ) { best = designerDist; kind = 2; }
+		if ( help is not null && helpDist < best ) { best = helpDist; kind = 3; }
+
+		_nearStation = kind == 1;
+		_nearDesigner = kind == 2;
+		_nearHelp = kind == 3;
+
+		if ( Input.Pressed( "use" ) )
 		{
-			// E again, Escape, or walking out of range closes it and restores the look/cursor.
-			if ( Input.Pressed( "use" ) || Input.EscapePressed || station is null )
-			{
-				Input.EscapePressed = false;
-				CloseControls();
-			}
-			else
-			{
-				// Keep the cursor freed while the panel is open (re-assert in case anything resets it).
-				Mouse.Visibility = MouseVisibility.Visible;
-			}
+			if ( kind == 1 ) OpenControls();
+			else if ( kind == 2 ) OpenDesigner();
+			else if ( kind == 3 ) OpenHelp();
 		}
-		else if ( _nearStation && Input.Pressed( "use" ) )
+	}
+
+	// Shared open-panel servicing: keep the cursor freed, and close on E / Esc / walking out of range.
+	private void ServiceOpen( bool stillInRange, System.Action close )
+	{
+		if ( Input.Pressed( "use" ) || Input.EscapePressed || !stillInRange )
 		{
-			OpenControls();
+			Input.EscapePressed = false;
+			close();
 		}
+		else
+		{
+			Mouse.Visibility = MouseVisibility.Visible; // re-assert in case anything resets it
+		}
+	}
+
+	// While the lane controls are open, keep _engagedLane / _nearStation pointed at the podium we're at.
+	private void UpdateEngagedLane()
+	{
+		var station = NearestStation( out _ );
+		_nearStation = station is not null;
+		if ( station is not null ) _engagedLane = Lane.Of( station );
 	}
 
 	/// <summary>Close the controls panel from the panel's own CLOSE button (restores look + cursor).</summary>
@@ -282,12 +354,60 @@ public sealed class TerryAvatar : Component
 		if ( _controlsOpen ) CloseControls();
 	}
 
-	private LaneStation NearestStation()
+	/// <summary>Close the ball designer from its own CLOSE button (restores look + cursor).</summary>
+	public void RequestCloseDesigner()
+	{
+		if ( _designerOpen ) CloseDesigner();
+	}
+
+	/// <summary>Close the help screen from its own CLOSE button (restores look + cursor).</summary>
+	public void RequestCloseHelp()
+	{
+		if ( _helpOpen ) CloseHelp();
+	}
+
+	private LaneStation NearestStation( out float bestDist )
 	{
 		LaneStation best = null;
-		var bestDist = float.MaxValue;
+		bestDist = float.MaxValue;
 		var me = GameObject.WorldPosition;
 		foreach ( var s in Scene.GetAllComponents<LaneStation>() )
+		{
+			if ( !s.IsValid() ) continue;
+			var dist = s.WorldPosition.Distance( me );
+			if ( dist < s.InteractRange && dist < bestDist )
+			{
+				best = s;
+				bestDist = dist;
+			}
+		}
+		return best;
+	}
+
+	private BallDesignerStation NearestDesigner( out float bestDist )
+	{
+		BallDesignerStation best = null;
+		bestDist = float.MaxValue;
+		var me = GameObject.WorldPosition;
+		foreach ( var s in Scene.GetAllComponents<BallDesignerStation>() )
+		{
+			if ( !s.IsValid() ) continue;
+			var dist = s.WorldPosition.Distance( me );
+			if ( dist < s.InteractRange && dist < bestDist )
+			{
+				best = s;
+				bestDist = dist;
+			}
+		}
+		return best;
+	}
+
+	private HelpStation NearestHelp( out float bestDist )
+	{
+		HelpStation best = null;
+		bestDist = float.MaxValue;
+		var me = GameObject.WorldPosition;
+		foreach ( var s in Scene.GetAllComponents<HelpStation>() )
 		{
 			if ( !s.IsValid() ) continue;
 			var dist = s.WorldPosition.Distance( me );
@@ -317,15 +437,51 @@ public sealed class TerryAvatar : Component
 		Mouse.Visibility = MouseVisibility.Auto;
 	}
 
+	// Ball designer: same cursor/look handling as the lane controls.
+	private void OpenDesigner()
+	{
+		_designerOpen = true;
+		if ( _player.IsValid() ) _player.UseLookControls = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+	}
+
+	private void CloseDesigner()
+	{
+		_designerOpen = false;
+		if ( _player.IsValid() ) _player.UseLookControls = true;
+		Mouse.Visibility = MouseVisibility.Auto;
+		// Auto-save on close: persist whatever the (already-live-applied) design currently is.
+		if ( !IsProxy ) Design.Save();
+	}
+
+	// How-to-play screen: same cursor/look handling as the other podiums (read-only, nothing to save).
+	private void OpenHelp()
+	{
+		_helpOpen = true;
+		if ( _player.IsValid() ) _player.UseLookControls = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+	}
+
+	private void CloseHelp()
+	{
+		_helpOpen = false;
+		if ( _player.IsValid() ) _player.UseLookControls = true;
+		Mouse.Visibility = MouseVisibility.Auto;
+	}
+
 	// Never leave the cursor freed / look disabled if our avatar goes away while engaged.
 	protected override void OnDisabled()
 	{
 		if ( _controlsOpen ) CloseControls();
+		if ( _designerOpen ) CloseDesigner();
+		if ( _helpOpen ) CloseHelp();
 	}
 
 	protected override void OnDestroy()
 	{
 		if ( _controlsOpen ) CloseControls();
+		if ( _designerOpen ) CloseDesigner();
+		if ( _helpOpen ) CloseHelp();
 		_dressCts?.Cancel();
 	}
 

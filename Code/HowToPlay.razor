@@ -1,0 +1,132 @@
+@using Sandbox
+@using Sandbox.UI
+@using System.Linq
+@using Terryball
+@inherits PanelComponent
+
+@*
+	The how-to-play screen. Walking up to the HELP podium on the settee and pressing E opens this
+	(TerryAvatar runs the engage / cursor-free, the same as the other two podiums). Read-only text —
+	joining/starting at the lane controls (incl. the ball-crane toggle), the ball designer, and the
+	actual bowling controls. Pointer-events: none except the modal, like LaneControls/BallDesigner.
+*@
+
+<root style="position: absolute; width: 100%; height: 100%; pointer-events: none;
+             font-family: Poppins, sans-serif; color: white;">
+	@{
+		var me = LocalAvatar;
+	}
+
+	@if ( me is not null )
+	{
+		@* Walk-up prompt: near the help podium but not engaged yet. *@
+		@if ( me.NearHelp && !me.HelpOpen )
+		{
+			<div style="position: absolute; bottom: 64px; left: 0px; right: 0px;
+			            flex-direction: row; justify-content: center;">
+				<div style="font-size: 22px; font-weight: 700; padding: 10px 24px; border-radius: 10px;
+				            background-color: rgba(8,10,16,0.82);
+				            border-width: 1px; border-color: rgba(241,196,15,0.4);">
+					Press <span style="color: #f1c40f; font-weight: 800;">E</span> — How To Play
+				</div>
+			</div>
+		}
+
+		@if ( me.HelpOpen )
+		{
+			<div style="position: absolute; width: 100%; height: 100%;
+			            flex-direction: column; align-items: center; justify-content: center;">
+				<div style="pointer-events: all; flex-direction: column; width: 1000px;
+				            padding: 30px 38px; border-radius: 18px; background-color: rgba(8,10,16,0.97);
+				            border-width: 2px; border-color: rgba(241,196,15,0.5);">
+
+					<div style="flex-direction: row; font-size: 32px; font-weight: 800; letter-spacing: 1px; margin-bottom: 18px;">
+						<div>HOW TO&nbsp;</div>
+						<div style="color: #f1c40f;">PLAY</div>
+					</div>
+
+					<div style="font-size: 17px; font-weight: 800; color: #5aa0e6; margin-bottom: 6px;">1 — JOIN &amp; START (the LANE podium)</div>
+					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 16px;">
+						Walk up to the LANE podium and press E to open the lane controls. Hit JOIN to get on the
+						roster (LEAVE to drop back out); the host presses START when everyone's in. The host can
+						also toggle the Ball Crane there — ON and the crane flies out to scoop each bowler into
+						the ball; OFF and you're placed straight in.
+					</div>
+
+					<div style="font-size: 17px; font-weight: 800; color: #b07de6; margin-bottom: 6px;">2 — DESIGN YOUR BALL (the BALL podium)</div>
+					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 16px;">
+						Press E at the BALL podium to open the ball designer. Pick a pattern (Half &amp; Half,
+						Polkadot, Cubes, Galaxy) and tune the two colour sliders — the spinning preview shows
+						exactly what you'll get. Your look saves automatically when you leave and everyone sees
+						it on the ball when you're up.
+					</div>
+
+					<div style="font-size: 17px; font-weight: 800; color: #2ecc71; margin-bottom: 6px;">3 — BOWL!</div>
+					@* NOTE: no inline <span>s here — s&box panels lay children out as flex items, not inline
+					   text flow, so mixed spans shatter the paragraph into columns. Plain text lines only. *@
+					<div style="flex-direction: column; margin-bottom: 20px;">
+						<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 8px;">
+							When it's your turn you ride INSIDE the ball. Steer with WASD (mouse to look) — you have
+							full control all the way down the approach, right up until the blue THROW line. Crossing
+							it commits the throw and hands the ball to physics, so line it up and give it some pace.
+							Knock down all ten! (New throw styles coming soon.)
+						</div>
+						<div style="font-size: 15px; color: rgba(255,255,255,0.85);">
+							G bails you out of the ball; R respawns you on the settee if you get stuck walking around.
+						</div>
+					</div>
+
+					<div style="font-size: 17px; font-weight: 800; color: #f1c40f; margin-bottom: 6px;">4 — INVITE YOUR FRIENDS!</div>
+					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 10px;">
+						Terryball is multiplayer — up to 16 players share the alley, take turns on the roster and
+						watch each other bowl (more lanes coming soon!). Invite friends through the Steam overlay,
+						and come hang out:
+					</div>
+					<div style="pointer-events: all; align-self: flex-start; padding: 10px 22px; border-radius: 9px;
+					            font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 20px;
+					            background-color: rgba(88,101,242,0.85);"
+					     onclick=@CopyDiscord>
+						@DiscordLabel
+					</div>
+
+					<div style="flex-direction: row;">
+						<div style="flex-grow: 1;"></div>
+						<div style="pointer-events: all; padding: 12px 28px; border-radius: 9px;
+						            font-size: 18px; font-weight: 700; cursor: pointer;
+						            background-color: rgba(255,255,255,0.12);"
+						     onclick=@CloseHelp>
+							CLOSE (E)
+						</div>
+					</div>
+				</div>
+			</div>
+		}
+	}
+</root>
+
+@code
+{
+	private TerryAvatar LocalAvatar =>
+		Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
+
+	private void CloseHelp() => LocalAvatar?.RequestCloseHelp();
+
+	// Discord invite (same community as rotaliate) — click to copy, with a brief "copied" confirmation.
+	private const string DiscordUrl = "https://discord.gg/GG8HWUfFpD";
+	private RealTimeSince _sinceCopied = 999f;
+
+	private string DiscordLabel => _sinceCopied < 2f
+		? "✓  Discord invite copied to clipboard"
+		: "Join the Discord  ·  click to copy invite";
+
+	private void CopyDiscord()
+	{
+		try { Clipboard.SetText( DiscordUrl ); _sinceCopied = 0f; } catch { }
+	}
+
+	protected override int BuildHash()
+	{
+		var me = LocalAvatar;
+		return System.HashCode.Combine( me?.NearHelp, me?.HelpOpen, _sinceCopied < 2f );
+	}
+}

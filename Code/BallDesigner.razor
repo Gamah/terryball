@@ -1,0 +1,160 @@
+@using Sandbox
+@using Sandbox.UI
+@using System.Linq
+@using Terryball
+@inherits PanelComponent
+
+@*
+	The ball-designer screen. Walking up to the design table behind the settee and pressing E opens this
+	(TerryAvatar runs the engage / cursor-free, the same as the lane controls). The LEFT half is the
+	controls — pattern picker + two hue sliders + Save/Close — and the RIGHT half is a live spinning 3-D
+	preview (BallPreviewPanel, its own SceneWorld so it can't hijack the main view). Every change is
+	applied LIVE to the local avatar's networked design fields; Save and simply leaving both persist it to
+	the player json (see TerryAvatar.CloseDesigner). Pointer-events: none except the modal so the freed
+	cursor can click it, exactly like LaneControls.
+*@
+
+<root style="position: absolute; width: 100%; height: 100%; pointer-events: none;
+             font-family: Poppins, sans-serif; color: white;">
+	@{
+		var me = LocalAvatar;
+	}
+
+	@if ( me is not null )
+	{
+		@* Walk-up prompt: near the table but not engaged yet. *@
+		@if ( me.NearDesigner && !me.DesignerOpen )
+		{
+			<div style="position: absolute; bottom: 64px; left: 0px; right: 0px;
+			            flex-direction: row; justify-content: center;">
+				<div style="font-size: 22px; font-weight: 700; padding: 10px 24px; border-radius: 10px;
+				            background-color: rgba(8,10,16,0.82);
+				            border-width: 1px; border-color: rgba(180,140,220,0.4);">
+					Press <span style="color: #f1c40f; font-weight: 800;">E</span> — Ball Designer
+				</div>
+			</div>
+		}
+
+		@if ( me.DesignerOpen )
+		{
+			var d = CurrentDesign;
+			<div style="position: absolute; width: 100%; height: 100%; pointer-events: all;
+			            flex-direction: row; background-color: rgba(6,7,12,0.55);">
+
+				@* LEFT: controls. *@
+				<div style="width: 50%; height: 100%; flex-direction: column; padding: 48px 56px;
+				            background-color: rgba(8,10,16,0.96); justify-content: center;">
+
+					<div style="font-size: 34px; font-weight: 800; letter-spacing: 1px; margin-bottom: 6px;">
+						BALL <span style="color: #b07de6;">DESIGNER</span>
+					</div>
+					<div style="font-size: 15px; color: rgba(255,255,255,0.5); margin-bottom: 28px;">
+						Your ball skins to this when it's your turn to bowl.
+					</div>
+
+					@* Pattern picker. *@
+					<div style="font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.55);
+					            letter-spacing: 1px; margin-bottom: 10px;">PATTERN</div>
+					<div style="flex-direction: row; flex-wrap: wrap; margin-bottom: 30px;">
+						@foreach ( var p in Patterns )
+						{
+							var on = d.Pattern == p;
+							<div style="pointer-events: all; margin-right: 10px; margin-bottom: 10px;
+							            padding: 12px 22px; border-radius: 10px; cursor: pointer;
+							            font-size: 17px; font-weight: 700;
+							            border-width: 2px;
+							            border-color: @(on ? "rgba(176,125,230,0.95)" : "rgba(255,255,255,0.12)");
+							            background-color: @(on ? "rgba(176,125,230,0.22)" : "rgba(255,255,255,0.05)");"
+							     onclick=@(() => SetPattern( p ))>
+								@Label( p )
+							</div>
+						}
+					</div>
+
+					@* Primary hue. *@
+					<div style="flex-direction: row; align-items: center; margin-bottom: 6px;">
+						<div style="font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.55);
+						            letter-spacing: 1px; flex-grow: 1;">PRIMARY COLOR</div>
+						<div style="width: 30px; height: 30px; border-radius: 6px;
+						            border-width: 1px; border-color: rgba(255,255,255,0.25);
+						            background-color: @d.Primary.Hex;"></div>
+					</div>
+					<SliderControl style="margin-bottom: 26px;" Min="@(0f)" Max="@(360f)" Step="@(1f)"
+					               Value=@d.PrimaryHue OnValueChanged=@SetPrimary></SliderControl>
+
+					@* Accent hue. *@
+					<div style="flex-direction: row; align-items: center; margin-bottom: 6px;">
+						<div style="font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.55);
+						            letter-spacing: 1px; flex-grow: 1;">ACCENT COLOR</div>
+						<div style="width: 30px; height: 30px; border-radius: 6px;
+						            border-width: 1px; border-color: rgba(255,255,255,0.25);
+						            background-color: @d.Accent.Hex;"></div>
+					</div>
+					<SliderControl style="margin-bottom: 40px;" Min="@(0f)" Max="@(360f)" Step="@(1f)"
+					               Value=@d.AccentHue OnValueChanged=@SetAccent></SliderControl>
+
+					@* Buttons. *@
+					<div style="flex-direction: row; align-items: center;">
+						<div style="pointer-events: all; margin-right: 12px; padding: 13px 34px; border-radius: 9px;
+						            font-size: 18px; font-weight: 700; cursor: pointer;
+						            background-color: rgba(46,204,113,0.9);"
+						     onclick=@SaveDesign>
+							SAVE
+						</div>
+						<div style="flex-grow: 1;"></div>
+						<div style="pointer-events: all; padding: 13px 30px; border-radius: 9px;
+						            font-size: 18px; font-weight: 700; cursor: pointer;
+						            background-color: rgba(255,255,255,0.12);"
+						     onclick=@CloseDesigner>
+							CLOSE (E)
+						</div>
+					</div>
+				</div>
+
+				@* RIGHT: live 3-D preview (its own SceneWorld — see BallPreviewPanel). *@
+				<BallPreviewPanel @ref="_preview" style="width: 50%; height: 100%;"></BallPreviewPanel>
+			</div>
+		}
+	}
+</root>
+
+@code
+{
+	private BallPreviewPanel _preview;
+
+	private static readonly BallPattern[] Patterns =
+		{ BallPattern.HalfHalf, BallPattern.Polkadot, BallPattern.Cubes, BallPattern.Galaxy };
+
+	private TerryAvatar LocalAvatar =>
+		Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
+
+	private BallDesign CurrentDesign => LocalAvatar?.Design ?? BallDesign.Default;
+
+	private static string Label( BallPattern p ) => p switch
+	{
+		BallPattern.HalfHalf => "Half & Half",
+		BallPattern.Polkadot => "Polkadot",
+		BallPattern.Cubes => "Cubes",
+		BallPattern.Galaxy => "Galaxy",
+		_ => p.ToString(),
+	};
+
+	// Live edits — applied to the synced fields immediately (no save; Save/Close persist).
+	private void SetPattern( BallPattern p ) => LocalAvatar?.ApplyDesign( CurrentDesign with { Pattern = p }, save: false );
+	private void SetPrimary( float h ) => LocalAvatar?.ApplyDesign( CurrentDesign with { PrimaryHue = h }, save: false );
+	private void SetAccent( float h ) => LocalAvatar?.ApplyDesign( CurrentDesign with { AccentHue = h }, save: false );
+
+	private void SaveDesign() => CurrentDesign.Save();
+	private void CloseDesigner() => LocalAvatar?.RequestCloseDesigner();
+
+	// Push the live design into the 3-D preview whenever the tree rebuilds (a slider/pattern changed).
+	// The @ref preview persists across rebuilds, so this just re-skins it — it isn't recreated each tick.
+	protected override void OnTreeBuilt() => _preview?.SetDesign( CurrentDesign );
+
+	protected override int BuildHash()
+	{
+		var me = LocalAvatar;
+		return System.HashCode.Combine( me?.NearDesigner, me?.DesignerOpen,
+			me?.BallPatternId, me?.BallPrimaryHue, me?.BallAccentHue );
+	}
+}

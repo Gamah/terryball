@@ -541,20 +541,30 @@ public sealed class LaneBuilder : Component
 		MakeSideBench( "SetteeBenchLeft", midX, -benchEdgeY, +1f, benchLenX, baseZ + riser, seatH, seatD, backH, cu );
 		MakeSideBench( "SetteeBenchRight", midX, +benchEdgeY, -1f, benchLenX, baseZ + riser, seatH, seatD, backH, cu );
 
-		// Walk-up control podium + interaction station: stand anywhere on the settee and press E to open
-		// the lane controls and free the cursor (TerryAvatar runs the engage). The podium is a visible
-		// "desk" so there's something to walk up to; the station's range covers the whole settee. Sits
-		// toward the back of the settee (away from the lane edge) so it doesn't block the view.
+		// Three walk-up podiums across the back of the settee: LANE (controls), BALL (designer) and HELP
+		// (how-to-play), each labelled with a floating sign. Each has its own interaction station;
+		// TerryAvatar picks whichever podium is nearest, so their ranges are kept tight (one third of the
+		// settee back each) rather than the whole settee — that's what lets a player stand-and-pick.
 		var podiumX = frontX + away * depth * 0.84f;
+		var podiumTopZ = baseZ + riser;                 // podiums stand on the carpet
 		var podiumH = 40f * cu;
-		MakeBox( "ControlPodium", new Vector3( podiumX, 0f, baseZ + riser + podiumH * 0.5f ),
-			new Vector3( 18f * cu, 44f * cu, podiumH ), BenchFrameColor );
-		MakeDecal( "ControlPodiumTop", new Vector3( podiumX, 0f, baseZ + riser + podiumH + 1f * cu ),
-			new Vector3( 20f * cu, 46f * cu, 2f * cu ), MonitorBezelColor );
+		var spacing = halfW * 0.5f;                      // LANE at -spacing, BALL at centre, HELP at +spacing
+		var stationRange = MathF.Max( halfW * 0.45f, 120f );
 
-		var station = new GameObject( true, "LaneStation" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		station.LocalPosition = new Vector3( podiumX, 0f, baseZ + riser );
-		station.Components.Create<LaneStation>().InteractRange = MathF.Max( halfW + depth * 0.7f, 200f );
+		BuildPodium( "ControlPodium", cu, podiumX, -spacing, podiumTopZ, podiumH, MonitorBezelColor, "LANE", "rgba(120,160,220,0.95)" );
+		var laneGo = new GameObject( true, "LaneStation" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		laneGo.LocalPosition = new Vector3( podiumX, -spacing, podiumTopZ );
+		laneGo.Components.Create<LaneStation>().InteractRange = stationRange;
+
+		BuildPodium( "DesignTable", cu, podiumX, 0f, podiumTopZ, podiumH, BenchCushionColor, "BALL", "rgba(176,125,230,0.95)" );
+		var designGo = new GameObject( true, "BallDesignerStation" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		designGo.LocalPosition = new Vector3( podiumX, 0f, podiumTopZ );
+		designGo.Components.Create<BallDesignerStation>().InteractRange = stationRange;
+
+		BuildPodium( "HelpPodium", cu, podiumX, spacing, podiumTopZ, podiumH, BenchFrameColor, "HELP", "rgba(241,196,15,0.95)" );
+		var helpGo = new GameObject( true, "HelpStation" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		helpGo.LocalPosition = new Vector3( podiumX, spacing, podiumTopZ );
+		helpGo.Components.Create<HelpStation>().InteractRange = stationRange;
 
 		BuildMonitor( cu, frontX, away, baseZ + riser, boardW, boardGap );
 	}
@@ -578,6 +588,40 @@ public sealed class LaneBuilder : Component
 		var backY = centerY - inwardY * (seatD * 0.5f - backThk * 0.5f);
 		MakeDecal( $"{name}Back", new Vector3( centerX, backY, floorZ + seatH + backH * 0.5f ),
 			new Vector3( lengthX, backThk, backH ), BenchFrameColor );
+	}
+
+	/// <summary>A walk-up podium at the back of the settee: a solid desk box + a themed top + a floating,
+	/// billboarded label sign (LANE / BALL / HELP). The caller adds the matching interaction station GO at
+	/// (<paramref name="x"/>, <paramref name="y"/>, <paramref name="baseTopZ"/>). <paramref name="topColor"/>
+	/// themes the desk top; <paramref name="accentHex"/> is the sign's border colour (matches its screen).</summary>
+	private void BuildPodium( string name, float cu, float x, float y, float baseTopZ, float podiumH, Color topColor, string label, string accentHex )
+	{
+		// The desk you walk up to (solid, so you can't walk through it).
+		MakeBox( name, new Vector3( x, y, baseTopZ + podiumH * 0.5f ),
+			new Vector3( 18f * cu, 44f * cu, podiumH ), BenchFrameColor );
+		MakeDecal( $"{name}Top", new Vector3( x, y, baseTopZ + podiumH + 1f * cu ),
+			new Vector3( 20f * cu, 46f * cu, 2f * cu ), topColor );
+
+		// A floating label sign above it. Billboarded (LookAtCamera) so it always reads from the settee.
+		const float s2w = 0.05f;                            // WorldPanel.ScreenToWorldScale (world units per px @ scale 1)
+		var panelPx = new Vector2( 400f, 160f );
+		var scale = (55f * cu) / (panelPx.x * s2w);         // make the sign ~55·cu wide
+		var signH = panelPx.y * s2w * scale;
+		var signZ = baseTopZ + podiumH + 14f * cu + signH * 0.5f;
+
+		var sign = new GameObject( true, $"{name}Sign" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		sign.LocalPosition = new Vector3( x, y, signZ );
+		sign.LocalScale = scale;
+
+		var wp = sign.Components.Create<WorldPanel>();
+		wp.PanelSize = panelPx;
+		wp.RenderScale = 1f;
+		wp.LookAtCamera = true;
+		wp.InteractionRange = 100000f;
+
+		var s = sign.Components.Create<StationSign>();
+		s.Label = label;
+		s.Accent = accentHex;
 	}
 
 	/// <summary>The big backstop pin board: a WorldPanel (PinReadout) exactly the lane's width,
