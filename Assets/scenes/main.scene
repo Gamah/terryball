@@ -23,7 +23,7 @@
             "_type": "gameobject",
             "go": "3db541a9-4e38-4efe-bc9b-858000feb78e"
           },
-          "SpawnSpread": 900
+          "SpawnSpread": 120
         }
       ]
     },
@@ -479,7 +479,7 @@
           "StairsRun": 2200,
           "ConcourseDepth": 2400,
           "SideMargin": 1200,
-          "TreadRise": 22
+          "PodiumSeparation": 300
         }
       ],
       "Children": [

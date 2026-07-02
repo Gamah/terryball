@@ -34,12 +34,11 @@ public sealed class SpawnAreaBuilder : Component
 	[Property] public float ConcourseDepth { get; set; } = 2400f;
 	/// <summary>Extra half-width (world units) the concourse extends past the outermost lanes.</summary>
 	[Property] public float SideMargin { get; set; } = 1200f;
-	/// <summary>Cosmetic tread spacing (world units of RISE per drawn step) on the stair ramps.</summary>
-	[Property] public float TreadRise { get; set; } = 22f;
+	/// <summary>Distance (world units) between the BALL and HELP podiums; players spawn midway between them.</summary>
+	[Property] public float PodiumSeparation { get; set; } = 300f;
 
 	[Property, Group( "Colors" )] public Color FloorColor { get; set; } = new( 0.14f, 0.15f, 0.20f, 1f );
 	[Property, Group( "Colors" )] public Color StairColor { get; set; } = new( 0.20f, 0.22f, 0.28f, 1f );
-	[Property, Group( "Colors" )] public Color TreadColor { get; set; } = new( 0.28f, 0.30f, 0.37f, 1f );
 	[Property, Group( "Colors" )] public Color PodiumColor { get; set; } = new( 0.16f, 0.17f, 0.22f, 1f );
 	[Property, Group( "Colors" )] public Color DesignTopColor { get; set; } = new( 0.45f, 0.32f, 0.60f, 1f );
 	[Property, Group( "Colors" )] public Color HelpTopColor { get; set; } = new( 0.30f, 0.52f, 0.40f, 1f );
@@ -99,55 +98,42 @@ public sealed class SpawnAreaBuilder : Component
 		var podiumTopZ = slabThk;
 		var podiumH = 40f * cu;
 		var podRow = concFrontX + ConcourseDepth * 0.42f; // a bit forward of the concourse middle
-		BuildPodium( "SpawnDesignTable", cu, podRow, yMid - 380f * cu, podiumTopZ, podiumH,
+		var podHalf = PodiumSeparation * 0.5f * cu;        // BALL / HELP a short way either side of centre
+		BuildPodium( "SpawnDesignTable", cu, podRow, yMid - podHalf, podiumTopZ, podiumH,
 			DesignTopColor, "BALL", "rgba(176,125,230,0.95)" );
-		Attach<BallDesignerStation>( new Vector3( podRow, yMid - 380f * cu, podiumTopZ ), s => s.InteractRange = 160f );
+		Attach<BallDesignerStation>( new Vector3( podRow, yMid - podHalf, podiumTopZ ), s => s.InteractRange = 160f );
 
-		BuildPodium( "SpawnHelpPodium", cu, podRow, yMid + 380f * cu, podiumTopZ, podiumH,
+		BuildPodium( "SpawnHelpPodium", cu, podRow, yMid + podHalf, podiumTopZ, podiumH,
 			HelpTopColor, "HELP", "rgba(120,220,160,0.95)" );
-		Attach<HelpStation>( new Vector3( podRow, yMid + 380f * cu, podiumTopZ ), s => s.InteractRange = 160f );
+		Attach<HelpStation>( new Vector3( podRow, yMid + podHalf, podiumTopZ ), s => s.InteractRange = 160f );
 
-		// ---- Spawn point: middle-back of the concourse, facing the lanes (-x) so players look toward the stairs.
+		// ---- Spawn point: BETWEEN the two podiums (same row, centre Y), facing the lanes (-x).
 		if ( SpawnPoint.IsValid() )
 		{
-			SpawnPoint.WorldPosition = new Vector3( concBackX - ConcourseDepth * 0.25f, yMid, slabThk + 2f );
+			SpawnPoint.WorldPosition = new Vector3( podRow, yMid, slabThk + 2f );
 			SpawnPoint.WorldRotation = Rotation.FromYaw( 180f ); // face -x, toward the stairs/lanes
 		}
 	}
 
-	// A solid staircase up to a settee: a sloped ramp collider (the walkable surface) with cosmetic tread +
-	// riser slabs stacked on top so it reads as steps. Ramp rises toward the lanes (-x).
+	// A plain walkable ramp up to a settee (rises toward the lanes, -x). For now this is just the ramp —
+	// no separate stepped treads — so the surface players walk on is the same one they see.
 	private void BuildStairs( float laneY, float halfWidth, float footX, float topX, float topZ )
 	{
 		var run = footX - topX;                 // positive (foot is farther out in +x)
 		if ( run <= 1f || topZ <= 1f ) return;
 		var angle = MathF.Atan2( topZ, run );   // rises as x decreases toward the deck
 		var angleDeg = MathX.RadianToDegree( angle );
-		var thk = 30f;
+		var thk = 60f;
 		var len = MathF.Sqrt( run * run + topZ * topZ );
 		var midX = (footX + topX) * 0.5f;
 
-		// Sloped slab pushed below its top surface (like the lane ramp, mirrored in x since it rises toward -x).
-		MakeBox( $"Stairs_{laneY:F0}",
+		// A plain sloped RAMP — one solid collider whose top surface runs foot(z=0) → deck(z=topZ), like the
+		// lane approach ramp (mirrored in x since it rises toward -x). This is the walkable surface; the
+		// cosmetic stepped treads are dropped for now (they were collider-less and players fell through).
+		MakeBox( $"StairRamp_{laneY:F0}",
 			new Vector3( midX - MathF.Sin( angle ) * thk * 0.5f, laneY, topZ * 0.5f - MathF.Cos( angle ) * thk * 0.5f ),
 			new Vector3( len, halfWidth * 2f, thk ), StairColor,
 			rot: Rotation.FromPitch( angleDeg ) );
-
-		// Cosmetic treads + risers up the slope.
-		var steps = Math.Max( 1, (int)MathF.Ceiling( topZ / MathF.Max( 4f, TreadRise ) ) );
-		var dz = topZ / steps;
-		var dx = run / steps;
-		var treadThk = 4f;
-		for ( var i = 0; i < steps; i++ )
-		{
-			var stepTopZ = (i + 1) * dz;
-			var stepX = footX - (i + 0.5f) * dx; // moves toward the deck as we climb
-			MakeDecal( $"Tread_{laneY:F0}_{i}", new Vector3( stepX, laneY, stepTopZ + treadThk * 0.5f ),
-				new Vector3( dx, halfWidth * 2f, treadThk ), TreadColor );
-			// Riser: the vertical face at the front (foot side) of the step.
-			MakeDecal( $"Riser_{laneY:F0}_{i}", new Vector3( stepX + dx * 0.5f, laneY, stepTopZ - dz * 0.5f ),
-				new Vector3( treadThk, halfWidth * 2f, dz ), StairColor );
-		}
 	}
 
 	/// <summary>A walk-up podium: a solid desk box + a themed top + a floating billboarded label sign

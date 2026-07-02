@@ -258,14 +258,40 @@ public sealed class TerryAvatar : Component
 
 			UpdateControlsStation();
 
-			// R: respawn back onto the settee — the escape hatch for a player who's walked off the lane,
-			// fallen through the world, or otherwise got stuck. Not while riding the ball (that's G to
-			// exit) or typing in chat. Teleports to the settee of the lane we're at (else lane 1).
+			// R: respawn — the escape hatch for a player who's walked off, fallen through the world, or got
+			// stuck. Not while riding the ball (that's G to exit) or typing in chat. Goes to the settee of the
+			// lane we're SIGNED IN to (on its scorecard), else back to the shared spawn concourse.
 			if ( !Bowling && !ChatPanel.IsOpen && Input.Keyboard.Pressed( "R" ) )
-				ReturnToSettee();
+				Respawn();
 		}
 		_wasBowling = Bowling;
 		_wasCarried = Carried;
+	}
+
+	// R-respawn: to the settee of the lane we're signed in to (JoinedLaneId — i.e. on its scorecard), else
+	// back to the shared spawn concourse. Distinct from ReturnToSettee (crane/turn-end), which honours the
+	// exact grab spot.
+	private void Respawn()
+	{
+		// Signed in to a lane → drop onto that lane's settee, fanned so returning players don't stack.
+		var builder = Lane.ById( Scene, JoinedLaneId )?.Builder;
+		if ( builder.IsValid() && builder.SetteeHalfWidthUnits > 0f )
+		{
+			var half = builder.SetteeHalfWidthUnits;
+			var spread = (Math.Abs( Network.Owner?.Id.GetHashCode() ?? 0 ) % 1000) / 1000f; // 0..1, stable
+			var y = MathX.Lerp( -half * 0.7f, half * 0.7f, spread );
+			GameObject.WorldPosition = builder.SetteeFloorCenter + new Vector3( 0f, y, 0f );
+			GameObject.WorldRotation = builder.SetteeFaceRotation;
+			return;
+		}
+
+		// Not on an active lane → back to the shared spawn area (between the BALL/HELP podiums).
+		var spawn = Scene.GetAllComponents<AlleyServer>().FirstOrDefault()?.SpawnArea;
+		if ( spawn.IsValid() )
+		{
+			GameObject.WorldPosition = spawn.WorldPosition;
+			GameObject.WorldRotation = spawn.WorldRotation;
+		}
 	}
 
 	// Drop us back onto the settee carpet, fanned across its width by a stable per-player offset so

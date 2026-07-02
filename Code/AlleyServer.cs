@@ -22,7 +22,7 @@ public sealed class AlleyServer : Component, Component.INetworkListener
 	[Property] public GameObject SpawnArea { get; set; }
 
 	/// <summary>Half-width (units) of the spread joiners are fanned across at the spawn point.</summary>
-	[Property] public float SpawnSpread { get; set; } = 300f;
+	[Property] public float SpawnSpread { get; set; } = 120f;
 
 	private int _spawnCount; // players dropped so far, to fan them out
 
