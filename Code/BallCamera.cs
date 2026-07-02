@@ -165,8 +165,16 @@ public sealed class BallCamera : Component
 		_wasInBall = inBall;
 
 		// Neither riding the ball nor mid hand-off → the walking PlayerController owns the camera; leave it
-		// entirely alone. (Without this the passthrough write below would fight it and strand the view.)
-		if ( !inBall && !_blendActive ) return;
+		// entirely alone. (Without this the passthrough write below would fight it and strand the view.) But
+		// TRACK what it's showing: a scoop that fires next frame eases _blendFrom = _appliedPos, so this must
+		// be the live walk view — not a stale pose left over from our last throw, which would snap the camera
+		// hard to that old vantage on the first scoop frame before easing in.
+		if ( !inBall && !_blendActive )
+		{
+			_appliedPos = targetPos;
+			_appliedRot = targetRot;
+			return;
+		}
 
 		if ( _blendActive )
 		{
