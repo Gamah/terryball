@@ -30,20 +30,22 @@ public sealed class BallPreviewPanel : ScenePanel
 	{
 		_world = new SceneWorld();
 
-		// Sun + fill point light + soft ambient so the sphere reads as a shaded ball (same recipe the
-		// engine's own object thumbnails use). A bare SceneWorld has no skybox/reflection probe, so the
-		// preview uses an OPAQUE PBR material (below) rather than the real ball's glass — glass renders
-		// near-black here for want of an environment to reflect.
-		_ = new SceneDirectionalLight( _world, Rotation.From( 55, 200, 0 ), Color.White * 2.5f )
-		{
-			ShadowsEnabled = false,
-		};
-		_ = new ScenePointLight( _world, new Vector3( -60, 60, 60 ), 400f, new Color( 1.0f, 0.95f, 0.9f ) * 8f );
-		_world.AmbientLightColor = new Color( 0.35f, 0.38f, 0.45f );
+		// Reproduce the GAME scene's environment exactly (its Sun + 2D Skybox + Envmap probe) so the glass
+		// shell reads the same translucent, sky-reflecting way it does in-world — a bare SceneWorld gives
+		// glass nothing to reflect (renders near-black), which is why the preview looked flat/opaque before.
+		// The skybox is the only light source that "moves" with the ball; there's no near point light now
+		// (that read as a light sitting right on the ball).
+		_ = new SceneSkyBox( _world, Material.Load( "materials/skybox/skybox_day_01.vmat" ) );
+		_ = new SceneCubemap( _world, Texture.Load( "textures/cubemaps/default2.vtex" ),
+			BBox.FromPositionAndSize( Vector3.Zero, int.MaxValue ) );
+		// The scene's Sun: rotation + colour copied from main.scene's DirectionalLight.
+		_ = new SceneDirectionalLight( _world, new Rotation( -0.27f, 0.27f, 0.65f, 0.65f ),
+			new Color( 0.94419f, 0.97767f, 1f ) ) { ShadowsEnabled = false };
+		_world.AmbientLightColor = new Color( 0.2532f, 0.32006f, 0.35349f ); // the Sun's SkyColor term
 
-		// Opaque PBR sphere so the pattern + hues read clearly and lit, regardless of the design.
-		_material = Material.Create( "ballpreview", "shaders/complex.shader" );
-		_material.Set( "g_flMetalness", 0.0f );
+		// The REAL ball material — a copy of the in-world glass shell (translucency intact) so the preview
+		// is an exact copy of the actual ball. SetDesign swaps its colour map to the chosen design.
+		_material = Material.Load( "materials/glassball_poke.vmat" ).CreateCopy();
 
 		_ball = new SceneModel( _world, "models/dev/sphere.vmdl", Transform.Zero );
 		_ball.SetMaterialOverride( _material );
@@ -53,9 +55,9 @@ public sealed class BallPreviewPanel : ScenePanel
 		Camera.Position = new Vector3( -110, 0, 8 );
 		Camera.Rotation = Rotation.FromYaw( 0 );
 		Camera.FieldOfView = 45;
-		Camera.BackgroundColor = new Color( 0.04f, 0.05f, 0.07f ); // dark alley-ish backdrop
+		Camera.BackgroundColor = Color.Transparent; // let the skybox fill the backdrop
 		Camera.ZNear = 1f;
-		Camera.ZFar = 500f;
+		Camera.ZFar = 100000f; // the skybox sits at the far plane
 	}
 
 	/// <summary>Rebuild the preview ball's colour map to <paramref name="d"/> (no-op if unchanged).</summary>
