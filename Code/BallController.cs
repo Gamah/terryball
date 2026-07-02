@@ -164,6 +164,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 		if ( _built ) return;
 		_built = true;
 
+		// Per-lane collision tag, set BEFORE the collider is built (shapes snapshot GameObject.Tags at build
+		// time): this ball then only collides with its OWN lane's pins — the Collision.config ignores
+		// DIFFERENT lane tags, so you can't drive your ball into a neighbour's rack and grief it.
+		var laneTag = Lane.Of( this )?.CollisionTag;
+		if ( !string.IsNullOrEmpty( laneTag ) )
+			GameObject.Tags.Add( laneTag );
+
 		// Physics: dynamic sphere that grips the floor so it rolls instead of sliding.
 		// Create the Rigidbody first, then the collider.
 		_body = Components.GetOrCreate<Rigidbody>();

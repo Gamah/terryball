@@ -42,6 +42,26 @@ public sealed class Lane : Component
 	public static Lane Local( Scene scene )
 		=> scene?.GetAllComponents<Lane>().FirstOrDefault();
 
+	/// <summary>This lane's 0-based index in stable left-to-right (by world Y) order across all lanes.
+	/// Drives the per-lane collision tag so a lane's pins only collide with its OWN ball.</summary>
+	public int Index
+	{
+		get
+		{
+			var lanes = Scene.GetAllComponents<Lane>()
+				.Where( l => l.IsValid() )
+				.OrderBy( l => l.WorldPosition.y )
+				.ToList();
+			var i = lanes.FindIndex( l => l == this );
+			return i < 0 ? 0 : i;
+		}
+	}
+
+	/// <summary>Physics collision tag for this lane's ball + pins. The project's Collision.config makes
+	/// DIFFERENT lane tags ignore each other, so a ball can only knock down its own lane's pins (no griefing
+	/// a neighbour's rack). Kept in sync with the "lane0..laneN" tags defined there.</summary>
+	public string CollisionTag => $"lane{Index}";
+
 	private LaneBuilder _builder;
 	private BallController _ball;
 	private BallCamera _camera;

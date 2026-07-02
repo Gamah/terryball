@@ -967,6 +967,15 @@ public sealed class LaneBuilder : Component
 		if ( !_built ) OnEnabled();
 		var go = pin.GameObject;
 
+		// Per-lane collision tag, set BEFORE the collider is built (shapes snapshot GameObject.Tags at build
+		// time). Makes this pin collide ONLY with its own lane's ball (+ its lane's structure/other pins) —
+		// the Collision.config ignores DIFFERENT lane tags, so a stray ball from another lane can't knock
+		// this rack over. Set on every client (physics is local); resolve the lane by the synced LaneId
+		// since the pin is root-spawned (Lane.Of(pin) is null).
+		var laneTag = Lane.ById( Scene, pin.LaneId )?.CollisionTag;
+		if ( !string.IsNullOrEmpty( laneTag ) )
+			go.Tags.Add( laneTag );
+
 		// Rigidbody first; MassOverride after the collider (adding the shape rebuilds mass from
 		// volume via BuildMass, which would otherwise clobber the override).
 		var rb = go.Components.GetOrCreate<Rigidbody>();
