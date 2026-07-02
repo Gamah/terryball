@@ -1367,19 +1367,14 @@ public sealed class GameDirector : Component
 	/// pins to settle onto the deck without clacking.</summary>
 	[Property, Group( "Settle" )] public float PinRackQuietSeconds { get; set; } = 0.5f;
 
-	/// <summary>Seconds of delay added per row (back to front) when re-racking, so the deck fills in a quick
-	/// wave instead of every pin landing at once. Kept small — just enough to read as a cascade.</summary>
-	[Property, Group( "Settle" )] public float RackStaggerSeconds { get; set; } = 0.12f;
+	/// <summary>Seconds of delay added per pin when re-racking, so the deck fills in a quick cascade instead
+	/// of every pin landing at once. Pins land in descending number order (10, 9, 8 … 1), so the head pin is
+	/// last. Kept small — just enough to read as a wave.</summary>
+	[Property, Group( "Settle" )] public float RackStaggerSeconds { get; set; } = 0.05f;
 
-	// Back-to-front row index for a pin number (back row = 0, head pin = 3), used to stagger the re-rack so
-	// the deck fills from the back forward. Standard 10-pin layout: 7-8-9-10 / 4-5-6 / 2-3 / 1.
-    private static int RackRow( int number ) => number switch
-	{
-		>= 7 => 0, // back row (7 8 9 10)
-		>= 4 => 1, // 4 5 6
-		>= 2 => 2, // 2 3
-		_ => 3,    // head pin (1)
-	};
+	// Stagger index for a pin number: pin 10 lands first (0), the head pin (1) last (9). Multiply by
+	// RackStaggerSeconds for the per-pin start delay.
+	private static int RackOrder( int number ) => 10 - number;
 
 	// Respot one pin onto its home spot. Animated (default): the pin fades in (if it was swept) and glides
 	// kinematically back onto its spot from wherever it lies — see Pin.RackTo. instant snaps it there with
@@ -1387,7 +1382,7 @@ public sealed class GameDirector : Component
 	private void RespotPin( LaneBuilder.PinPlacement p, bool instant )
 	{
 		if ( !p.Pin.IsValid() ) return;
-		var delay = instant ? 0f : RackRow( p.Number ) * RackStaggerSeconds;
+		var delay = instant ? 0f : RackOrder( p.Number ) * RackStaggerSeconds;
 		p.Pin.RackTo( p.Home, instant, delay );
 		// Mute the settling clacks from the glide onto the spot — extend past this pin's stagger so the
 		// last row to land is still covered.
