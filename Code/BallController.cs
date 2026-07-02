@@ -136,6 +136,15 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private Guid _dressedBowler = Guid.Empty;
 	private bool _dressedAny;
 	private CancellationTokenSource _dressCts;
+
+	// The glass shell + coloured-shadow projector, skinned to the active bowler's ball design. _shellMat is
+	// a per-ball COPY of the glass material so writing its colour map doesn't clobber any other lane's ball.
+	private ModelRenderer _shell;
+	private Material _shellMat;
+	private ShadowBall _shadow;
+	private Texture _designMap;
+	private BallDesign _skinnedDesign;
+	private bool _skinnedAny;
 	private GameDirector _director;
 	// Resolve within our own lane (the director sharing our Lane root), never a scene-global scan, so
 	// each lane's ball answers only to its own director.
@@ -182,8 +191,9 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// (opaque occupant) reading black. Uses the same pokeball map the shell renders, so they match.
 		var shadow = Components.GetOrCreate<ShadowBall>();
 		shadow.Radius = Radius;
-		shadow.ColorMapPath = "materials/pokeball_color.png"; // resolved in the post-process (after asset load)
+		shadow.ColorMapPath = "materials/pokeball_color.png"; // fallback until a bowler's design skins it (below)
 		shadow.HasOpaqueOccupant = true;
+		_shadow = shadow;
 
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.
 		var visual = new GameObject( true, "BallVisual" )
@@ -193,7 +203,10 @@ public sealed class BallController : Component, Component.ICollisionListener
 		};
 		var shell = visual.Components.GetOrCreate<ModelRenderer>();
 		shell.Model = Model.Load( "models/dev/sphere.vmdl" );
-		shell.MaterialOverride = Material.Load( "materials/glassball_poke.vmat" );
+		// A per-ball COPY so skinning this ball's colour map (SkinToBowler) never touches another lane's ball.
+		_shellMat = Material.Load( "materials/glassball_poke.vmat" ).CreateCopy();
+		shell.MaterialOverride = _shellMat;
+		_shell = shell;
 
 		var shellBounds = shell.Model.Bounds.Size.x; // dev sphere ≈ 64 across (r 32)
 		visual.LocalScale = new Vector3( (Radius * 2f) / shellBounds );
@@ -240,6 +253,32 @@ public sealed class BallController : Component, Component.ICollisionListener
 			_dressedBowler = id;
 			_dressedAny = true;
 			_ = DressForBowler( id );
+		}
+
+		SkinToBowler( id );
+	}
+
+	// Skin the glass shell + coloured shadow to the active bowler's chosen ball design (networked on their
+	// avatar, so every client resolves the same look). Regenerates the colour map only when the design
+	// actually changes — so a bowler live-editing in the designer updates their ball, but it's otherwise idle.
+	private void SkinToBowler( Guid id )
+	{
+		var avatar = id == Guid.Empty ? null
+			: Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && a.Network.Owner?.Id == id );
+		if ( avatar is null ) return;
+
+		var design = avatar.Design;
+		if ( _skinnedAny && design.Equals( _skinnedDesign ) ) return;
+		_skinnedDesign = design;
+		_skinnedAny = true;
+
+		_designMap?.Dispose();
+		_designMap = design.BuildColorMap();
+		_shellMat?.Set( "g_tColor", _designMap );
+		if ( _shadow.IsValid() )
+		{
+			_shadow.ColorMap = _designMap;      // the projected shadow now samples the same map the shell shows
+			_shadow.ColorMapPath = "";          // stop the post-process re-loading the pokeball fallback over it
 		}
 	}
 

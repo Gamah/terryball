@@ -541,20 +541,33 @@ public sealed class LaneBuilder : Component
 		MakeSideBench( "SetteeBenchLeft", midX, -benchEdgeY, +1f, benchLenX, baseZ + riser, seatH, seatD, backH, cu );
 		MakeSideBench( "SetteeBenchRight", midX, +benchEdgeY, -1f, benchLenX, baseZ + riser, seatH, seatD, backH, cu );
 
-		// Walk-up control podium + interaction station: stand anywhere on the settee and press E to open
-		// the lane controls and free the cursor (TerryAvatar runs the engage). The podium is a visible
-		// "desk" so there's something to walk up to; the station's range covers the whole settee. Sits
-		// toward the back of the settee (away from the lane edge) so it doesn't block the view.
+		// Two walk-up podiums at the back of the settee, side by side: the lane-controls desk (LEFT) and
+		// the ball-designer table (RIGHT). Each has its own interaction station; TerryAvatar picks whichever
+		// is nearest, so their ranges are kept tight (roughly covering their own half of the settee back)
+		// rather than the whole settee — that's what lets a player stand-and-pick between the two.
 		var podiumX = frontX + away * depth * 0.84f;
 		var podiumH = 40f * cu;
-		MakeBox( "ControlPodium", new Vector3( podiumX, 0f, baseZ + riser + podiumH * 0.5f ),
+		var sideY = halfW * 0.42f; // the two desks straddle the settee centre
+
+		// LEFT: lane controls.
+		MakeBox( "ControlPodium", new Vector3( podiumX, -sideY, baseZ + riser + podiumH * 0.5f ),
 			new Vector3( 18f * cu, 44f * cu, podiumH ), BenchFrameColor );
-		MakeDecal( "ControlPodiumTop", new Vector3( podiumX, 0f, baseZ + riser + podiumH + 1f * cu ),
+		MakeDecal( "ControlPodiumTop", new Vector3( podiumX, -sideY, baseZ + riser + podiumH + 1f * cu ),
 			new Vector3( 20f * cu, 46f * cu, 2f * cu ), MonitorBezelColor );
 
 		var station = new GameObject( true, "LaneStation" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		station.LocalPosition = new Vector3( podiumX, 0f, baseZ + riser );
-		station.Components.Create<LaneStation>().InteractRange = MathF.Max( halfW + depth * 0.7f, 200f );
+		station.LocalPosition = new Vector3( podiumX, -sideY, baseZ + riser );
+		station.Components.Create<LaneStation>().InteractRange = MathF.Max( halfW * 0.72f, 150f );
+
+		// RIGHT: ball designer.
+		MakeBox( "DesignTable", new Vector3( podiumX, sideY, baseZ + riser + podiumH * 0.5f ),
+			new Vector3( 18f * cu, 44f * cu, podiumH ), BenchFrameColor );
+		MakeDecal( "DesignTableTop", new Vector3( podiumX, sideY, baseZ + riser + podiumH + 1f * cu ),
+			new Vector3( 20f * cu, 46f * cu, 2f * cu ), BenchCushionColor );
+
+		var designStation = new GameObject( true, "BallDesignerStation" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		designStation.LocalPosition = new Vector3( podiumX, sideY, baseZ + riser );
+		designStation.Components.Create<BallDesignerStation>().InteractRange = MathF.Max( halfW * 0.6f, 120f );
 
 		BuildMonitor( cu, frontX, away, baseZ + riser, boardW, boardGap );
 	}
