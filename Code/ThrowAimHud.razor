@@ -6,8 +6,10 @@
 @*
 	The guided-throw ("Aim" mode) step meter — a real first-party HUD panel at the bottom-centre of the
 	screen (no world overlay). It renders the live state published by the client-local ThrowAimer on the
-	same object: the current step (1-4), a caret sweeping a track, the sweet-spot tick(s) on POWER/SPIN, a
-	centre reference on the directional steps, four step pips, and the commit hint.
+	same object: the current step name, a caret sweeping a track, the sweet-spot tick(s) on POWER/SPIN, a
+	centre reference on the directional steps, four step pips, the ghost tracks of the already-committed
+	steps, and the commit/step-back hints. Once the throw's away it freezes on the committed values (no
+	interaction hints) until the ball crosses the throw line and the sequence tears down.
 
 	The caret sweeps every frame (its Left is set in OnUpdate); the rest of the tree only rebuilds when the
 	step changes or the HUD shows/hides. pointer-events:none throughout, so it never grabs the cursor from
@@ -24,11 +26,15 @@
 		var step = aimer.AimStep;
 		var twoSided = aimer.AimTwoSided;
 		var sweet = aimer.AimSweet01;
+		var committed = aimer.AimCommitted;
+		var ghosts = aimer.AimGhosts;
+		var hint = committed
+			? "Nice throw!"
+			: (sweet >= 0f ? "Click / Space to set  ·  line up the tick (past it = overcooked)" : "Click / Space to set");
 		<div class="dock">
-		<div class="meter">
-			<div class="title">STEP @(step)/4 · @aimer.AimStepLabel</div>
-			@* Already-committed steps, drawn as dimmed ghost tracks above the live one (oldest at top). *@
-				@{ var ghosts = aimer.AimGhosts; }
+			<div class="meter">
+				<div class="title">@aimer.AimStepLabel</div>
+				@* Already-committed steps, drawn as dimmed ghost tracks above the live one (oldest at top). *@
 				@if ( ghosts.Count > 0 )
 				{
 					<div class="ghosts">
@@ -48,33 +54,35 @@
 					</div>
 				}
 				<div class="track">
-				@* Centre reference for the directional steps (lane centre / straight aim / no hook). *@
-				@if ( twoSided || sweet < 0f )
+					@* Centre reference for the directional steps (lane centre / straight aim / no hook). *@
+					@if ( twoSided || sweet < 0f )
+					{
+						<div class="center"></div>
+					}
+					@* Sweet-spot tick(s): one on POWER, mirrored either side of centre on SPIN. *@
+					@if ( twoSided )
+					{
+						<div class="sweet" style="left: @(((1f - sweet) * 50f))%;"></div>
+						<div class="sweet" style="left: @(((1f + sweet) * 50f))%;"></div>
+					}
+					else if ( sweet >= 0f )
+					{
+						<div class="sweet" style="left: @((sweet * 100f))%;"></div>
+					}
+					<div class="caret" @ref="_caret"></div>
+				</div>
+				<div class="pips">
+					@for ( int i = 0; i < 4; i++ )
+					{
+						<div class="pip @(i < step ? "on" : "")"></div>
+					}
+				</div>
+				<div class="hint">@hint</div>
+				@if ( !committed )
 				{
-					<div class="center"></div>
+					<div class="hint back">Right-click / Backspace to step back</div>
 				}
-				@* Sweet-spot tick(s): one on POWER, mirrored either side of centre on SPIN. *@
-				@if ( twoSided )
-				{
-					<div class="sweet" style="left: @(((1f - sweet) * 50f))%;"></div>
-					<div class="sweet" style="left: @(((1f + sweet) * 50f))%;"></div>
-				}
-				else if ( sweet >= 0f )
-				{
-					<div class="sweet" style="left: @((sweet * 100f))%;"></div>
-				}
-				<div class="caret" @ref="_caret"></div>
 			</div>
-			<div class="pips">
-				@for ( int i = 0; i < 4; i++ )
-				{
-					<div class="pip @(i < step ? "on" : "")"></div>
-				}
-			</div>
-			<div class="hint">
-				@(sweet >= 0f ? "Click / Space to set  ·  line up the tick (past it = overcooked)" : "Click / Space to set")</div>
-				<div class="hint back">Right-click / Backspace to step back</div>
-		</div>
 		</div>
 	}
 </root>
@@ -233,9 +241,10 @@
 		margin-top: 10px;
 	}
 
+	/* Step-back hint: same colour as the primary hint, just a touch smaller and tighter under it. */
 	.hint.back {
 		font-size: 11px;
-		color: rgba(255, 255, 255, 0.45);
+		color: rgba(255, 255, 255, 0.7);
 		margin-top: 3px;
 	}
 </style>
@@ -247,14 +256,15 @@
 	// ThrowAimer lives on the same client-local HUD object; it publishes the live step state we render.
 	private ThrowAimer Aimer => Components.Get<ThrowAimer>();
 
-	// Only rebuild the tree when the HUD shows/hides or the step changes — the caret sweep is set per-frame
-	// in OnUpdate below, so the continuous motion doesn't churn the panel.
+	// Only rebuild the tree when the HUD shows/hides, the step changes, or the throw commits — the caret sweep
+	// is set per-frame in OnUpdate below, so the continuous motion doesn't churn the panel.
 	protected override int BuildHash()
 	{
 		var a = Aimer;
 		var hc = new System.HashCode();
 		hc.Add( a?.AimHudVisible ?? false );
 		hc.Add( a?.AimStep ?? 0 );
+		hc.Add( a?.AimCommitted ?? false );
 		// Ghost tracks are static once built, so fold their locked positions in too — that way re-locking a step
 		// after stepping back (same step count, new caret) still rebuilds the ghost markers.
 		if ( a is not null )

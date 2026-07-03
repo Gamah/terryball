@@ -44,8 +44,8 @@ public sealed class BallCamera : Component
 	/// <summary>Fixed pitch used while the bowler is lining up a guided (Aim-mode) throw — the camera is locked
 	/// to a steady down-lane shot then, so it doesn't read the mouse or follow the ball's lateral shuffle.</summary>
 	[Property, Group( "Aim" )] public float AimPitch { get; set; } = 10f;
-	/// <summary>Rate (per second) the camera's lateral anchor eases to the lane centre while aiming, and back
-	/// onto the ball's line once the throw commits — so the release doesn't snap the view sideways.</summary>
+	/// <summary>Rate (per second) the camera's lateral anchor eases onto the ball's line while aiming and after
+	/// the throw commits — a light, smooth follow so the ball's motion and the release don't snap the view.</summary>
 	[Property, Group( "Aim" )] public float AimLockLerp { get; set; } = 6f;
 
 	private BallController _ball;
@@ -56,11 +56,10 @@ public sealed class BallCamera : Component
 	private ThrowAimer _aimer;
 	private ThrowAimer Aimer => _aimer.IsValid() ? _aimer : (_aimer = Scene.GetAllComponents<ThrowAimer>().FirstOrDefault());
 
-	// Eased lateral follow anchor: the ball's own Y in normal play, but pulled to the lane centre while aiming
-	// (and eased back onto the ball's line at release), so aiming is steady and the throw doesn't snap.
+	// Eased lateral follow anchor: the ball's own Y, followed with a light ease while aiming (and after release)
+	// so the hand-positioned line and the throw don't snap the view sideways.
 	private float _followY;
 	private bool _followYInit;
-	private bool _lockEngaged;
 	private float _yaw;
 	private float _pitch = 15f;
 	private float _blend; // 0 = on the ball, 1 = pin-deck watch vantage
@@ -130,8 +129,8 @@ public sealed class BallCamera : Component
 
 		// --- Play framing: third-person follow behind the ball, horizon-locked. ----------------
 		// While a guided (Aim-mode) throw is being lined up, hold a steady shot straight down the lane from
-		// behind the parked ball — the mouse is ignored (yaw pinned down-lane). The lateral framing is handled
-		// below: centred on the lane while you pick the LINE, then eased in behind the ball once it's locked.
+		// behind the ball — the camera yaw is pinned down-lane (the mouse instead slides the ball during LINE),
+		// and the lateral framing below tracks the ball's line the whole time.
 		var liningUp = (Aimer?.LiningUp ?? false) && _lane.IsValid();
 		if ( liningUp )
 		{
@@ -139,25 +138,15 @@ public sealed class BallCamera : Component
 			_pitch = AimPitch;
 		}
 
-		// Lateral follow anchor: the ball's own Y for a tight follow. It eases to the lane centre-line ONLY
-		// during the LINE step, where the ball shuttles side to side and chasing it is jarring; once the line is
-		// locked (AIM/POWER/SPIN) the ball sits still on its chosen line, so the anchor eases back to the ball —
-		// moving the camera in behind it. It keeps easing a moment after the throw commits too, so the release
-		// slides onto the ball's line rather than snapping.
+		// Lateral follow anchor: the camera tracks the ball's own Y. While lining up (and until it re-converges
+		// after release) it eases onto that line with a light, smooth follow — the ball is hand-positioned side
+		// to side during LINE (we want the camera to track it) and sits parked on the later steps — so the
+		// aiming and the release slide onto the ball's line rather than snapping. Otherwise it follows tightly.
 		var tightY = _ball.WorldPosition.y;
-		var choosingLine = (Aimer?.ChoosingLine ?? false) && _lane.IsValid();
-		var targetY = choosingLine ? _lane.RunUpWorldPosition.y : tightY;
-		if ( !_followYInit ) { _followY = targetY; _followYInit = true; }
-		if ( liningUp ) _lockEngaged = true;
-		if ( _lockEngaged )
-		{
-			_followY = MathX.Lerp( _followY, targetY, MathF.Min( 1f, AimLockLerp * Time.Delta ) );
-			if ( !liningUp && MathF.Abs( _followY - tightY ) < 2f ) _lockEngaged = false; // converged → resume tight follow
-		}
-		else
-		{
-			_followY = tightY;
-		}
+		if ( !_followYInit ) { _followY = tightY; _followYInit = true; }
+		_followY = ( liningUp || MathF.Abs( _followY - tightY ) >= 2f )
+			? MathX.Lerp( _followY, tightY, MathF.Min( 1f, AimLockLerp * Time.Delta ) )
+			: tightY;
 
 		var playRot = Rotation.From( _pitch, _yaw, 0f );
 		var anchor = new Vector3( _ball.WorldPosition.x, _followY, _ball.WorldPosition.z );

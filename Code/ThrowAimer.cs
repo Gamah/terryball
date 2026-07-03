@@ -32,10 +32,17 @@ public sealed class ThrowAimer : Component
 	private Phase _phase = Phase.Idle;
 
 	// --- Timing sweeps (ping-pong rates, cycles/sec) -----------------------------------
-	[Property, Group( "Timing" )] public float LineSpeed { get; set; } = 0.9f;
+	// (LINE isn't swept — it's positioned by hand; see LineKeySpeed / LineMouseSpeed below.)
 	[Property, Group( "Timing" )] public float AimSpeed { get; set; } = 0.7f;
 	[Property, Group( "Timing" )] public float PowerSpeed { get; set; } = 0.85f;
 	[Property, Group( "Timing" )] public float SpinSpeed { get; set; } = 0.8f;
+
+	// --- LINE (hand-positioned) --------------------------------------------------------
+	/// <summary>How fast the movement keys (A/D) slide the start line, as fractions of the lateral range per
+	/// second (so it feels the same on any lane width).</summary>
+	[Property, Group( "Aim" )] public float LineKeySpeed { get; set; } = 1.6f;
+	/// <summary>Lateral units the start line slides per degree of mouse yaw, when sliding the mouse left/right.</summary>
+	[Property, Group( "Aim" )] public float LineMouseSpeed { get; set; } = 14f;
 
 	// --- Ranges ------------------------------------------------------------------------
 	/// <summary>Max aim deflection from straight-down-lane, degrees (± this).</summary>
@@ -63,6 +70,7 @@ public sealed class ThrowAimer : Component
 
 	// Locked-in values as each step is committed.
 	private float _lineY;     // world Y of the chosen start line
+	private float _manualY;   // live hand-positioned start line during the LINE step
 	private float _aimDeg;    // chosen aim deflection
 	private float _power01;   // chosen power 0..1
 	// Caret fractions (0..1, 0 = screen-left) captured at each commit, so the HUD can show the locked
@@ -100,6 +108,7 @@ public sealed class ThrowAimer : Component
 			if ( _holding && ball.IsValid() ) { ball.EndHold(); _holding = false; }
 			HideArrow();
 			AimHudVisible = false;
+			AimCommitted = false;
 			_phase = Phase.Idle;
 			return;
 		}
@@ -123,6 +132,7 @@ public sealed class ThrowAimer : Component
 		// in the same frame.
 		if ( !blocked && !advance && BackPressed() )
 		{
+			var prev = _phase;
 			_phase = _phase switch
 			{
 				Phase.Aim => Phase.Line,
@@ -130,15 +140,25 @@ public sealed class ThrowAimer : Component
 				Phase.Spin => Phase.Power,
 				_ => _phase,
 			};
+			// Stepping back into LINE resumes hand-positioning from the line you'd locked, not the lane centre.
+			if ( _phase == Phase.Line && prev == Phase.Aim ) _manualY = _lineY;
 		}
 
 		switch ( _phase )
 		{
 			case Phase.Line:
 			{
-				var holdY = _centerY + SignedPing( LineSpeed ) * _yRange;
-				HoldBall( ball, holdY );
-				if ( advance ) { _lineY = holdY; _lineCaret = (1f - SignedPing( LineSpeed )) * 0.5f; _phase = Phase.Aim; }
+				// Hand-positioned: nudge the start line with the movement keys (A/D) and by sliding the mouse
+				// left/right. +Y is screen-left, so A (AnalogMove.y +1) and mouse-left (AnalogLook.yaw +) both
+				// move it left. Clamped to the lateral range.
+				if ( !blocked )
+				{
+					_manualY += Input.AnalogMove.y * (LineKeySpeed * _yRange * Time.Delta)
+						+ Input.AnalogLook.yaw * LineMouseSpeed;
+					_manualY = _manualY.Clamp( _centerY - _yRange, _centerY + _yRange );
+				}
+				HoldBall( ball, _manualY );
+				if ( advance ) { _lineY = _manualY; _lineCaret = LineCaret01(); _phase = Phase.Aim; }
 				break;
 			}
 			case Phase.Aim:
@@ -189,11 +209,15 @@ public sealed class ThrowAimer : Component
 		_yRange = MathF.Max( 0f, laneHalf - ball.Radius );
 
 		_lineY = _centerY;
+		_manualY = _centerY; // start the hand-positioned line dead centre
 		_aimDeg = 0f;
 		_power01 = 0f;
 		ball.ControlsLocked = true; // ignore free-drive input while we line the throw up
 		_phase = Phase.Line;
 	}
+
+	// The LINE caret fraction (0..1, 0 = screen-left) for the current hand-positioned start line.
+	private float LineCaret01() => (1f - (_manualY - _centerY) / MathF.Max( 1f, _yRange )) * 0.5f;
 
 	private void HoldBall( BallController ball, float y )
 	{
@@ -224,8 +248,17 @@ public sealed class ThrowAimer : Component
 		ball.ControlsLocked = true; // committed — no steering; the director arms watch on the throw-line cross
 		_holding = false;
 		HideArrow(); // the throw's away — drop the aim guide off the lane
-		AimHudVisible = false; // and the step HUD
 		_phase = Phase.Launched;
+
+		// Leave the step HUD up, frozen on the committed throw — the current meter shows the locked SPIN and the
+		// three ghost tracks keep LINE/AIM/POWER above it — so you can read what you threw while the ball coasts
+		// in. It's dismissed by the normal !active teardown the instant the ball crosses the throw line (the
+		// director flips to Watching → the pin action), which is the existing clean cutoff.
+		AimStep = 4; AimStepLabel = "SPIN";
+		AimCaret01 = (1f - spin) * 0.5f; // committed spin, same mapping as the live SPIN sweep
+		AimSweet01 = SweetSpot; AimTwoSided = true;
+		AimCommitted = true;
+		AimHudVisible = true;
 
 		if ( ActiveLane?.Director?.LogThrow ?? false )
 		{
@@ -428,15 +461,17 @@ public sealed class ThrowAimer : Component
 	public float AimCaret01 { get; private set; }        // live caret position, 0..1 (0 = screen-left)
 	public float AimSweet01 { get; private set; } = -1f; // sweet-spot fraction 0..1, or <0 for none (LINE/AIM)
 	public bool AimTwoSided { get; private set; }        // SPIN: centred, hooks either way
+	public bool AimCommitted { get; private set; }       // throw's away — frozen summary, no interaction hints
 
 	private void UpdateAimHud()
 	{
+		AimCommitted = false; // this path only runs while actively lining up
 		// Publish the current step's live meter state. Directional steps (LINE/AIM/SPIN) are mapped so the caret
 		// reads the SAME way round as the screen: the camera sits behind the ball (screen-right is −Y), so moving
 		// the ball/hook toward screen-left (+Y, +SignedPing) moves the caret to the LEFT (fraction → 0).
 		switch ( _phase )
 		{
-			case Phase.Line: AimCaret01 = (1f - SignedPing( LineSpeed )) * 0.5f; AimSweet01 = -1f; AimTwoSided = false; AimStep = 1; AimStepLabel = "LINE"; break;
+			case Phase.Line: AimCaret01 = LineCaret01(); AimSweet01 = -1f; AimTwoSided = false; AimStep = 1; AimStepLabel = "LINE"; break;
 			case Phase.Aim: AimCaret01 = (1f - SignedPing( AimSpeed )) * 0.5f; AimSweet01 = -1f; AimTwoSided = false; AimStep = 2; AimStepLabel = "AIM"; break;
 			case Phase.Power: AimCaret01 = _power01; AimSweet01 = SweetSpot; AimTwoSided = false; AimStep = 3; AimStepLabel = "POWER"; break;
 			case Phase.Spin: AimCaret01 = (1f - SignedPing( SpinSpeed )) * 0.5f; AimSweet01 = SweetSpot; AimTwoSided = true; AimStep = 4; AimStepLabel = "SPIN"; break;
