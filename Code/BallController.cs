@@ -104,6 +104,29 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// time-constant); 20 hauls the ball down hard, stopping it in well under a second. Tune by feel.</summary>
 	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 20f;
 
+	// --- Oiled-lane hook (guided-throw mode) -------------------------------------------
+	// A stylized model of a real lane's oil pattern: a bowling lane is oiled heavy up front and
+	// dry at the back, so a spinning ball SLIDES nearly straight through the oil and only "hooks"
+	// (bites and curves) once it reaches the dry back end near the pins. We reproduce that with an
+	// explicit lateral force, ramped in from OilFrontFraction of the way down the lane, scaled by
+	// the ball's forward speed and the spin the bowler dialled in at launch (HookAmount). Because
+	// the hook builds LATE, a big spin doesn't fling the ball straight into the gutter off the foul
+	// line — it tracks down-lane first and breaks toward the pocket near the deck. Only used by the
+	// aimed throw; a free-drive ball keeps HookAmount 0 (reset below) so it never curves.
+
+	/// <summary>Signed side-spin the aimed throw imparts, −1..+1 (0 = no hook). Set at launch by the
+	/// <see cref="ThrowAimer"/>; forced back to 0 whenever the ball is under free drive so a free throw
+	/// never hooks. Positive curves toward +Y (screen-left), negative toward −Y.</summary>
+	public float HookAmount { get; set; }
+	/// <summary>Peak lateral hook acceleration (u/s²) a full ±1 spin reaches at the dry back end. Kept
+	/// speed-INDEPENDENT so the break is predictable (and a slower ball, spending longer on the dry back
+	/// end, naturally hooks more — as it does for real). Tune the pocket break by feel.</summary>
+	[Property, Group( "Oil" )] public float HookGain { get; set; } = 950f;
+	/// <summary>Fraction of the foul-line→pin-deck distance that is "oiled" — over this front stretch the
+	/// hook stays near zero (the ball slides), then ramps to full over the remaining dry back end. Higher
+	/// = the ball holds its line longer and breaks later/harder near the pins.</summary>
+	[Property, Group( "Oil" )] public float OilFrontFraction { get; set; } = 0.5f;
+
 	/// <summary>Ball world velocity (units/s); zero before the body exists. For the roll audio.</summary>
 	public Vector3 Velocity => _body.IsValid() ? _body.Velocity : Vector3.Zero;
 	/// <summary>The drive target top speed (units/s) — the roll audio's reference for "full speed".</summary>
@@ -360,6 +383,54 @@ public sealed class BallController : Component, Component.ICollisionListener
 		}
 	}
 
+	// --- Aimed throw (guided-throw mode) -----------------------------------------------
+	// While the bowler is lining up an aimed throw the ball is held frozen at the foul line (gravity off,
+	// no motion) as the aimer shuttles it left/right; Launch then hands it a committed velocity + spin and
+	// lets physics carry it. See ThrowAimer.
+
+	/// <summary>Hold the ball dead still at <paramref name="pos"/> with gravity off — for the aim line-up,
+	/// where the aimer positions it each frame. No hook until it's launched.</summary>
+	public void HoldAt( Vector3 pos )
+	{
+		WorldPosition = pos;
+		HookAmount = 0f;
+		if ( _body.IsValid() )
+		{
+			_body.Gravity = false;
+			_body.Velocity = Vector3.Zero;
+			_body.AngularVelocity = Vector3.Zero;
+			_body.Sleeping = false;
+		}
+	}
+
+	/// <summary>Abort an aim line-up cleanly: restore gravity (a hold turned it off) and stop the ball where
+	/// it sits, so a mode toggle / bail mid-line-up never leaves it floating. No hook.</summary>
+	public void EndHold()
+	{
+		HookAmount = 0f;
+		if ( _body.IsValid() )
+		{
+			_body.Gravity = true;
+			_body.Velocity = Vector3.Zero;
+			_body.AngularVelocity = Vector3.Zero;
+		}
+	}
+
+	/// <summary>Commit the aimed throw: restore gravity, launch with <paramref name="velocity"/> and
+	/// <paramref name="angularVelocity"/> (visual roll/spin), and arm the oiled-lane hook with
+	/// <paramref name="hook"/> (−1..+1). The ball is expected to be ControlsLocked (coasting) from here.</summary>
+	public void Launch( Vector3 velocity, Vector3 angularVelocity, float hook )
+	{
+		if ( _body.IsValid() )
+		{
+			_body.Gravity = true;
+			_body.Sleeping = false;
+			_body.Velocity = velocity;
+			_body.AngularVelocity = angularVelocity;
+		}
+		HookAmount = hook;
+	}
+
 	/// <summary>Kinematically place the ball at <paramref name="pos"/> for a crane leg, held dead still.</summary>
 	public void CraneMoveTo( Vector3 pos )
 	{
@@ -379,6 +450,11 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// Only the client whose turn it is drives the ball; for everyone else it sits parked (its
 		// transform is networked from the active bowler). Nobody up = nobody drives.
 		if ( Director is not null && !Director.LocalIsBowling ) return;
+
+		// A free-drive ball never hooks: while the player can still steer (controls unlocked) keep the
+		// oiled-lane hook disarmed, so only a committed aimed throw (which locks controls at launch and
+		// sets HookAmount) ever curves.
+		if ( !ControlsLocked ) HookAmount = 0f;
 
 		// Camera-relative run direction on the horizontal plane. While controls are locked (the
 		// ball has crossed the throw line) we read no input at all — wish stays zero.
@@ -440,6 +516,33 @@ public sealed class BallController : Component, Component.ICollisionListener
 			var k = MathF.Exp( -PitDamping * dt );
 			_body.Velocity *= k;
 			_body.AngularVelocity *= k;
+		}
+
+		// Oiled-lane hook: an aimed throw (ControlsLocked, HookAmount set) slides through the "oiled" front
+		// of the lane then bites and curves through the dry back end. The lateral hook accel ramps in from
+		// OilFrontFraction of the way down the lane to full at the deck and is applied perpendicular to
+		// travel — so a spin breaks the ball late toward the pocket instead of throwing it straight into the
+		// gutter off the foul line. Speed-independent, so a slower ball (longer on the dry end) hooks more.
+		if ( ControlsLocked && MathF.Abs( HookAmount ) > 0.001f && lane.IsValid() )
+		{
+			var horiz = _body.Velocity.WithZ( 0f );
+			var speed = horiz.Length;
+			if ( speed > 50f )
+			{
+				var foulX = lane.FoulLineWorldX;
+				var deckX = lane.PinDeckWorldCenter.x;
+				var span = MathF.Max( 1f, deckX - foulX );
+				var p = ((WorldPosition.x - foulX) / span).Clamp( 0f, 1f ); // 0 at foul line, 1 at the deck
+				// Ramp 0→1 across the DRY back end (past OilFrontFraction); smoothstepped so the break eases in.
+				var front = OilFrontFraction.Clamp( 0f, 0.99f );
+				var t = ((p - front) / MathF.Max( 0.01f, 1f - front )).Clamp( 0f, 1f );
+				var oil = t * t * (3f - 2f * t);
+				// Lateral = the horizontal normal to travel (rotate the travel dir 90° about Up).
+				var dir = horiz / speed;
+				var lateral = Vector3.Up.Cross( dir ); // unit, points +Y-ish for +X travel
+				var accel = HookAmount * HookGain * oil;  // u/s², speed-independent
+				_body.ApplyForce( lateral * accel * _body.Mass );
+			}
 		}
 
 		// Keep the body awake while input is held or it's still moving.

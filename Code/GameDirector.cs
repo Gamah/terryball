@@ -161,6 +161,10 @@ public sealed class GameDirector : Component
 	/// flying the choreographed claw animation — the scoop/drop body↔ball swaps and the roll still
 	/// happen, just instantly. Synced so the active bowler (who runs the crane) reads the host's choice.</summary>
 	[Sync] public bool CraneEnabled { get; set; } = true;
+	/// <summary>Throw mode for this lane (director toggle, synced so every bowler on the lane rolls the same
+	/// way). false = the free hamster-ball drive; true = the guided "Aim" line-up (see <see cref="ThrowAimer"/>).
+	/// A lane-wide setting, not per-player — whoever runs the lane picks the style for it.</summary>
+	[Sync] public bool AimMode { get; set; }
 	/// <summary>The bowlers in this game, in turn order (only meaningful in Playing).</summary>
 	[Sync] public NetList<string> RosterNames { get; set; } = new();
 	/// <summary>Per-roster-player encoded frame data, parallel to <see cref="RosterNames"/>.</summary>

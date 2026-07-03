@@ -36,6 +36,9 @@ public sealed class LocalHud : Component
 		Components.Create<TeleportPanel>();
 		Components.Create<ChatPanel>();
 		Components.Create<BowlerHud>();
+		// The guided-throw ("Aim") mode driver — purely client-local, dormant until the player turns the
+		// mode on in the lane controls and is the bowler up. See ThrowAimer.
+		Components.Create<ThrowAimer>();
 
 		// Client-local background music: the Skafinity engine plays on its own; the drop-in panel starts
 		// DISABLED (so its ♪ button never shows over the alley and steals the cursor) and is driven from
