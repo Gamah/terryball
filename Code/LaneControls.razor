@@ -52,10 +52,10 @@
 						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 1px;">
 							LANE <span style="color: #5aa0e6;">@LaneNumber</span> CONTROLS
 						</div>
-						@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). Shown in
-						   the LOBBY too (not just to the director), so a joiner can pick the style BEFORE START;
-						   toggling it claims the lane (see GameDirector.SetAimMode). *@
-						@if ( CanDirect || !playing )
+						@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). Director-only:
+						   shown once you run the lane (claimed via START), not in the lobby — a lobby toggle used to
+						   claim the lane on click, which disturbed the ownership handshake and broke joining. *@
+						@if ( CanDirect )
 						{
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
@@ -65,9 +65,8 @@
 								Throw: <span style="color: @(AimOn ? "#b07cd6" : "#5aa0e6");">@(AimOn ? "AIM" : "FREE")</span>
 							</div>
 						}
-						@* Ball Crane — same lane-wide setting; shown in the lobby too and claims the lane on
-						   toggle, so it appears alongside the throw toggle instead of only after START. *@
-						@if ( CanDirect || !playing )
+						@* Ball Crane — same lane-wide setting; director-only, alongside the throw toggle. *@
+						@if ( CanDirect )
 						{
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
@@ -256,14 +255,12 @@
 		}
 	}
 
-	// Throw-mode toggle: a lane-wide setting on the director (AimMode is synced). SetAimMode claims the lane
-	// first, so this works in the LOBBY before START too — the presser becomes the lane's authority. Defaults
-	// to FREE.
+	// Throw-mode toggle: a lane-wide setting on the director (AimMode is synced). Director-only — SetAimMode is
+	// a no-op unless you run this lane, so it doesn't claim the lane on click (that broke joining). Defaults FREE.
 	private bool AimOn => Director?.AimMode ?? false;
 	private void ToggleAim() => Director?.SetAimMode( !(Director?.AimMode ?? false) );
 
-	// Ball Crane toggle: a lane-wide setting on the director. SetCraneEnabled claims the lane first, so (like
-	// the throw toggle) it works in the lobby before START and the two toggles show together.
+	// Ball Crane toggle: a lane-wide setting on the director; director-only, same as the throw toggle.
 	private bool CraneOn => Director?.CraneEnabled ?? true;
 	private void ToggleCrane() => Director?.SetCraneEnabled( !(Director?.CraneEnabled ?? true) );
 

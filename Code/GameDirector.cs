@@ -38,25 +38,21 @@ public sealed class GameDirector : Component
 	/// <summary>UI-facing alias: does the LOCAL client run this lane's game (show STOP / crane toggle)?</summary>
 	public bool LocalIsDirector => IsDirector;
 
-	/// <summary>Set the lane's throw mode (<see cref="AimMode"/>) from the lane controls. Claims this lane's
-	/// director FIRST (takes ownership) so a player can pick the throw style in the LOBBY — before pressing
-	/// START — and have it stick and propagate. AimMode is owner→everyone [Sync], so without taking authority
-	/// a joiner's write would just be clobbered by the host's value; that's why the toggle used to only work
-	/// once you'd claimed the lane via START. No-op if authority can't be taken.</summary>
+	/// <summary>Set the lane's throw mode (<see cref="AimMode"/>) from the lane controls. Director-only: only the
+	/// player who runs this lane (has claimed it via START) can change the style, so this never takes ownership
+	/// of the director on its own — grabbing authority off a mere lobby toggle disturbed the session's
+	/// ownership handshake and broke joining. No-op if the local client isn't this lane's director.</summary>
 	public void SetAimMode( bool on )
 	{
-		ClaimDirector();
 		if ( !IsDirector ) return;
 		AimMode = on;
 	}
 
-	/// <summary>Set the lane's crane mode (<see cref="CraneEnabled"/>) from the lane controls. Claims this
-	/// lane's director first, same as <see cref="SetAimMode"/>, so it's settable in the LOBBY before START and
-	/// appears alongside the throw toggle rather than only after the lane's been claimed. No-op if authority
-	/// can't be taken.</summary>
+	/// <summary>Set the lane's crane mode (<see cref="CraneEnabled"/>) from the lane controls. Director-only,
+	/// same as <see cref="SetAimMode"/> — it never claims the lane on its own. No-op if the local client isn't
+	/// this lane's director.</summary>
 	public void SetCraneEnabled( bool on )
 	{
-		ClaimDirector();
 		if ( !IsDirector ) return;
 		CraneEnabled = on;
 	}
