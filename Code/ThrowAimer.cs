@@ -204,6 +204,16 @@ public sealed class ThrowAimer : Component
 		_holding = false;
 		HideArrow(); // the throw's away — drop the aim guide off the lane
 		_phase = Phase.Launched;
+
+		if ( ActiveLane?.Director?.LogThrow ?? false )
+		{
+			var sideRevs = spin * SideRotationRate;
+			var lineOff = (_lineY - _centerY) / MathF.Max( 1f, ball.Radius );
+			Log.Info( $"[terryball][throw] LAUNCH aim={_aimDeg:F1}° power={_power01 * 100f:F0}% spin={spin:+0.00;-0.00} " +
+				$"speed={speed:F0}u/s line={lineOff:+0.0;-0.0}R  fwdRoll={noSlip * LaunchRollFraction:F1}rad/s " +
+				$"sideRot={sideRevs:F1}rad/s (~{MathF.Abs( sideRevs ) * ball.Radius:F0}u/s peak-slip)  " +
+				$"vel={velocity} ang={angular}" );
+		}
 	}
 
 	// --- Input -------------------------------------------------------------------------

@@ -184,6 +184,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private float _transitionT;                 // seconds left in the current run↔roll transition window
 	private bool _wasRolling;                   // edge-detect the roll state change to open that window
 	private bool _built;
+	private float _throwLogAt;                  // last time the LogThrow hook trace was written (throttle)
 
 	protected override void OnEnabled()
 	{
@@ -563,6 +564,20 @@ public sealed class BallController : Component, Component.ICollisionListener
 				// ball rolls out as it sets on its new line, instead of spinning on unchanged. This is what ties
 				// the amount of spin you see to the amount of break you get.
 				_body.ApplyForceAt( WorldPosition + Vector3.Down * Radius, force );
+
+				// Throttled trace of the hook developing, for review (director's Log Throw checkbox). Reads:
+				// where down-lane (x, progress p, oil grip), how fast, the side-spin rev-out (ω about travel),
+				// the sideways drift built up (comLat) vs the spin's contact slip driving it, and the accel.
+				if ( (Director?.LogThrow ?? false) && Time.Now - _throwLogAt >= 0.06f )
+				{
+					_throwLogAt = Time.Now;
+					var omegaSide = Vector3.Dot( _body.AngularVelocity, dir );      // spin about travel axis (revs)
+					var comLat = Vector3.Dot( horiz, lateralDir );                  // sideways speed built up
+					var contactLat = Vector3.Dot( contactV, lateralDir );           // slip the spin is producing
+					Log.Info( $"[terryball][throw] p={p:F2} oil={oil:F2} x={WorldPosition.x:F0} y={WorldPosition.y:F0} " +
+						$"spd={speed:F0} omegaSide={omegaSide:+0.0;-0.0} comLat={comLat:+0;-0} " +
+						$"contactLat={contactLat:+0;-0} slip={lateralSlip:+0;-0} accel={accel:+0;-0}" );
+				}
 			}
 		}
 

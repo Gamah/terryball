@@ -117,6 +117,12 @@ public sealed class GameDirector : Component
 	/// <see cref="LogPinCrash"/> so the sound debug isn't buried under the per-frame coast spam.</summary>
 	[Property, Group( "Debug" )] public bool LogPinAudio { get; set; } = false;
 
+	/// <summary>Log the AIMED throw: the committed launch (aim/power/spin, velocity, spin axis) and a throttled
+	/// per-frame trace of the oiled-lane hook as it develops (position, oil, lateral slip, side-spin rev-out,
+	/// sideways drift). Flip on to review the hook physics from real numbers instead of by feel. See
+	/// <see cref="ThrowAimer"/> and <see cref="BallController"/>.</summary>
+	[Property, Group( "Debug" )] public bool LogThrow { get; set; } = false;
+
 	/// <summary>Tip past this many degrees off vertical and the pin reads as knocked down.</summary>
 	[Property] public float TiltThresholdDegrees { get; set; } = 30f;
 	/// <summary>Shoved this many real inches off its spot (horizontally) and the pin reads as down,
