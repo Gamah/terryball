@@ -44,9 +44,15 @@ public sealed class ThrowAimer : Component
 	[Property, Group( "Launch" )] public float MinLaunchSpeed { get; set; } = 3200f;
 	/// <summary>Top committed throw speed (u/s) at a full power meter.</summary>
 	[Property, Group( "Launch" )] public float MaxLaunchSpeed { get; set; } = 6200f;
-	/// <summary>Extra vertical (drill) spin rate (rad/s) a full ±1 spin adds for the visible side-roll.
-	/// Cosmetic — the actual curve is the oiled-lane hook in BallController.</summary>
-	[Property, Group( "Launch" )] public float SpinVisualRate { get; set; } = 6f;
+	/// <summary>Fraction of the no-slip roll rate (v/R) the ball launches with. A real thrown ball comes off
+	/// the hand SKIDDING on the oiled front and only revs up to a true roll on the dry back end — so we launch
+	/// it under-rolling and let the lane's friction spin it up, instead of forcing a full-grip roll off the
+	/// line (which read as the ball "spinning as if it had full friction"). 1 = full roll, 0 = pure skid.</summary>
+	[Property, Group( "Launch" )] public float LaunchRollFraction { get; set; } = 0.5f;
+	/// <summary>Revs a full ±1 spin adds as a tilt of the ball's roll axis toward the travel direction
+	/// (rad/s) — a real hook ball spins about an axis canted forward, not a flat top-spin. Reads as the ball
+	/// visibly turning over toward the hook side; the actual curve is the oiled-lane hook in BallController.</summary>
+	[Property, Group( "Launch" )] public float SideSpinRate { get; set; } = 16f;
 
 	// Locked-in values as each step is committed.
 	private float _lineY;     // world Y of the chosen start line
@@ -173,11 +179,15 @@ public sealed class ThrowAimer : Component
 		var speed = MathX.Lerp( MinLaunchSpeed, MaxLaunchSpeed, _power01 );
 		var velocity = dir * speed;
 
-		// Forward roll about the lateral axis (v = ω·R), plus a vertical drill component for the visible
-		// side-spin. The real curve is the oiled-lane hook, armed via HookAmount = spin.
+		// Forward roll about the lateral axis, but only a FRACTION of the no-slip rate (v/R): the ball leaves
+		// the hand skidding on the oiled front and the lane's friction revs it toward a true roll, instead of
+		// spinning as if it were full-grip off the line. The side-spin cants that roll axis forward (about the
+		// travel direction) — a real hook ball's tilted axis — so it visibly turns over toward the hook side.
+		// The actual curve is the oiled-lane hook, armed via HookAmount = spin.
+		var noSlip = speed / MathF.Max( 1f, ball.Radius );
 		var rollAxis = dir.Cross( Vector3.Up );            // horizontal, perpendicular to travel
-		var angular = rollAxis * (speed / MathF.Max( 1f, ball.Radius ))
-			+ Vector3.Up * (spin * SpinVisualRate);
+		var angular = rollAxis * (noSlip * LaunchRollFraction)
+			+ dir * (spin * SideSpinRate);                 // barrel/tilt about travel = the canted hook axis
 
 		ball.Launch( velocity, angular, spin );
 		ball.ControlsLocked = true; // committed — no steering; the director arms watch on the throw-line cross
@@ -238,37 +248,64 @@ public sealed class ThrowAimer : Component
 		DrawHud();
 	}
 
-	// A flat arrow (shaft + head) along `yawDeg`, curving laterally by `spin` toward its tip (a hook
-	// preview). Drawn as an on-top overlay so it reads over the lane.
+	// A bold, FILLED flat arrow (wide shaft ribbon + solid triangular head) along `yawDeg`, curving laterally
+	// by `spin` toward its tip (a hook preview). DebugOverlay.Line has no thickness, so the shaft is filled as
+	// a band of parallel offset lines and the head as a fan — both drawn on-top (overlay) so the whole thing
+	// reads clearly over the lane instead of as one thin scratch.
 	private void DrawArrow( Vector3 origin, float yawDeg, float length, Color color, float spin )
 	{
 		var fwd = Rotation.FromYaw( yawDeg ).Forward;
-		var lateral = Vector3.Up.Cross( fwd );      // matches the hook's +/− convention
+		var lat0 = Vector3.Up.Cross( fwd );         // matches the hook's +/− convention
 		var bend = spin * length * 0.28f;           // how far the tip curves
 
-		const int segs = 12;
-		var prev = origin;
-		var tip = origin;
-		for ( var i = 1; i <= segs; i++ )
+		const int segs = 16;
+		var pts = new Vector3[segs + 1];
+		for ( var i = 0; i <= segs; i++ )
 		{
 			var s = i / (float)segs;
-			var p = origin + fwd * (length * s) + lateral * (bend * s * s);
-			DebugOverlay.Line( prev, p, color, overlay: true );
-			prev = p;
-			tip = p;
+			pts[i] = origin + fwd * (length * s) + lat0 * (bend * s * s);
 		}
 
-		// Arrowhead: two barbs back from the tip along the local heading at the tip.
-		var tipDir = (tip - prev).Length > 0.01f ? (tip - prev).Normal : fwd;
-		if ( segs >= 2 )
+		// Ground-plane lateral at point i (perpendicular to the LOCAL tangent), so the ribbon keeps a constant
+		// width even where the shaft curves.
+		Vector3 LatAt( int i )
 		{
-			var p2 = origin + fwd * (length * (segs - 1) / segs) + lateral * (bend * MathF.Pow( (segs - 1f) / segs, 2f ));
-			tipDir = (tip - p2).Normal;
+			var a = pts[Math.Max( 0, i - 1 )];
+			var b = pts[Math.Min( segs, i + 1 )];
+			var t = (b - a).WithZ( 0f );
+			t = t.Length > 0.001f ? t.Normal : fwd;
+			return Vector3.Up.Cross( t );
 		}
+
+		var halfW = MathF.Max( 18f, length * 0.05f );    // shaft half-width
+		var headLen = length * 0.26f;
+		var headHalf = MathF.Max( 30f, length * 0.12f ); // arrowhead half-width (wider than the shaft)
+
+		// Shaft: a filled ribbon of parallel offset polylines across the width.
+		const int fill = 12;
+		for ( var k = 0; k <= fill; k++ )
+		{
+			var off = MathX.Lerp( -halfW, halfW, k / (float)fill );
+			for ( var i = 0; i < segs; i++ )
+			{
+				var a = pts[i] + LatAt( i ) * off;
+				var b = pts[i + 1] + LatAt( i + 1 ) * off;
+				DebugOverlay.Line( a, b, color, overlay: true );
+			}
+		}
+
+		// Head: a solid triangle at the tip, filled by a fan of lines from the tip across its base edge.
+		var tip = pts[segs];
+		var tipDir = (pts[segs] - pts[segs - 1]).WithZ( 0f );
+		tipDir = tipDir.Length > 0.001f ? tipDir.Normal : fwd;
 		var side = Vector3.Up.Cross( tipDir );
-		var headLen = length * 0.16f;
-		DebugOverlay.Line( tip, tip - tipDir * headLen + side * headLen * 0.5f, color, overlay: true );
-		DebugOverlay.Line( tip, tip - tipDir * headLen - side * headLen * 0.5f, color, overlay: true );
+		var baseC = tip - tipDir * headLen;
+		var bl = baseC + side * headHalf;
+		var br = baseC - side * headHalf;
+
+		const int hf = 14;
+		for ( var k = 0; k <= hf; k++ )
+			DebugOverlay.Line( tip, Vector3.Lerp( bl, br, k / (float)hf ), color, overlay: true );
 	}
 
 	private void DrawHud()

@@ -52,9 +52,11 @@
 						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 1px;">
 							LANE <span style="color: #5aa0e6;">@LaneNumber</span> CONTROLS
 						</div>
-						@if ( CanDirect )
+						@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). Shown in
+						   the LOBBY too (not just to the director), so a joiner can pick the style BEFORE START;
+						   toggling it claims the lane (see GameDirector.SetAimMode). *@
+						@if ( CanDirect || !playing )
 						{
-							@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). *@
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
 							            border-width: 1px; border-color: rgba(120,160,220,0.4);
@@ -62,6 +64,9 @@
 							     onclick=@ToggleAim>
 								Throw: <span style="color: @(AimOn ? "#b07cd6" : "#5aa0e6");">@(AimOn ? "AIM" : "FREE")</span>
 							</div>
+						}
+						@if ( CanDirect )
+						{
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
 							            border-width: 1px; border-color: rgba(120,160,220,0.4);
@@ -249,15 +254,11 @@
 		}
 	}
 
-	// Throw-mode toggle: a lane-wide setting on the director (AimMode is synced, so only the lane's
-	// director-owner's write propagates — same pattern as the crane toggle). Defaults to FREE.
+	// Throw-mode toggle: a lane-wide setting on the director (AimMode is synced). SetAimMode claims the lane
+	// first, so this works in the LOBBY before START too — the presser becomes the lane's authority. Defaults
+	// to FREE.
 	private bool AimOn => Director?.AimMode ?? false;
-	private void ToggleAim()
-	{
-		var d = Director;
-		if ( d is null || !d.LocalIsDirector ) return;
-		d.AimMode = !d.AimMode;
-	}
+	private void ToggleAim() => Director?.SetAimMode( !(Director?.AimMode ?? false) );
 
 	// Ball Crane toggle (host-only; CraneEnabled is FromHost-synced so only the host's write propagates).
 	private bool CraneOn => Director?.CraneEnabled ?? true;

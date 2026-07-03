@@ -38,6 +38,18 @@ public sealed class GameDirector : Component
 	/// <summary>UI-facing alias: does the LOCAL client run this lane's game (show STOP / crane toggle)?</summary>
 	public bool LocalIsDirector => IsDirector;
 
+	/// <summary>Set the lane's throw mode (<see cref="AimMode"/>) from the lane controls. Claims this lane's
+	/// director FIRST (takes ownership) so a player can pick the throw style in the LOBBY — before pressing
+	/// START — and have it stick and propagate. AimMode is owner→everyone [Sync], so without taking authority
+	/// a joiner's write would just be clobbered by the host's value; that's why the toggle used to only work
+	/// once you'd claimed the lane via START. No-op if authority can't be taken.</summary>
+	public void SetAimMode( bool on )
+	{
+		ClaimDirector();
+		if ( !IsDirector ) return;
+		AimMode = on;
+	}
+
 	private bool _dirNetReady; // host: have we tagged the director object Takeover yet?
 
 	// Take ownership of this lane's director so OUR writes to the synced state are authoritative. Called
