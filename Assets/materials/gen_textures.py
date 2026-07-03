@@ -95,7 +95,9 @@ def wood(name, seed, c_light, c_dark, c_seam, planks=6, rough_lo=0.18, rough_hi=
     # Grain: fbm stretched along the plank length so it reads as long fibres.
     grain = fbm(rng, octaves=6, base=2)
     grain_stretch = fbm(rng, octaves=5, base=3)
-    grain = norm01(grain * 0.4 + np.sin((grain_stretch * 6 + X * 40)) * 0.15 + 0.5)
+    # X frequency MUST be an integer number of cycles (2*pi*k) or the grain sine
+    # jumps at the X=0/1 tile seam -> a hard stripe across the lane every repeat.
+    grain = norm01(grain * 0.4 + np.sin((grain_stretch * 6 + X * 2 * np.pi * 6)) * 0.15 + 0.5)
     # Per-plank tone offset so neighbours differ.
     tone = (np.sin(plank_id.astype(np.float32) * 2.399) * 0.5 + 0.5)
     col = lerp(c_dark, c_light, grain)                 # (N,N,3)
