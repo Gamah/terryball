@@ -162,7 +162,7 @@ public sealed class LaneBuilder : Component
 	// ---- Surface materials: stylised CC0 textures (Assets/materials/gen_textures.py) that dress the
 	// bare tinted primitives. Loaded once; applied per box via MaterialOverride with a world-tiled copy
 	// (see Tiled) so one shared texture repeats at a consistent physical size across boxes of any shape.
-	private Material _matLaneWood, _matApproach, _matGutter, _matMetal, _matCarpet, _matPit;
+	private Material _matLaneWood, _matApproach, _matGutter, _matMetal, _matCarpet, _matPit, _matFloorDark;
 	// Cache of world-tiled material copies, keyed by (base material, U-repeat, V-repeat) so the 39 identical
 	// boards (and other same-sized boxes) share one copy instead of minting 39.
 	private readonly Dictionary<string, Material> _tiledCache = new();
@@ -313,6 +313,7 @@ public sealed class LaneBuilder : Component
 		_matMetal = Material.Load( "materials/metal.vmat" );
 		_matCarpet = Material.Load( "materials/carpet.vmat" );
 		_matPit = Material.Load( "materials/pit.vmat" );
+		_matFloorDark = Material.Load( "materials/floordark.vmat" ); // terrazzo — matches the spawn ramps
 
 		// Treat the actual ball as 8.5" to get a units-per-inch scale for everything else.
 		var ball = Lane.Of( this )?.Ball;
@@ -594,10 +595,11 @@ public sealed class LaneBuilder : Component
 			platformHalf );
 		var midX = frontX + away * depth * 0.5f;   // settee centre, half its depth back from the lane edge
 
-		// Carpeted riser: a low step on the deck top that reads as the defined seating zone. Retro carpet
-		// texture, tiled at citizen scale so the motifs read at roughly human size.
+		// Seating-zone riser: a low step on the deck top that reads as the defined seating zone. Dressed in
+		// the same dark terrazzo as the spawn ramps up to here (tiled at ramp density) so the settee reads
+		// as a continuation of that floor rather than a separate carpet.
 		MakeBox( "SetteeCarpet", new Vector3( midX, 0f, baseZ + riser * 0.5f ),
-			new Vector3( depth, halfW * 2f, riser ), Color.White, mat: _matCarpet, tileWorld: 160f * cu );
+			new Vector3( depth, halfW * 2f, riser ), Color.White, mat: _matFloorDark, tileWorld: 200f );
 
 		// Where the director drops walking bowlers in: on the carpet, mid-settee, facing the lane.
 		// Exposed in world space (the director spawns avatars at world positions).

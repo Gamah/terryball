@@ -45,7 +45,8 @@ public sealed class SpawnAreaBuilder : Component
 	[Property, Group( "Colors" )] public Color TeleportTopColor { get; set; } = new( 0.28f, 0.55f, 0.62f, 1f );
 
 	private bool _built;
-	private Material _matFloorDark; // dark terrazzo shared by the concourse floor + ramps
+	private Material _matFloorDark; // dark terrazzo on the ramps up to the settees
+	private Material _matCarpet;    // retro carpet on the concourse floor (the old settee texture)
 
 	protected override void OnUpdate() => EnsureBuilt();
 
@@ -92,10 +93,13 @@ public sealed class SpawnAreaBuilder : Component
 		var concMidX = (concFrontX + concBackX) * 0.5f;
 
 		// ---- Concourse floor slab (thin, on the building floor). A raised lip reads it as a defined area.
+		// Dressed in the retro carpet (the settees' old texture), tiled at that same human-scale density so
+		// the motifs read at roughly person size across the plaza.
 		var slabThk = 8f * cu;
-		_matFloorDark ??= Material.Load( "materials/floordark.vmat" ); // terrazzo: bright chips on near-black
+		_matCarpet ??= Material.Load( "materials/carpet.vmat" );
+		_matFloorDark ??= Material.Load( "materials/floordark.vmat" ); // terrazzo on the ramps (below)
 		MakeBox( "ConcourseFloor", new Vector3( concMidX, yMid, slabThk * 0.5f ),
-			new Vector3( ConcourseDepth, ySpan, slabThk ), FloorColor, mat: _matFloorDark, tileWorld: 200f );
+			new Vector3( ConcourseDepth, ySpan, slabThk ), FloorColor, mat: _matCarpet, tileWorld: 160f );
 
 		// ---- Stairs: one flight per lane, from the concourse floor up to that lane's settee deck.
 		foreach ( var b in lanes )
@@ -211,12 +215,14 @@ public sealed class SpawnAreaBuilder : Component
 		mr.Tint = tint;
 		if ( mat is not null && tileWorld > 0f )
 		{
-			// Tile across the box's two largest dims (the dominant face); box face UVs run 0..1.
-			var mx = MathF.Max( size.x, MathF.Max( size.y, size.z ) );
-			var mn = MathF.Min( size.x, MathF.Min( size.y, size.z ) );
-			var mid = size.x + size.y + size.z - mx - mn;
+			// Tile across the box's dominant face (the two axes either side of the THIN one) at a fixed
+			// physical density. Keep each world axis on its own UV — the box's top-face U runs along X and
+			// V along Y — instead of sorting by magnitude, or a floor wider in Y than X comes out stretched.
+			var (ud, vd) = size.z <= size.x && size.z <= size.y ? (size.x, size.y)   // flat slab: U=x, V=y
+				: size.y <= size.x && size.y <= size.z ? (size.x, size.z)             // wall (thin in y): U=x, V=z
+				: (size.y, size.z);                                                   // thin in x: U=y, V=z
 			var m = mat.CreateCopy();
-			m.Set( "g_vTexCoordScale", new Vector2( MathF.Max( mx / tileWorld, 0.02f ), MathF.Max( mid / tileWorld, 0.02f ) ) );
+			m.Set( "g_vTexCoordScale", new Vector2( MathF.Max( ud / tileWorld, 0.02f ), MathF.Max( vd / tileWorld, 0.02f ) ) );
 			mr.MaterialOverride = m;
 		}
 		var b = mr.Model.Bounds.Size;
