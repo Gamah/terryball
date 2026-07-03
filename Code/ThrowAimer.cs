@@ -49,11 +49,13 @@ public sealed class ThrowAimer : Component
 	/// it under-rolling and let the lane's friction spin it up, instead of forcing a full-grip roll off the
 	/// line (which read as the ball "spinning as if it had full friction"). 1 = full roll, 0 = pure skid.</summary>
 	[Property, Group( "Launch" )] public float LaunchRollFraction { get; set; } = 0.5f;
-	/// <summary>Drill (vertical-axis) spin rate (rad/s) a full ±1 spin adds. Its sign matches the oiled-lane
-	/// hook (BallController: +spin curves toward +Y), so the ball VISIBLY rotates toward the side it's going
-	/// to break — that's what ties the spin you dial in to the hook you see. Combined with the partial forward
-	/// roll it reads as a real hook ball's canted (tilted) rotation axis, not a flat top-spin.</summary>
-	[Property, Group( "Launch" )] public float DrillSpinRate { get; set; } = 11f;
+	/// <summary>Side-rotation rate (rad/s) a full ±1 spin puts on the ball, ABOUT THE TRAVEL AXIS — a real hook
+	/// ball's tilted rotation axis. This is the genuine cause of the hook: it makes the ball's contact patch
+	/// slip sideways, and friction on the dry back end turns that into the curve (BallController). So the spin
+	/// you see rolling on the ball IS what breaks it — and the peak hook the ball revs out to is roughly this
+	/// times the ball radius (u/s of sideways speed). Combined with the partial forward roll it reads as a
+	/// canted axis, not a flat top-spin.</summary>
+	[Property, Group( "Launch" )] public float SideRotationRate { get; set; } = 8f;
 
 	// Locked-in values as each step is committed.
 	private float _lineY;     // world Y of the chosen start line
@@ -184,14 +186,15 @@ public sealed class ThrowAimer : Component
 
 		// Forward roll about the lateral axis, but only a FRACTION of the no-slip rate (v/R): the ball leaves
 		// the hand skidding on the oiled front and the lane's friction revs it toward a true roll, instead of
-		// spinning as if it were full-grip off the line. Add a DRILL (vertical-axis) spin whose sign matches
-		// the hook (+spin → +Y in BallController), so the ball visibly turns over toward the side it's about to
-		// break — tying the dialled-in spin to the curve. Forward roll + drill together read as a real hook
-		// ball's canted axis. The actual curve is the oiled-lane hook, armed via HookAmount = spin.
+		// spinning as if it were full-grip off the line. Then a real SIDE ROTATION about the travel axis — the
+		// hook ball's tilted spin axis. That side rotation is the physical cause of the curve: BallController
+		// turns the sideways contact-patch slip it creates into the hook on the dry back end. The −dir sign
+		// makes +spin (meter "HOOK LEFT") roll the ball toward +Y and break it that way. Forward roll + side
+		// rotation together = a canted axis. HookAmount just arms the hook (a free-drive ball leaves it 0).
 		var noSlip = speed / MathF.Max( 1f, ball.Radius );
 		var rollAxis = dir.Cross( Vector3.Up );            // horizontal, perpendicular to travel
 		var angular = rollAxis * (noSlip * LaunchRollFraction)
-			+ Vector3.Up * (spin * DrillSpinRate);         // drill in the hook's direction = the canted hook axis
+			- dir * (spin * SideRotationRate);             // side rotation about travel = the canted hook axis
 
 		ball.Launch( velocity, angular, spin );
 		ball.ControlsLocked = true; // committed — no steering; the director arms watch on the throw-line cross

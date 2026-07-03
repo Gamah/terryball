@@ -105,23 +105,26 @@ public sealed class BallController : Component, Component.ICollisionListener
 	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 20f;
 
 	// --- Oiled-lane hook (guided-throw mode) -------------------------------------------
-	// A stylized model of a real lane's oil pattern: a bowling lane is oiled heavy up front and
-	// dry at the back, so a spinning ball SLIDES nearly straight through the oil and only "hooks"
-	// (bites and curves) once it reaches the dry back end near the pins. We reproduce that with an
-	// explicit lateral force, ramped in from OilFrontFraction of the way down the lane, scaled by
-	// the ball's forward speed and the spin the bowler dialled in at launch (HookAmount). Because
-	// the hook builds LATE, a big spin doesn't fling the ball straight into the gutter off the foul
-	// line — it tracks down-lane first and breaks toward the pocket near the deck. Only used by the
-	// aimed throw; a free-drive ball keeps HookAmount 0 (reset below) so it never curves.
+	// A real lane is oiled heavy up front and dry at the back, so a spinning ball SLIDES nearly straight
+	// through the oil and only "hooks" once it reaches the dry back end near the pins. We model that honestly
+	// from the ball's actual spin: the side rotation the bowler put on the ball (about its travel axis) makes
+	// its contact patch slip sideways; over the dry back end (past OilFrontFraction) friction resists that
+	// slip and drives the ball over — the hook — and it self-limits as the ball revs up to rolling on its new
+	// line. So the spin visible on the ball is exactly what breaks it. Because the grip builds LATE, a big
+	// spin doesn't fling the ball into the gutter off the foul line — it tracks down-lane first and breaks
+	// toward the pocket near the deck. Only the aimed throw arms it; a free-drive ball keeps HookAmount 0.
 
-	/// <summary>Signed side-spin the aimed throw imparts, −1..+1 (0 = no hook). Set at launch by the
-	/// <see cref="ThrowAimer"/>; forced back to 0 whenever the ball is under free drive so a free throw
-	/// never hooks. Positive curves toward +Y (screen-left), negative toward −Y.</summary>
+	/// <summary>Arms the hook for an aimed throw: nonzero = this ball was launched with side rotation, so run
+	/// the oiled-lane friction hook (the curve itself comes from the ball's real <see cref="Rigidbody.AngularVelocity"/>,
+	/// not from this value). Set at launch by the <see cref="ThrowAimer"/> to the signed spin (−1..+1); forced
+	/// back to 0 whenever the ball is under free drive so a free throw never hooks.</summary>
 	public float HookAmount { get; set; }
-	/// <summary>Peak lateral hook acceleration (u/s²) a full ±1 spin reaches at the dry back end. Kept
-	/// speed-INDEPENDENT so the break is predictable (and a slower ball, spending longer on the dry back
-	/// end, naturally hooks more — as it does for real). Tune the pocket break by feel.</summary>
-	[Property, Group( "Oil" )] public float HookGain { get; set; } = 950f;
+	/// <summary>Max lateral grip (u/s² of sideways accel) friction can apply on the fully-dry back end — the
+	/// Coulomb limit that resists the ball's sideways contact slip. Higher = the hook develops faster/earlier;
+	/// it does NOT set how far the ball ultimately breaks (that's the side rotation the bowler put on — see
+	/// ThrowAimer.SideRotationRate), because the grip self-limits once the ball revs up to rolling on its new
+	/// line. Tune the pocket break by feel.</summary>
+	[Property, Group( "Oil" )] public float HookAccel { get; set; } = 1400f;
 	/// <summary>Fraction of the foul-line→pin-deck distance that is "oiled" — over this front stretch the
 	/// hook stays near zero (the ball slides), then ramps to full over the remaining dry back end. Higher
 	/// = the ball holds its line longer and breaks later/harder near the pins.</summary>
@@ -518,11 +521,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 			_body.AngularVelocity *= k;
 		}
 
-		// Oiled-lane hook: an aimed throw (ControlsLocked, HookAmount set) slides through the "oiled" front
-		// of the lane then bites and curves through the dry back end. The lateral hook accel ramps in from
-		// OilFrontFraction of the way down the lane to full at the deck and is applied perpendicular to
-		// travel — so a spin breaks the ball late toward the pocket instead of throwing it straight into the
-		// gutter off the foul line. Speed-independent, so a slower ball (longer on the dry end) hooks more.
+		// Oiled-lane hook — EMERGENT from the ball's real spin, not a scripted push. The side rotation the
+		// bowler put on the ball (about its travel axis) makes its contact patch slip sideways over the lane.
+		// The oiled front is slick so it slides straight; over the dry back end friction resists that slip and
+		// drives the ball sideways — the hook — and it self-limits as the ball revs up to rolling on its new
+		// line (the slip cancels). So the spin you see on the ball is exactly what breaks it. Only an aimed
+		// throw arms this (HookAmount set at launch); a free-drive ball has no side rotation and keeps
+		// HookAmount 0, so it never curves.
 		if ( ControlsLocked && MathF.Abs( HookAmount ) > 0.001f && lane.IsValid() )
 		{
 			var horiz = _body.Velocity.WithZ( 0f );
@@ -533,15 +538,26 @@ public sealed class BallController : Component, Component.ICollisionListener
 				var deckX = lane.PinDeckWorldCenter.x;
 				var span = MathF.Max( 1f, deckX - foulX );
 				var p = ((WorldPosition.x - foulX) / span).Clamp( 0f, 1f ); // 0 at foul line, 1 at the deck
-				// Ramp 0→1 across the DRY back end (past OilFrontFraction); smoothstepped so the break eases in.
+				// Oil pattern: no grip on the oiled front, ramps (smoothstep) to full over the dry back end.
 				var front = OilFrontFraction.Clamp( 0f, 0.99f );
 				var t = ((p - front) / MathF.Max( 0.01f, 1f - front )).Clamp( 0f, 1f );
 				var oil = t * t * (3f - 2f * t);
-				// Lateral = the horizontal normal to travel (rotate the travel dir 90° about Up).
+
 				var dir = horiz / speed;
-				var lateral = Vector3.Up.Cross( dir ); // unit, points +Y-ish for +X travel
-				var accel = HookAmount * HookGain * oil;  // u/s², speed-independent
-				_body.ApplyForce( lateral * accel * _body.Mass );
+				var lateralDir = Vector3.Up.Cross( dir ); // unit, perpendicular to travel (+Y-ish for +X)
+
+				// Sideways slip of the contact patch = lateral part of (ball travel + surface velocity from
+				// spin). The surface velocity at the contact (ball bottom) is ω × r, r pointing straight down
+				// at the radius — this is what the side rotation contributes, and what friction resists.
+				var contactV = Vector3.Cross( _body.AngularVelocity, Vector3.Down * Radius );
+				var lateralSlip = Vector3.Dot( horiz + contactV, lateralDir );
+
+				// Kinetic friction opposing that slip, capped at the dry-lane grip limit (HookAccel·oil) and at
+				// what would exactly kill the slip this step — so it eases off smoothly as the ball reaches
+				// rolling on its new line (rev-out), no runaway into the gutter.
+				var maxA = HookAccel * oil;
+				var accel = -Math.Clamp( lateralSlip / dt, -maxA, maxA );
+				_body.ApplyForce( lateralDir * accel * _body.Mass );
 			}
 		}
 
