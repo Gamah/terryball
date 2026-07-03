@@ -288,7 +288,9 @@ public sealed class ThrowAimer : Component
 	{
 		EnsureArrow();
 		// Mesh vertices are built in WORLD space, so pin the object at the identity transform.
-		_arrowGo.WorldTransform = global::Sandbox.Transform.Zero;
+		_arrowGo.WorldPosition = Vector3.Zero;
+		_arrowGo.WorldRotation = Rotation.Identity;
+		_arrowGo.WorldScale = Vector3.One;
 		_arrowRenderer.Enabled = true;
 		_arrowRenderer.Tint = color;
 
