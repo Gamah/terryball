@@ -41,8 +41,26 @@ public sealed class BallCamera : Component
 	/// in-ball view (the scoop/drop), instead of snapping in one frame.</summary>
 	[Property, Group( "Transition" )] public float TransitionSeconds { get; set; } = 0.45f;
 
+	/// <summary>Fixed pitch used while the bowler is lining up a guided (Aim-mode) throw — the camera is locked
+	/// to a steady down-lane shot then, so it doesn't read the mouse or follow the ball's lateral shuffle.</summary>
+	[Property, Group( "Aim" )] public float AimPitch { get; set; } = 10f;
+	/// <summary>Rate (per second) the camera's lateral anchor eases to the lane centre while aiming, and back
+	/// onto the ball's line once the throw commits — so the release doesn't snap the view sideways.</summary>
+	[Property, Group( "Aim" )] public float AimLockLerp { get; set; } = 6f;
+
 	private BallController _ball;
 	private LaneBuilder _lane;
+
+	// The client-local guided-throw driver (single instance on the local HUD). We read its LiningUp flag to
+	// lock the camera while a throw is being aimed. Resolved lazily and re-resolved if it goes invalid.
+	private ThrowAimer _aimer;
+	private ThrowAimer Aimer => _aimer.IsValid() ? _aimer : (_aimer = Scene.GetAllComponents<ThrowAimer>().FirstOrDefault());
+
+	// Eased lateral follow anchor: the ball's own Y in normal play, but pulled to the lane centre while aiming
+	// (and eased back onto the ball's line at release), so aiming is steady and the throw doesn't snap.
+	private float _followY;
+	private bool _followYInit;
+	private bool _lockEngaged;
 	private float _yaw;
 	private float _pitch = 15f;
 	private float _blend; // 0 = on the ball, 1 = pin-deck watch vantage
@@ -111,8 +129,36 @@ public sealed class BallCamera : Component
 		}
 
 		// --- Play framing: third-person follow behind the ball, horizon-locked. ----------------
+		// While a guided (Aim-mode) throw is being lined up, LOCK a steady shot straight down the lane centre
+		// from behind the parked ball: the ball shuffles side-to-side as you pick your line, and chasing that
+		// (or the mouse) is jarring, so hold the yaw down-lane and ignore look here.
+		var liningUp = (Aimer?.LiningUp ?? false) && _lane.IsValid();
+		if ( liningUp )
+		{
+			_yaw = 0f;         // straight down-lane (+X)
+			_pitch = AimPitch;
+		}
+
+		// Lateral follow anchor: the ball's own Y for a tight follow in normal play, but eased to the lane
+		// centre-line while aiming. We keep easing for a moment AFTER the throw commits, so the camera slides —
+		// rather than snaps — from the centred aim shot onto the ball's actual line as it starts down the lane.
+		var tightY = _ball.WorldPosition.y;
+		var targetY = liningUp ? _lane.RunUpWorldPosition.y : tightY;
+		if ( !_followYInit ) { _followY = targetY; _followYInit = true; }
+		if ( liningUp ) _lockEngaged = true;
+		if ( _lockEngaged )
+		{
+			_followY = MathX.Lerp( _followY, targetY, MathF.Min( 1f, AimLockLerp * Time.Delta ) );
+			if ( !liningUp && MathF.Abs( _followY - tightY ) < 2f ) _lockEngaged = false; // converged → resume tight follow
+		}
+		else
+		{
+			_followY = tightY;
+		}
+
 		var playRot = Rotation.From( _pitch, _yaw, 0f );
-		var playPos = _ball.WorldPosition + Vector3.Up * Height - playRot.Forward * Distance;
+		var anchor = new Vector3( _ball.WorldPosition.x, _followY, _ball.WorldPosition.z );
+		var playPos = anchor + Vector3.Up * Height - playRot.Forward * Distance;
 
 		// --- Watch framing: behind + above the pin deck, looking at it. -------------------------
 		var watchPos = playPos;

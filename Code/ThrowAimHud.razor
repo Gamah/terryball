@@ -1,0 +1,174 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Terryball;
+@inherits PanelComponent
+
+@*
+	The guided-throw ("Aim" mode) step meter — a real first-party HUD panel at the bottom-centre of the
+	screen (no world overlay). It renders the live state published by the client-local ThrowAimer on the
+	same object: the current step (1-4), a caret sweeping a track, the sweet-spot tick(s) on POWER/SPIN, a
+	centre reference on the directional steps, four step pips, and the commit hint.
+
+	The caret sweeps every frame (its Left is set in OnUpdate); the rest of the tree only rebuilds when the
+	step changes or the HUD shows/hides. pointer-events:none throughout, so it never grabs the cursor from
+	aiming (an interactive screen panel would flip the engine into UI-input mode and freeze the ball camera).
+*@
+
+<root>
+	@{
+		var aimer = Aimer;
+		var show = aimer?.AimHudVisible ?? false;
+	}
+	@if ( show )
+	{
+		var step = aimer.AimStep;
+		var twoSided = aimer.AimTwoSided;
+		var sweet = aimer.AimSweet01;
+		<div class="meter">
+			<div class="title">STEP @(step)/4 · @aimer.AimStepLabel</div>
+			<div class="track">
+				@* Centre reference for the directional steps (lane centre / straight aim / no hook). *@
+				@if ( twoSided || sweet < 0f )
+				{
+					<div class="center"></div>
+				}
+				@* Sweet-spot tick(s): one on POWER, mirrored either side of centre on SPIN. *@
+				@if ( twoSided )
+				{
+					<div class="sweet" style="left: @(((1f - sweet) * 50f))%;"></div>
+					<div class="sweet" style="left: @(((1f + sweet) * 50f))%;"></div>
+				}
+				else if ( sweet >= 0f )
+				{
+					<div class="sweet" style="left: @((sweet * 100f))%;"></div>
+				}
+				<div class="caret" @ref="_caret"></div>
+			</div>
+			<div class="pips">
+				@for ( int i = 0; i < 4; i++ )
+				{
+					<div class="pip @(i < step ? "on" : "")"></div>
+				}
+			</div>
+			<div class="hint">
+				@(sweet >= 0f ? "Click / Space to set  ·  line up the tick (past it = overcooked)" : "Click / Space to set")
+			</div>
+		</div>
+	}
+</root>
+
+<style>
+	root {
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		align-items: center;
+		justify-content: flex-end;
+		font-family: Poppins, sans-serif;
+	}
+
+	.meter {
+		margin-bottom: 48px;
+		width: 520px;
+		flex-direction: column;
+		align-items: center;
+		padding: 14px 22px 12px 22px;
+		background-color: rgba(0, 0, 0, 0.62);
+		border-radius: 12px;
+		pointer-events: none;
+	}
+
+	.title {
+		font-size: 18px;
+		font-weight: 700;
+		letter-spacing: 1px;
+		color: white;
+		margin-bottom: 12px;
+	}
+
+	.track {
+		width: 100%;
+		height: 18px;
+		background-color: rgba(46, 51, 64, 0.95);
+		border-radius: 9px;
+		position: relative;
+	}
+
+	.center {
+		position: absolute;
+		left: 50%;
+		margin-left: -1px;
+		top: 2px;
+		bottom: 2px;
+		width: 2px;
+		background-color: rgba(255, 255, 255, 0.28);
+	}
+
+	.sweet {
+		position: absolute;
+		margin-left: -2px;
+		top: -3px;
+		bottom: -3px;
+		width: 4px;
+		border-radius: 2px;
+		background-color: rgba(255, 255, 255, 0.9);
+	}
+
+	.caret {
+		position: absolute;
+		left: 0%;
+		margin-left: -3px;
+		top: -4px;
+		bottom: -4px;
+		width: 6px;
+		border-radius: 3px;
+		background-color: rgb(90, 200, 255);
+		box-shadow: 0px 0px 8px 1px rgba(90, 200, 255, 0.8);
+	}
+
+	.pips {
+		flex-direction: row;
+		gap: 10px;
+		margin-top: 14px;
+	}
+
+	.pip {
+		width: 10px;
+		height: 10px;
+		border-radius: 5px;
+		background-color: rgba(70, 76, 92, 1);
+	}
+
+	.pip.on {
+		background-color: rgb(90, 200, 255);
+	}
+
+	.hint {
+		font-size: 13px;
+		color: rgba(255, 255, 255, 0.7);
+		margin-top: 12px;
+	}
+</style>
+
+@code
+{
+	private Panel _caret;
+
+	// ThrowAimer lives on the same client-local HUD object; it publishes the live step state we render.
+	private ThrowAimer Aimer => Components.Get<ThrowAimer>();
+
+	// Only rebuild the tree when the HUD shows/hides or the step changes — the caret sweep is set per-frame
+	// in OnUpdate below, so the continuous motion doesn't churn the panel.
+	protected override int BuildHash()
+	{
+		var a = Aimer;
+		return System.HashCode.Combine( a?.AimHudVisible ?? false, a?.AimStep ?? 0 );
+	}
+
+	protected override void OnUpdate()
+	{
+		var a = Aimer;
+		if ( a is not null && a.AimHudVisible && _caret is { IsValid: true, IsDeleting: false } )
+			_caret.Style.Left = Length.Fraction( a.AimCaret01 );
+	}
+}
