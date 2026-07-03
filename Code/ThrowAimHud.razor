@@ -27,7 +27,27 @@
 		<div class="dock">
 		<div class="meter">
 			<div class="title">STEP @(step)/4 · @aimer.AimStepLabel</div>
-			<div class="track">
+			@* Already-committed steps, drawn as dimmed ghost tracks above the live one (oldest at top). *@
+				@{ var ghosts = aimer.AimGhosts; }
+				@if ( ghosts.Count > 0 )
+				{
+					<div class="ghosts">
+						@foreach ( var g in ghosts )
+						{
+							<div class="grow">
+								<div class="glabel">@g.Label</div>
+								<div class="gtrack">
+									@if ( g.HasCenter )
+									{
+										<div class="gcenter"></div>
+									}
+									<div class="gcaret" style="left: @((g.Caret01 * 100f))%;"></div>
+								</div>
+							</div>
+						}
+					</div>
+				}
+				<div class="track">
 				@* Centre reference for the directional steps (lane centre / straight aim / no hook). *@
 				@if ( twoSided || sweet < 0f )
 				{
@@ -52,8 +72,8 @@
 				}
 			</div>
 			<div class="hint">
-				@(sweet >= 0f ? "Click / Space to set  ·  line up the tick (past it = overcooked)" : "Click / Space to set")
-			</div>
+				@(sweet >= 0f ? "Click / Space to set  ·  line up the tick (past it = overcooked)" : "Click / Space to set")</div>
+				<div class="hint back">Right-click / Backspace to step back</div>
 		</div>
 		</div>
 	}
@@ -96,6 +116,58 @@
 		letter-spacing: 1px;
 		color: white;
 		margin-bottom: 10px;
+	}
+
+	/* Ghost stack: the already-committed steps, shown above the live meter as dimmed mini-tracks so you can
+	   read back what you locked in (LINE, then AIM, then POWER as you progress). */
+	.ghosts {
+		width: 100%;
+		flex-direction: column;
+		gap: 5px;
+		margin-bottom: 10px;
+	}
+
+	.grow {
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		opacity: 0.55;
+	}
+
+	.glabel {
+		width: 52px;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 1px;
+		color: rgba(255, 255, 255, 0.75);
+	}
+
+	.gtrack {
+		flex-grow: 1;
+		height: 7px;
+		background-color: rgba(46, 51, 64, 0.9);
+		border-radius: 4px;
+		position: relative;
+	}
+
+	.gcenter {
+		position: absolute;
+		left: 50%;
+		margin-left: -1px;
+		top: 1px;
+		bottom: 1px;
+		width: 2px;
+		background-color: rgba(255, 255, 255, 0.22);
+	}
+
+	.gcaret {
+		position: absolute;
+		margin-left: -2px;
+		top: -2px;
+		bottom: -2px;
+		width: 4px;
+		border-radius: 2px;
+		background-color: rgb(90, 200, 255);
 	}
 
 	.track {
@@ -160,6 +232,12 @@
 		color: rgba(255, 255, 255, 0.7);
 		margin-top: 10px;
 	}
+
+	.hint.back {
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.45);
+		margin-top: 3px;
+	}
 </style>
 
 @code
@@ -174,7 +252,14 @@
 	protected override int BuildHash()
 	{
 		var a = Aimer;
-		return System.HashCode.Combine( a?.AimHudVisible ?? false, a?.AimStep ?? 0 );
+		var hc = new System.HashCode();
+		hc.Add( a?.AimHudVisible ?? false );
+		hc.Add( a?.AimStep ?? 0 );
+		// Ghost tracks are static once built, so fold their locked positions in too — that way re-locking a step
+		// after stepping back (same step count, new caret) still rebuilds the ghost markers.
+		if ( a is not null )
+			foreach ( var g in a.AimGhosts ) { hc.Add( g.Label ); hc.Add( g.Caret01 ); }
+		return hc.ToHashCode();
 	}
 
 	protected override void OnUpdate()

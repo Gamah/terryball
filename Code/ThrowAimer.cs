@@ -65,6 +65,9 @@ public sealed class ThrowAimer : Component
 	private float _lineY;     // world Y of the chosen start line
 	private float _aimDeg;    // chosen aim deflection
 	private float _power01;   // chosen power 0..1
+	// Caret fractions (0..1, 0 = screen-left) captured at each commit, so the HUD can show the locked
+	// position of the previous steps as ghost tracks above the current one.
+	private float _lineCaret, _aimCaret, _powerCaret;
 	private float _startX;    // world X the ball is held at (just behind the foul line)
 	private float _surfaceZ;  // world Z of the ball centre resting on the lane surface
 	private float _centerY;   // lane centre-line Y
@@ -114,27 +117,42 @@ public sealed class ThrowAimer : Component
 
 		var advance = !blocked && AdvancePressed();
 
+		// Right-click / Backspace steps BACK one step, so a bad lock can be redone: Aim→Line, Power→Aim,
+		// Spin→Power (Line is the first step, nothing before it). The re-entered step resumes its live sweep
+		// from where the ping-pong is now, and re-locks fresh on the next commit. Never both back and forward
+		// in the same frame.
+		if ( !blocked && !advance && BackPressed() )
+		{
+			_phase = _phase switch
+			{
+				Phase.Aim => Phase.Line,
+				Phase.Power => Phase.Aim,
+				Phase.Spin => Phase.Power,
+				_ => _phase,
+			};
+		}
+
 		switch ( _phase )
 		{
 			case Phase.Line:
 			{
 				var holdY = _centerY + SignedPing( LineSpeed ) * _yRange;
 				HoldBall( ball, holdY );
-				if ( advance ) { _lineY = holdY; _phase = Phase.Aim; }
+				if ( advance ) { _lineY = holdY; _lineCaret = (1f - SignedPing( LineSpeed )) * 0.5f; _phase = Phase.Aim; }
 				break;
 			}
 			case Phase.Aim:
 			{
 				HoldBall( ball, _lineY );
 				_aimDeg = SignedPing( AimSpeed ) * MaxAimDegrees;
-				if ( advance ) _phase = Phase.Power;
+				if ( advance ) { _aimCaret = (1f - SignedPing( AimSpeed )) * 0.5f; _phase = Phase.Power; }
 				break;
 			}
 			case Phase.Power:
 			{
 				HoldBall( ball, _lineY );
 				_power01 = Ping( PowerSpeed );
-				if ( advance ) _phase = Phase.Spin;
+				if ( advance ) { _powerCaret = _power01; _phase = Phase.Spin; }
 				break;
 			}
 			case Phase.Spin:
@@ -223,6 +241,10 @@ public sealed class ThrowAimer : Component
 	// --- Input -------------------------------------------------------------------------
 	private static bool AdvancePressed()
 		=> Input.Pressed( "attack1" ) || Input.Pressed( "Jump" ) || Input.Keyboard.Pressed( "space" );
+
+	// Right-click or Backspace to walk back a step.
+	private static bool BackPressed()
+		=> Input.Pressed( "attack2" ) || Input.Keyboard.Pressed( "backspace" );
 
 	// --- Ping-pong helpers -------------------------------------------------------------
 	// Ping: a 0→1→0 triangle at `cyclesPerSec`. SignedPing: the same swept over −1→1→−1.
@@ -392,6 +414,14 @@ public sealed class ThrowAimer : Component
 	/// centred on the lane then; once the line is locked (AIM/POWER/SPIN) it eases in behind the parked ball.</summary>
 	public bool ChoosingLine => _phase == Phase.Line;
 
+	/// <summary>A committed earlier step, drawn as a dimmed "ghost" track above the current meter so you can see
+	/// what you already locked in. <see cref="Caret01"/> is the locked position (0..1, 0 = screen-left);
+	/// <see cref="HasCenter"/> marks the directional steps (LINE/AIM) that show a lane-centre reference.</summary>
+	public readonly record struct AimGhost( string Label, float Caret01, bool HasCenter );
+
+	private readonly System.Collections.Generic.List<AimGhost> _ghosts = new();
+	public System.Collections.Generic.IReadOnlyList<AimGhost> AimGhosts => _ghosts;
+
 	public bool AimHudVisible { get; private set; }
 	public int AimStep { get; private set; }             // 1..4
 	public string AimStepLabel { get; private set; } = "";
@@ -412,6 +442,13 @@ public sealed class ThrowAimer : Component
 			case Phase.Spin: AimCaret01 = (1f - SignedPing( SpinSpeed )) * 0.5f; AimSweet01 = SweetSpot; AimTwoSided = true; AimStep = 4; AimStepLabel = "SPIN"; break;
 			default: AimHudVisible = false; return;
 		}
+
+		// The up-to-three already-committed steps, oldest first, shown as ghost tracks above the live one.
+		_ghosts.Clear();
+		if ( _phase >= Phase.Aim ) _ghosts.Add( new AimGhost( "LINE", _lineCaret, true ) );
+		if ( _phase >= Phase.Power ) _ghosts.Add( new AimGhost( "AIM", _aimCaret, true ) );
+		if ( _phase >= Phase.Spin ) _ghosts.Add( new AimGhost( "POWER", _powerCaret, false ) );
+
 		AimHudVisible = true;
 	}
 
