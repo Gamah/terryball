@@ -1,31 +1,21 @@
 @using System;
 @using Sandbox;
 @using Sandbox.UI;
-@using Sandbox.Platform;
 @using Terryball;
 @inherits PanelComponent
 
 @*
-	Chat INPUT only. The engine's built-in chat overlay already draws the message feed, so we don't
-	render our own (that was a second, duplicate output) — we just provide the typing box:
-	- T opens the input (while not bowling / not at the lane controls). Enter sends, Escape cancels.
-	- We DON'T disable the player controller while typing — a focused TextEntry already swallows the
-	  WASD keystrokes, so the avatar stays put on its own.
+	Chat AFFORDANCE only. The engine's built-in chat overlay owns everything now — it draws the message
+	feed AND provides the typing box, opened with Enter (the "Chat" input action). We used to roll our
+	own T-to-open TextEntry input here (copied hastily from rotaliate); that duplicated the built-in
+	box, so it's gone. All that's left is the on-screen hint pointing players at the built-in chat.
 *@
 
 <root>
-	@if ( IsOpen )
-	{
-		<div class="chat-input-row">
-			@* maxlength 256 (not 255) so a full message still has room for the Enter newline we send
-			   on; SendChat clamps back to 255. *@
-			<TextEntry @ref="_entry" placeholder="Say something…" class="chat-entry" maxlength="256" multiline="true" />
-		</div>
-	}
-	@if ( !IsOpen && CanOpen )
+	@if ( CanOpen )
 	{
 		<div class="chat-hint">
-			<div class="key">T</div>
+			<div class="key">@ChatKey</div>
 			<div>Chat</div>
 		</div>
 	}
@@ -39,38 +29,12 @@
 		z-index: 90;
 	}
 
-	/* Fixed-height (6 lines) container pinned to the screen bottom, so the input's TOP edge is locked
-	   6 lines above the bottom regardless of content. */
-	.chat-input-row {
-		position: absolute;
-		left: 16px;
-		bottom: 0px;
-		height: 116px;   /* 6 lines */
-		flex-direction: column;
-		justify-content: flex-start;
-		pointer-events: none;
-	}
-
-	.chat-entry {
-		width: 420px;
-		max-width: 420px;
-		height: auto;
-		padding: 8px 12px;
-		font-size: 15px;
-		color: white;
-		background-color: rgba(7, 5, 26, 0.85);
-		border: 1px solid rgba(255, 255, 255, 0.35);
-		border-radius: 6px;
-		pointer-events: all;
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-
 	.chat-hint {
 		position: absolute;
 		left: 16px;
 		top: 50%;
 		flex-direction: row;
+		align-items: center;
 		gap: 6px;
 		font-size: 14px;
 		color: rgba(255, 165, 0, 0.7);
@@ -86,15 +50,16 @@
 
 @code
 {
-	/// <summary>True while the chat input box is open.</summary>
-	public static bool IsOpen { get; private set; }
+	/// <summary>Kept for the gameplay input-gates (BallCamera look, MusicScreen keys, GameDirector's G)
+	/// that used to pause while our own chat box had the keys. The built-in chat overlay captures input
+	/// itself while you type, so there's no game-side box to be open — this stays false.</summary>
+	public static bool IsOpen => false;
 
-	TextEntry _entry;
-	bool _focused;
+	// The key actually bound to the built-in "Chat" action, so the hint follows the player's own s&box
+	// keybind settings (Enter by default) instead of hardcoding it. Null if the action's unbound/renamed.
+	string ChatKey => Input.GetButtonOrigin( "Chat" ) ?? "Enter";
 
-	// Chat is fine while riding the ball — only the lane-controls cursor (already its own UI mode)
-	// blocks it. While the box is open we free the cursor + freeze the look (below) so typing doesn't
-	// spin the ball/walk camera.
+	// Only show the hint when the player isn't in the lane-controls cursor mode (its own UI takes over).
 	bool CanOpen
 	{
 		get
@@ -104,67 +69,5 @@
 		}
 	}
 
-	protected override void OnDestroy()
-	{
-		IsOpen = false;
-		Mouse.Visibility = MouseVisibility.Auto;
-	}
-
-	protected override void OnUpdate()
-	{
-		if ( IsOpen )
-		{
-			if ( !CanOpen || Input.EscapePressed )
-			{
-				Input.EscapePressed = false;
-				Close();
-				return;
-			}
-			// Free the cursor for the text box; with the mouse un-captured AnalogLook reads ~0, so the
-			// ball/walk camera stops following the mouse while you type (BallCamera also hard-gates on
-			// IsOpen). Re-assert each frame in case anything flips it back.
-			Mouse.Visibility = MouseVisibility.Visible;
-			if ( !_focused && _entry != null )
-			{
-				_entry.Focus();
-				_focused = true;
-			}
-			// Multiline TextEntry wraps + grows; Enter inserts a newline into the text rather than firing
-			// onsubmit. Treat that newline as "send" — reading it from the text value sidesteps the
-			// focused field swallowing the keypress (and keeps a stray Enter out of gameplay).
-			if ( _entry != null && _entry.Text != null &&
-			     (_entry.Text.Contains( '\n' ) || _entry.Text.Contains( '\r' )) )
-				SendChat();
-			return;
-		}
-
-		if ( CanOpen && Input.Keyboard.Pressed( "T" ) )
-		{
-			IsOpen = true;
-			_focused = false;
-			StateHasChanged();
-		}
-	}
-
-	void SendChat()
-	{
-		var text = _entry?.Text?.Replace( "\r", "" ).Replace( "\n", "" ).Trim();
-		if ( !string.IsNullOrEmpty( text ) )
-		{
-			if ( text.Length > 255 ) text = text.Substring( 0, 255 );
-			Chat.Say( text );
-		}
-		Close();
-	}
-
-	void Close()
-	{
-		IsOpen = false;
-		Mouse.Visibility = MouseVisibility.Auto; // hand the cursor back to look control
-		if ( _entry != null ) _entry.Text = "";
-		StateHasChanged();
-	}
-
-	protected override int BuildHash() =>
-		System.HashCode.Combine( IsOpen, CanOpen );
+	protected override int BuildHash() => System.HashCode.Combine( CanOpen, ChatKey );
 }

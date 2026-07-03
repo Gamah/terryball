@@ -17,7 +17,7 @@ namespace Terryball;
 ///
 /// Lives on the client-local screen-space HUD GO alongside the panel and a <see cref="SkafinityPlayer"/>
 /// (both built in code by <see cref="Terryball.LocalHud"/>). There's no in-world "wall" to walk up
-/// to — the keys work from anywhere, like chat (T).
+/// to — the keys work from anywhere, like the built-in chat (Enter).
 /// </summary>
 public sealed class MusicScreen : Component
 {
