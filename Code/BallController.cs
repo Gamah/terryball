@@ -557,7 +557,12 @@ public sealed class BallController : Component, Component.ICollisionListener
 				// rolling on its new line (rev-out), no runaway into the gutter.
 				var maxA = HookAccel * oil;
 				var accel = -Math.Clamp( lateralSlip / dt, -maxA, maxA );
-				_body.ApplyForce( lateralDir * accel * _body.Mass );
+				var force = lateralDir * (accel * _body.Mass);
+				// Apply at the CONTACT POINT (ball bottom), not the COM: the same friction that curves the path
+				// also applies the torque that revs the side spin down — so the visible spin IS the hook and the
+				// ball rolls out as it sets on its new line, instead of spinning on unchanged. This is what ties
+				// the amount of spin you see to the amount of break you get.
+				_body.ApplyForceAt( WorldPosition + Vector3.Down * Radius, force );
 			}
 		}
 

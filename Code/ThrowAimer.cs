@@ -52,13 +52,13 @@ public sealed class ThrowAimer : Component
 	/// it under-rolling and let the lane's friction spin it up, instead of forcing a full-grip roll off the
 	/// line (which read as the ball "spinning as if it had full friction"). 1 = full roll, 0 = pure skid.</summary>
 	[Property, Group( "Launch" )] public float LaunchRollFraction { get; set; } = 0.5f;
-	/// <summary>Side-rotation rate (rad/s) a full ±1 spin puts on the ball, ABOUT THE TRAVEL AXIS — a real hook
-	/// ball's tilted rotation axis. This is the genuine cause of the hook: it makes the ball's contact patch
-	/// slip sideways, and friction on the dry back end turns that into the curve (BallController). So the spin
-	/// you see rolling on the ball IS what breaks it — and the peak hook the ball revs out to is roughly this
-	/// times the ball radius (u/s of sideways speed). Combined with the partial forward roll it reads as a
-	/// canted axis, not a flat top-spin.</summary>
-	[Property, Group( "Launch" )] public float SideRotationRate { get; set; } = 8f;
+	/// <summary>Side-rotation rate (rad/s) a full ±1 spin puts on the ball at launch, ABOUT THE TRAVEL AXIS — a
+	/// real hook ball's tilted rotation axis, and the genuine cause of the hook. The ball leaves the hand
+	/// spinning this fast; on the dry back end friction converts that side rotation into the sideways break and
+	/// REVS THE SPIN DOWN as it goes (BallController applies the hook at the contact point). So the spin you
+	/// see is what breaks the ball, it's clearly spinning off the hand, and it rolls out as it sets — like a
+	/// real hook. Bigger = more revs and a bigger break.</summary>
+	[Property, Group( "Launch" )] public float SideRotationRate { get; set; } = 22f;
 
 	// Locked-in values as each step is committed.
 	private float _lineY;     // world Y of the chosen start line
