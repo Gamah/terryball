@@ -40,6 +40,9 @@ public sealed class ThrowAimer : Component
 	// --- Ranges ------------------------------------------------------------------------
 	/// <summary>Max aim deflection from straight-down-lane, degrees (± this).</summary>
 	[Property, Group( "Aim" )] public float MaxAimDegrees { get; set; } = 9f;
+	/// <summary>How far down-lane (in ball radii) the aim arrow floats ahead of the ball, so an opaque ball
+	/// doesn't hide it. The arrow starts this far in front, pointing the way you're aiming.</summary>
+	[Property, Group( "Aim" )] public float ArrowFrontGapRadii { get; set; } = 4f;
 	/// <summary>Lowest committed throw speed (u/s) at an empty power meter.</summary>
 	[Property, Group( "Launch" )] public float MinLaunchSpeed { get; set; } = 3200f;
 	/// <summary>Top committed throw speed (u/s) at a full power meter.</summary>
@@ -220,12 +223,14 @@ public sealed class ThrowAimer : Component
 	// --- Visuals -----------------------------------------------------------------------
 	private void DrawGuide( BallController ball, LaneBuilder builder )
 	{
-		// Lay the arrow flat on the lane surface, just ahead of the ball, like a real lane's targeting arrows.
-		var origin = new Vector3( ball.WorldPosition.x, ball.WorldPosition.y, builder.PlatformTopWorldZ + 3f );
-
 		// The aim/preview arrow: straight down-lane while lining up, swept once aiming, curved by the live
 		// spin in the spin step. Length grows with the committed power.
 		var yaw = _phase == Phase.Line ? 0f : _aimDeg;
+
+		// Lay the arrow flat on the lane surface and float it a ways DOWN-LANE ahead of the ball (along the aim
+		// direction), so an opaque ball doesn't hide it — like a real lane's targeting arrows out in front.
+		var gap = Rotation.FromYaw( yaw ).Forward * (ball.Radius * ArrowFrontGapRadii);
+		var origin = new Vector3( ball.WorldPosition.x, ball.WorldPosition.y, builder.PlatformTopWorldZ + 3f ) + gap;
 		var previewSpin = _phase == Phase.Spin ? SignedPing( SpinSpeed ) : 0f;
 		var lengthFrac = _phase switch
 		{
