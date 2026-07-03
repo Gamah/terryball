@@ -42,6 +42,11 @@ public sealed class LocalHud : Component
 		// the keyboard by MusicScreen — N toggles the board, M mutes. See MusicScreen.
 		var music = Components.Create<Skafinity.SkafinityPlayer>();
 		music.Volume = 0.25f; // start quiet — background ambience, not the main event
+		// Route to the "Music" mixer (default routing is the "Game" mixer). The engine only scales a
+		// mixer named "Music" by the sound-options music slider (Preferences.MusicVolume), so without
+		// this the slider does nothing to the soundtrack. NOTE: that scaling is skipped in the editor
+		// (Mixer.FinishMixing gates on !Application.IsEditor) — the slider only bites in a real build.
+		music.MixerName = "Music";
 		Components.Create<Skafinity.SkafinityMusicPanel>( false );
 		Components.Create<MusicScreen>();
 		Components.Create<MusicHud>();
