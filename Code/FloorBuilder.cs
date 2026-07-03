@@ -35,9 +35,12 @@ public sealed class FloorBuilder : Component, Component.ExecuteInEditor
 		var visual = new GameObject( true, "FloorVisual" ) { Parent = floor };
 		var model = visual.Components.GetOrCreate<ModelRenderer>();
 		model.Model = Model.Load( "models/dev/box.vmdl" );
-		// Built-in dev measure grid (compiled, texture baked in) — tiles per-unit on the
-		// scaled box so the ball's speed/motion is readable as it rolls.
-		model.MaterialOverride = Material.Load( "materials/dev/dev_measuregeneric01.vmat" );
+		// Stylised terrazzo (Assets/materials/gen_textures.py) replacing the old dev measure grid. The box
+		// face UVs run 0..1, so tile the texture to a fixed physical size across the whole floor.
+		const float TileWorld = 200f; // units per terrazzo tile
+		var mat = Material.Load( "materials/floor.vmat" ).CreateCopy();
+		mat.Set( "g_vTexCoordScale", new Vector2( Size / TileWorld, Size / TileWorld ) );
+		model.MaterialOverride = mat;
 		model.Tint = FloorColor;
 
 		var bounds = model.Model.Bounds.Size;

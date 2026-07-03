@@ -159,6 +159,37 @@ public sealed class LaneBuilder : Component
 	private Material _pinStripeMat; // red neck stripes (same shader, red tint)
 	private float _pinGravityScale = 1f; // resolved per-pin GravityScale (scale-correct × feel knob)
 
+	// ---- Surface materials: stylised CC0 textures (Assets/materials/gen_textures.py) that dress the
+	// bare tinted primitives. Loaded once; applied per box via MaterialOverride with a world-tiled copy
+	// (see Tiled) so one shared texture repeats at a consistent physical size across boxes of any shape.
+	private Material _matLaneWood, _matApproach, _matGutter, _matMetal, _matCarpet, _matPit;
+	// Cache of world-tiled material copies, keyed by (base material, U-repeat, V-repeat) so the 39 identical
+	// boards (and other same-sized boxes) share one copy instead of minting 39.
+	private readonly Dictionary<string, Material> _tiledCache = new();
+
+	/// <summary>A copy of <paramref name="baseMat"/> whose TexCoord scale is set so the texture tiles at a
+	/// fixed physical size <paramref name="tileWorld"/> (units per tile) across the box's dominant (largest)
+	/// face — the box UVs run 0..1 per face, so repeats = faceDimension / tileWorld. Independent of the
+	/// engine's model-scale UV attribute, which keeps tiles square regardless of the box's proportions.
+	/// Copies are cached by their resulting repeat counts. Returns the base material unchanged if
+	/// <paramref name="tileWorld"/> ≤ 0.</summary>
+	private Material Tiled( Material baseMat, Vector3 size, float tileWorld )
+	{
+		if ( baseMat is null || tileWorld <= 0f ) return baseMat;
+		// The two largest of the three box dimensions span the dominant face; tile those.
+		var mx = MathF.Max( size.x, MathF.Max( size.y, size.z ) );
+		var mn = MathF.Min( size.x, MathF.Min( size.y, size.z ) );
+		var mid = size.x + size.y + size.z - mx - mn;
+		var ur = MathF.Max( mx / tileWorld, 0.02f );
+		var vr = MathF.Max( mid / tileWorld, 0.02f );
+		var key = $"{baseMat.GetHashCode()}|{ur:F2}|{vr:F2}";
+		if ( _tiledCache.TryGetValue( key, out var m ) ) return m;
+		m = baseMat.CreateCopy();
+		m.Set( "g_vTexCoordScale", new Vector2( ur, vr ) );
+		_tiledCache[key] = m;
+		return m;
+	}
+
 	/// <summary>A pin and the spot it was racked on, for the director's "is it still standing?"
 	/// scoring and for re-racking after a throw. <see cref="Pin"/> is the component itself, which owns the
 	/// fade/glide re-rack animation (see <see cref="Pin.Sweep"/> / <see cref="Pin.RackTo"/>).</summary>
@@ -274,6 +305,15 @@ public sealed class LaneBuilder : Component
 		if ( _built ) return;
 		_built = true;
 
+		// Surface textures that dress the primitives (see the material fields above). Loaded here so every
+		// box built below can take a MaterialOverride.
+		_matLaneWood = Material.Load( "materials/lanewood.vmat" );
+		_matApproach = Material.Load( "materials/approachwood.vmat" );
+		_matGutter = Material.Load( "materials/gutter.vmat" );
+		_matMetal = Material.Load( "materials/metal.vmat" );
+		_matCarpet = Material.Load( "materials/carpet.vmat" );
+		_matPit = Material.Load( "materials/pit.vmat" );
+
 		// Treat the actual ball as 8.5" to get a units-per-inch scale for everything else.
 		var ball = Lane.Of( this )?.Ball;
 		var ballDiameterUnits = ball.IsValid() ? ball.Radius * 2f : 200f;
@@ -339,8 +379,8 @@ public sealed class LaneBuilder : Component
 		var rampMidX = (rampBottomX + approachBackX) * 0.5f;
 		MakeBox( "Ramp",
 			new Vector3( rampMidX + MathF.Sin( rampA ) * rampThk * 0.5f, 0f, H * 0.5f - MathF.Cos( rampA ) * rampThk * 0.5f ),
-			new Vector3( rampLen, platformHalf * 2f, rampThk ), ApproachColor,
-			rot: Rotation.FromPitch( -RampSlopeDegrees ) );
+			new Vector3( rampLen, platformHalf * 2f, rampThk ), Color.White,
+			rot: Rotation.FromPitch( -RampSlopeDegrees ), mat: _matApproach, tileWorld: 720f );
 
 		// ---- Lane bed: ONE continuous collider for the entire rolling path, approach through pin
 		// deck, top at z = H. A single box means there's no cross-lane seam at the foul line for the
@@ -349,7 +389,7 @@ public sealed class LaneBuilder : Component
 		var laneCx = (approachBackX + pinDeckEndX) * 0.5f;
 		var laneLenX = pinDeckEndX - approachBackX;
 		MakeBox( "LaneBed", new Vector3( laneCx, 0f, H * 0.5f ),
-			new Vector3( laneLenX, laneHalf * 2f, H ), LaneColorA );
+			new Vector3( laneLenX, laneHalf * 2f, H ), Color.White, mat: _matLaneWood, tileWorld: 900f );
 
 		// ---- Approach shoulders: fill the run-up out to full platform width either side of the bed
 		// (the gutters haven't started yet here). Flush top at z = H.
@@ -358,9 +398,9 @@ public sealed class LaneBuilder : Component
 		var shoulderLenX = foulX - approachBackX;
 		var shoulderCy = (laneHalf + platformHalf) * 0.5f;
 		MakeBox( "ApproachShoulderLeft", new Vector3( shoulderCx, -shoulderCy, H * 0.5f ),
-			new Vector3( shoulderLenX, shoulderW, H ), ApproachColor );
+			new Vector3( shoulderLenX, shoulderW, H ), Color.White, mat: _matApproach, tileWorld: 720f );
 		MakeBox( "ApproachShoulderRight", new Vector3( shoulderCx, shoulderCy, H * 0.5f ),
-			new Vector3( shoulderLenX, shoulderW, H ), ApproachColor );
+			new Vector3( shoulderLenX, shoulderW, H ), Color.White, mat: _matApproach, tileWorld: 720f );
 
 		// ---- Gutters: recessed troughs from the foul line down; the bed's side is the inner wall,
 		// the barrier the outer.
@@ -369,9 +409,9 @@ public sealed class LaneBuilder : Component
 		var gutterCy = laneHalf + gutterW * 0.5f;
 		var gutterTop = H - gutterD;
 		MakeBox( "GutterLeft", new Vector3( laneRegionCx, -gutterCy, gutterTop * 0.5f ),
-			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor );
+			new Vector3( laneRegionLenX, gutterW, gutterTop ), Color.White, mat: _matGutter, tileWorld: 560f );
 		MakeBox( "GutterRight", new Vector3( laneRegionCx, gutterCy, gutterTop * 0.5f ),
-			new Vector3( laneRegionLenX, gutterW, gutterTop ), GutterColor );
+			new Vector3( laneRegionLenX, gutterW, gutterTop ), Color.White, mat: _matGutter, tileWorld: 560f );
 
 		// ---- Barrier curbs + buffer margins, foul line through the pit. Barriers are low rails just
 		// outboard of each gutter; buffers are flat margin for future decoration. Both start at the
@@ -380,15 +420,15 @@ public sealed class LaneBuilder : Component
 		var sideLenX = pitEndX - foulX;
 		var barrierCy = gutterOuter + barrierW * 0.5f;
 		MakeBox( "BarrierLeft", new Vector3( sideCx, -barrierCy, (H + barrierH) * 0.5f ),
-			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor );
+			new Vector3( sideLenX, barrierW, H + barrierH ), Color.White, mat: _matMetal, tileWorld: 560f );
 		MakeBox( "BarrierRight", new Vector3( sideCx, barrierCy, (H + barrierH) * 0.5f ),
-			new Vector3( sideLenX, barrierW, H + barrierH ), BarrierColor );
+			new Vector3( sideLenX, barrierW, H + barrierH ), Color.White, mat: _matMetal, tileWorld: 560f );
 
 		var bufferCy = barrierOuter + bufferW * 0.5f;
 		MakeBox( "BufferLeft", new Vector3( sideCx, -bufferCy, H * 0.5f ),
-			new Vector3( sideLenX, bufferW, H ), BufferColor );
+			new Vector3( sideLenX, bufferW, H ), Color.White, mat: _matApproach, tileWorld: 720f );
 		MakeBox( "BufferRight", new Vector3( sideCx, bufferCy, H * 0.5f ),
-			new Vector3( sideLenX, bufferW, H ), BufferColor );
+			new Vector3( sideLenX, bufferW, H ), Color.White, mat: _matApproach, tileWorld: 720f );
 
 		// ---- Pit: a recessed catch behind the pins. The floor is a real dead SLAB whose top sits pitD
 		// below the deck — but never below the building floor (z = 0), which the ball can't pass anyway.
@@ -408,8 +448,8 @@ public sealed class LaneBuilder : Component
 		var cu = BowlerHeightInches > 0.01f ? BowlerHeightUnits / BowlerHeightInches : 1f;
 
 		MakeBox( "Pit", new Vector3( (pinDeckEndX + pitEndX) * 0.5f, 0f, pitFloorTopZ - pitThk * 0.5f ),
-			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitThk ), PitColor,
-			elasticity: BackstopElasticity, friction: BackstopFriction );
+			new Vector3( pitEndX - pinDeckEndX, gutterOuter * 2f, pitThk ), Color.White,
+			elasticity: BackstopElasticity, friction: BackstopFriction, mat: _matPit, tileWorld: 560f );
 
 		// ---- Backboard: a SHORT, WIDE, DEEP deck behind the pit. Its lane-facing face (at pitEndX) is the
 		// pit's dead catch wall — kept dead so the ball dumps its energy here instead of rebounding. Its
@@ -422,8 +462,8 @@ public sealed class LaneBuilder : Component
 		SetteeDeckTopWorldZ = ToWorld( new Vector3( deckBackX, 0f, deckTopZ ) ).z;
 		SetteeDeckBackWorldPosition = ToWorld( new Vector3( deckBackX, 0f, deckTopZ ) );
 		MakeBox( "Backboard", new Vector3( (deckFrontX + deckBackX) * 0.5f, 0f, (pitBottomZ + deckTopZ) * 0.5f ),
-			new Vector3( deckDepth, platformHalf * 2f, deckTopZ - pitBottomZ ), BarrierColor,
-			elasticity: BackstopElasticity, friction: BackstopFriction );
+			new Vector3( deckDepth, platformHalf * 2f, deckTopZ - pitBottomZ ), Color.White,
+			elasticity: BackstopElasticity, friction: BackstopFriction, mat: _matMetal, tileWorld: 560f );
 
 		// ---- Backstop readout: a LARGE, lane-width pin board floating above the backboard, facing back
 		// at the bowler. Same director data as the corner overlay, blown up so the leave reads from the
@@ -438,9 +478,12 @@ public sealed class LaneBuilder : Component
 		for ( var b = 0; b < BoardCount; b++ )
 		{
 			var by = laneHalf - (b + 0.5f) * boardW;
+			// Wood texture on every board; a faint light/dark alternation multiplies over it so the 39 boards
+			// still read as distinct planks for aiming without hiding the grain.
+			var boardTint = (b % 2 == 0) ? new Color( 1f, 0.98f, 0.94f ) : new Color( 0.86f, 0.80f, 0.71f );
 			MakeDecal( $"Board{b + 1}", new Vector3( laneRegionCx, by, H ),
 				new Vector3( laneRegionLenX, boardW, 4f ),
-				(b % 2 == 0) ? LaneColorA : LaneColorB );
+				boardTint, mat: _matLaneWood, tileWorld: 900f );
 		}
 
 		// ---- Foul line: a bright line across the lane and both gutters at the lane's start, flush
@@ -551,9 +594,10 @@ public sealed class LaneBuilder : Component
 			platformHalf );
 		var midX = frontX + away * depth * 0.5f;   // settee centre, half its depth back from the lane edge
 
-		// Carpeted riser: a low step on the deck top that reads as the defined seating zone.
+		// Carpeted riser: a low step on the deck top that reads as the defined seating zone. Retro carpet
+		// texture, tiled at citizen scale so the motifs read at roughly human size.
 		MakeBox( "SetteeCarpet", new Vector3( midX, 0f, baseZ + riser * 0.5f ),
-			new Vector3( depth, halfW * 2f, riser ), SetteeCarpetColor );
+			new Vector3( depth, halfW * 2f, riser ), Color.White, mat: _matCarpet, tileWorld: 160f * cu );
 
 		// Where the director drops walking bowlers in: on the carpet, mid-settee, facing the lane.
 		// Exposed in world space (the director spawns avatars at world positions).
@@ -607,17 +651,17 @@ public sealed class LaneBuilder : Component
 	{
 		var cushionThk = 3f * cu;
 		var legH = MathF.Max( seatH - cushionThk, cushionThk ); // frame box under the cushion
-		// Frame / legs.
+		// Frame / legs — brushed metal.
 		MakeDecal( $"{name}Frame", new Vector3( centerX, centerY, floorZ + legH * 0.5f ),
-			new Vector3( lengthX, seatD, legH ), BenchFrameColor );
-		// Cushion.
+			new Vector3( lengthX, seatD, legH ), Color.White, mat: _matMetal, tileWorld: 30f * cu );
+		// Cushion — kept a flat colour (soft vinyl reads fine untextured at this size).
 		MakeDecal( $"{name}Cushion", new Vector3( centerX, centerY, floorZ + legH + cushionThk * 0.5f ),
 			new Vector3( lengthX, seatD, cushionThk ), BenchCushionColor );
 		// Backrest along the OUTER edge (the side away from the settee centre), rising above the seat.
 		var backThk = 2f * cu;
 		var backY = centerY - inwardY * (seatD * 0.5f - backThk * 0.5f);
 		MakeDecal( $"{name}Back", new Vector3( centerX, backY, floorZ + seatH + backH * 0.5f ),
-			new Vector3( lengthX, backThk, backH ), BenchFrameColor );
+			new Vector3( lengthX, backThk, backH ), Color.White, mat: _matMetal, tileWorld: 30f * cu );
 	}
 
 	/// <summary>A walk-up podium at the back of the settee: a solid desk box + a themed top + a floating,
@@ -626,9 +670,9 @@ public sealed class LaneBuilder : Component
 	/// themes the desk top; <paramref name="accentHex"/> is the sign's border colour (matches its screen).</summary>
 	private void BuildPodium( string name, float cu, float x, float y, float baseTopZ, float podiumH, Color topColor, string label, string accentHex )
 	{
-		// The desk you walk up to (solid, so you can't walk through it).
+		// The desk you walk up to (solid, so you can't walk through it) — brushed-metal cabinet.
 		MakeBox( name, new Vector3( x, y, baseTopZ + podiumH * 0.5f ),
-			new Vector3( 18f * cu, 44f * cu, podiumH ), BenchFrameColor );
+			new Vector3( 18f * cu, 44f * cu, podiumH ), Color.White, mat: _matMetal, tileWorld: 30f * cu );
 		MakeDecal( $"{name}Top", new Vector3( x, y, baseTopZ + podiumH + 1f * cu ),
 			new Vector3( 20f * cu, 46f * cu, 2f * cu ), topColor );
 
@@ -823,8 +867,10 @@ public sealed class LaneBuilder : Component
 	// A rotation, if given, is applied to the root so the collider tilts with the visual (ramp).
 	// Positions are LANE-LOCAL (relative to this builder's GameObject = the lane root): the whole lane
 	// rides its root transform, so a second lane is just the same subtree dropped at another spot.
+	// An optional surface material (mat) is world-tiled to tileWorld units/tile and applied as a
+	// MaterialOverride; the tint still multiplies over it, so the old per-surface colour tuning survives.
 	private void MakeBox( string name, Vector3 localPos, Vector3 size, Color tint, Rotation? rot = null,
-		float? elasticity = null, float? friction = null )
+		float? elasticity = null, float? friction = null, Material mat = null, float tileWorld = 0f )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.LocalPosition = localPos;
@@ -839,13 +885,14 @@ public sealed class LaneBuilder : Component
 		var mr = visual.Components.GetOrCreate<ModelRenderer>();
 		mr.Model = Model.Load( "models/dev/box.vmdl" );
 		mr.Tint = tint;
+		if ( mat is not null ) mr.MaterialOverride = Tiled( mat, size, tileWorld );
 
 		var b = mr.Model.Bounds.Size;
 		visual.LocalScale = new Vector3( size.x / b.x, size.y / b.y, size.z / b.z );
 	}
 
 	// Visual-only thin slab (no collider) laid on a surface — boards, foul line, etc. Lane-local pos.
-	private void MakeDecal( string name, Vector3 localPos, Vector3 size, Color tint )
+	private void MakeDecal( string name, Vector3 localPos, Vector3 size, Color tint, Material mat = null, float tileWorld = 0f )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.LocalPosition = localPos;
@@ -853,6 +900,7 @@ public sealed class LaneBuilder : Component
 		var mr = go.Components.GetOrCreate<ModelRenderer>();
 		mr.Model = Model.Load( "models/dev/box.vmdl" );
 		mr.Tint = tint;
+		if ( mat is not null ) mr.MaterialOverride = Tiled( mat, size, tileWorld );
 
 		var b = mr.Model.Bounds.Size;
 		go.LocalScale = new Vector3( size.x / b.x, size.y / b.y, size.z / b.z );
