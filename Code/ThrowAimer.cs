@@ -380,37 +380,60 @@ public sealed class ThrowAimer : Component
 
 		string title;
 		string meter;
+		var showSweet = false; // POWER/SPIN have a ~80% "perfect" mark; LINE/AIM are just positions
 		switch ( _phase )
 		{
 			case Phase.Line: title = "STEP 1/4  -  LINE"; meter = Bar( (SignedPing( LineSpeed ) + 1f) * 0.5f ); break;
 			case Phase.Aim: title = "STEP 2/4  -  AIM"; meter = Bar( (SignedPing( AimSpeed ) + 1f) * 0.5f ); break;
-			case Phase.Power: title = "STEP 3/4  -  POWER"; meter = Bar( _power01 ); break;
-			case Phase.Spin: title = "STEP 4/4  -  SPIN"; meter = SpinBar( SignedPing( SpinSpeed ) ); break;
+			case Phase.Power: title = "STEP 3/4  -  POWER"; meter = Bar( _power01, SweetSpot ); showSweet = true; break;
+			case Phase.Spin: title = "STEP 4/4  -  SPIN"; meter = SpinBar( SignedPing( SpinSpeed ) ); showSweet = true; break;
 			default: return;
 		}
 
 		DebugOverlay.ScreenText( new Vector2( cx, h - 150f ), title, 22, TextFlag.Center, Color.White );
 		DebugOverlay.ScreenText( new Vector2( cx, h - 120f ), meter, 20, TextFlag.Center, new Color( 0.8f, 0.9f, 1f ) );
-		DebugOverlay.ScreenText( new Vector2( cx, h - 92f ), "Click / Space to set", 16, TextFlag.Center,
-			new Color( 1f, 1f, 1f, 0.7f ) );
+		var hint = showSweet ? "Click / Space to set   ·   ':' = perfect (past it = overcooked)" : "Click / Space to set";
+		DebugOverlay.ScreenText( new Vector2( cx, h - 92f ), hint, 16, TextFlag.Center, new Color( 1f, 1f, 1f, 0.7f ) );
 	}
 
-	private static string Bar( float v01 )
+	/// <summary>Where "perfect" sits on the power/spin meters (0..1). The physics is tuned so this fill is the
+	/// ideal pocket throw, leaving the top of the meter as room to overcook it — so maxing out is a mistake,
+	/// not the goal. Marked with a ':' tick on the meter.</summary>
+	[Property, Group( "Aim" )] public float SweetSpot { get; set; } = 0.8f;
+
+	// A filled bar, with an optional ':' tick at the sweet-spot fraction (negative = none).
+	private static string Bar( float v01, float sweet01 = -1f )
 	{
 		v01 = v01.Clamp( 0f, 1f );
 		const int n = 20;
 		var f = (int)MathF.Round( v01 * n );
-		return "[" + new string( '|', f ) + new string( '.', n - f ) + $"]  {v01 * 100f:F0}%";
+		var sweet = sweet01 >= 0f ? (int)MathF.Round( sweet01.Clamp( 0f, 1f ) * n ) : -1;
+		var sb = new System.Text.StringBuilder( "[" );
+		for ( var i = 0; i < n; i++ )
+		{
+			var c = i < f ? '|' : '.';
+			if ( i == sweet ) c = i < f ? '#' : ':'; // sweet-spot tick (filled vs empty)
+			sb.Append( c );
+		}
+		sb.Append( $"]  {v01 * 100f:F0}%" );
+		return sb.ToString();
 	}
 
-	private static string SpinBar( float signed )
+	private string SpinBar( float signed )
 	{
 		signed = signed.Clamp( -1f, 1f );
 		const int half = 10;
 		var pos = (int)MathF.Round( (signed + 1f) * 0.5f * (half * 2) );
+		var sweet = (int)MathF.Round( SweetSpot.Clamp( 0f, 1f ) * half ); // ticks this far out from centre, both sides
 		var sb = new System.Text.StringBuilder( "[" );
 		for ( var i = 0; i <= half * 2; i++ )
-			sb.Append( i == pos ? '#' : (i == half ? '+' : '.') );
+		{
+			var c = i == pos ? '#'
+				: i == half ? '+'
+				: (i == half - sweet || i == half + sweet) ? ':' // ~80% hook sweet spot on each side
+				: '.';
+			sb.Append( c );
+		}
 		sb.Append( "]  " );
 		// +spin curves toward +Y, which reads as screen-LEFT from the behind-ball camera (camera-right is -Y).
 		sb.Append( signed > 0.05f ? $"HOOK < LEFT {signed * 100f:F0}%"
