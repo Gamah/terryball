@@ -989,7 +989,13 @@ public sealed class LaneBuilder : Component
 	/// model can't replicate). Idempotent — guarded by <see cref="PinsSpawned"/>.</summary>
 	public void HostSpawnPins()
 	{
-		if ( PinsSpawned || !Networking.IsHost ) return;
+		// Networking.IsHost is TRUE whenever there's no live session (System is null) — including the
+		// window on a JOINING client before its network System is wired up. Ticking here during that
+		// window would spawn a full local rack, and then the host's snapshot streams in the real ten on
+		// top of it: 20 physical pins on 10 spots, shoving apart and toppling the rack. Require an ACTIVE
+		// session too, so only the genuine connected host ever spawns. (The solo host is fine: AlleyServer
+		// creates the lobby in OnStart, so IsActive flips true and this idempotent call spawns a frame later.)
+		if ( PinsSpawned || !Networking.IsActive || !Networking.IsHost ) return;
 		if ( !_built ) OnEnabled();
 		if ( _pinSpots.Count == 0 ) return;
 
