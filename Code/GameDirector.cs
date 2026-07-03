@@ -50,6 +50,17 @@ public sealed class GameDirector : Component
 		AimMode = on;
 	}
 
+	/// <summary>Set the lane's crane mode (<see cref="CraneEnabled"/>) from the lane controls. Claims this
+	/// lane's director first, same as <see cref="SetAimMode"/>, so it's settable in the LOBBY before START and
+	/// appears alongside the throw toggle rather than only after the lane's been claimed. No-op if authority
+	/// can't be taken.</summary>
+	public void SetCraneEnabled( bool on )
+	{
+		ClaimDirector();
+		if ( !IsDirector ) return;
+		CraneEnabled = on;
+	}
+
 	private bool _dirNetReady; // host: have we tagged the director object Takeover yet?
 
 	// Take ownership of this lane's director so OUR writes to the synced state are authoritative. Called

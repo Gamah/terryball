@@ -65,7 +65,9 @@
 								Throw: <span style="color: @(AimOn ? "#b07cd6" : "#5aa0e6");">@(AimOn ? "AIM" : "FREE")</span>
 							</div>
 						}
-						@if ( CanDirect )
+						@* Ball Crane — same lane-wide setting; shown in the lobby too and claims the lane on
+						   toggle, so it appears alongside the throw toggle instead of only after START. *@
+						@if ( CanDirect || !playing )
 						{
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
@@ -260,14 +262,10 @@
 	private bool AimOn => Director?.AimMode ?? false;
 	private void ToggleAim() => Director?.SetAimMode( !(Director?.AimMode ?? false) );
 
-	// Ball Crane toggle (host-only; CraneEnabled is FromHost-synced so only the host's write propagates).
+	// Ball Crane toggle: a lane-wide setting on the director. SetCraneEnabled claims the lane first, so (like
+	// the throw toggle) it works in the lobby before START and the two toggles show together.
 	private bool CraneOn => Director?.CraneEnabled ?? true;
-	private void ToggleCrane()
-	{
-		var d = Director;
-		if ( d is null || !d.LocalIsDirector ) return;
-		d.CraneEnabled = !d.CraneEnabled;
-	}
+	private void ToggleCrane() => Director?.SetCraneEnabled( !(Director?.CraneEnabled ?? true) );
 
 	// CLOSE button: hand back to the avatar so it restores look + cursor exactly like pressing E.
 	private void CloseControls() => LocalAvatar?.RequestCloseControls();

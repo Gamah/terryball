@@ -49,10 +49,11 @@ public sealed class ThrowAimer : Component
 	/// it under-rolling and let the lane's friction spin it up, instead of forcing a full-grip roll off the
 	/// line (which read as the ball "spinning as if it had full friction"). 1 = full roll, 0 = pure skid.</summary>
 	[Property, Group( "Launch" )] public float LaunchRollFraction { get; set; } = 0.5f;
-	/// <summary>Revs a full ±1 spin adds as a tilt of the ball's roll axis toward the travel direction
-	/// (rad/s) — a real hook ball spins about an axis canted forward, not a flat top-spin. Reads as the ball
-	/// visibly turning over toward the hook side; the actual curve is the oiled-lane hook in BallController.</summary>
-	[Property, Group( "Launch" )] public float SideSpinRate { get; set; } = 16f;
+	/// <summary>Drill (vertical-axis) spin rate (rad/s) a full ±1 spin adds. Its sign matches the oiled-lane
+	/// hook (BallController: +spin curves toward +Y), so the ball VISIBLY rotates toward the side it's going
+	/// to break — that's what ties the spin you dial in to the hook you see. Combined with the partial forward
+	/// roll it reads as a real hook ball's canted (tilted) rotation axis, not a flat top-spin.</summary>
+	[Property, Group( "Launch" )] public float DrillSpinRate { get; set; } = 11f;
 
 	// Locked-in values as each step is committed.
 	private float _lineY;     // world Y of the chosen start line
@@ -88,6 +89,7 @@ public sealed class ThrowAimer : Component
 			// Left the aim window (throw released, bailed, walked off, mode toggled off): make sure the ball
 			// isn't left frozen with gravity off, then go dormant.
 			if ( _holding && ball.IsValid() ) { ball.EndHold(); _holding = false; }
+			HideArrow();
 			_phase = Phase.Idle;
 			return;
 		}
@@ -146,6 +148,7 @@ public sealed class ThrowAimer : Component
 		var ball = ActiveLane?.Ball;
 		if ( _holding && ball.IsValid() ) ball.EndHold();
 		_holding = false;
+		DestroyArrow();
 		_phase = Phase.Idle;
 	}
 
@@ -181,17 +184,19 @@ public sealed class ThrowAimer : Component
 
 		// Forward roll about the lateral axis, but only a FRACTION of the no-slip rate (v/R): the ball leaves
 		// the hand skidding on the oiled front and the lane's friction revs it toward a true roll, instead of
-		// spinning as if it were full-grip off the line. The side-spin cants that roll axis forward (about the
-		// travel direction) — a real hook ball's tilted axis — so it visibly turns over toward the hook side.
-		// The actual curve is the oiled-lane hook, armed via HookAmount = spin.
+		// spinning as if it were full-grip off the line. Add a DRILL (vertical-axis) spin whose sign matches
+		// the hook (+spin → +Y in BallController), so the ball visibly turns over toward the side it's about to
+		// break — tying the dialled-in spin to the curve. Forward roll + drill together read as a real hook
+		// ball's canted axis. The actual curve is the oiled-lane hook, armed via HookAmount = spin.
 		var noSlip = speed / MathF.Max( 1f, ball.Radius );
 		var rollAxis = dir.Cross( Vector3.Up );            // horizontal, perpendicular to travel
 		var angular = rollAxis * (noSlip * LaunchRollFraction)
-			+ dir * (spin * SideSpinRate);                 // barrel/tilt about travel = the canted hook axis
+			+ Vector3.Up * (spin * DrillSpinRate);         // drill in the hook's direction = the canted hook axis
 
 		ball.Launch( velocity, angular, spin );
 		ball.ControlsLocked = true; // committed — no steering; the director arms watch on the throw-line cross
 		_holding = false;
+		HideArrow(); // the throw's away — drop the aim guide off the lane
 		_phase = Phase.Launched;
 	}
 
@@ -212,7 +217,8 @@ public sealed class ThrowAimer : Component
 	// --- Visuals -----------------------------------------------------------------------
 	private void DrawGuide( BallController ball, LaneBuilder builder )
 	{
-		var origin = ball.WorldPosition + Vector3.Up * (ball.Radius * 0.25f);
+		// Lay the arrow flat on the lane surface, just ahead of the ball, like a real lane's targeting arrows.
+		var origin = new Vector3( ball.WorldPosition.x, ball.WorldPosition.y, builder.PlatformTopWorldZ + 3f );
 
 		// The aim/preview arrow: straight down-lane while lining up, swept once aiming, curved by the live
 		// spin in the spin step. Length grows with the committed power.
@@ -234,7 +240,7 @@ public sealed class ThrowAimer : Component
 			_ => Color.White,
 		};
 
-		DrawArrow( origin, yaw, baseLen * lengthFrac, color, previewSpin );
+		UpdateArrowMesh( origin, yaw, baseLen * lengthFrac, color, previewSpin );
 
 		// A ground line clear across the lane at the ball's chosen/lining-up start line, so the lateral
 		// position reads clearly against the boards.
@@ -248,64 +254,101 @@ public sealed class ThrowAimer : Component
 		DrawHud();
 	}
 
-	// A bold, FILLED flat arrow (wide shaft ribbon + solid triangular head) along `yawDeg`, curving laterally
-	// by `spin` toward its tip (a hook preview). DebugOverlay.Line has no thickness, so the shaft is filled as
-	// a band of parallel offset lines and the head as a fan — both drawn on-top (overlay) so the whole thing
-	// reads clearly over the lane instead of as one thin scratch.
-	private void DrawArrow( Vector3 origin, float yawDeg, float length, Color color, float spin )
+	// --- Aim arrow (a REAL rendered mesh, not debug lines) -----------------------------
+	// A flat, solid arrow (wide shaft ribbon + triangular head) laid on the lane surface, curving laterally by
+	// `spin` toward its tip (the hook preview). Built as a procedural ModelRenderer on a client-local child
+	// (NetworkMode.Never — a procedural model can't replicate; see LaneBuilder's targeting arrows), rebuilt
+	// each frame as the aim/power/spin sweep. Only the local bowler ever sees it.
+	private GameObject _arrowGo;
+	private ModelRenderer _arrowRenderer;
+	private Material _arrowMat;
+
+	private void EnsureArrow()
 	{
+		if ( _arrowRenderer.IsValid() ) return;
+		_arrowGo = new GameObject( true, "AimArrow" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		_arrowGo.NetworkMode = NetworkMode.Never;
+		_arrowRenderer = _arrowGo.Components.GetOrCreate<ModelRenderer>();
+		_arrowMat = Material.Load( "materials/default/white.vmat" );
+	}
+
+	private void HideArrow()
+	{
+		if ( _arrowRenderer.IsValid() ) _arrowRenderer.Enabled = false;
+	}
+
+	private void DestroyArrow()
+	{
+		_arrowGo?.Destroy();
+		_arrowGo = null;
+		_arrowRenderer = null;
+	}
+
+	private void UpdateArrowMesh( Vector3 origin, float yawDeg, float length, Color color, float spin )
+	{
+		EnsureArrow();
+		// Mesh vertices are built in WORLD space, so pin the object at the identity transform.
+		_arrowGo.WorldTransform = global::Sandbox.Transform.Zero;
+		_arrowRenderer.Enabled = true;
+		_arrowRenderer.Tint = color;
+
 		var fwd = Rotation.FromYaw( yawDeg ).Forward;
-		var lat0 = Vector3.Up.Cross( fwd );         // matches the hook's +/− convention
-		var bend = spin * length * 0.28f;           // how far the tip curves
+		var lat0 = Vector3.Up.Cross( fwd );
+		var bend = spin * length * 0.28f;                // how far the tip curves
+		var halfW = MathF.Max( 18f, length * 0.05f );    // shaft half-width
+		var headFrac = 0.26f;                            // last stretch of the length is the arrowhead
+		var headHalf = MathF.Max( 30f, length * 0.12f ); // arrowhead half-width (wider than the shaft)
+		var shaftEnd = 1f - headFrac;
 
-		const int segs = 16;
-		var pts = new Vector3[segs + 1];
-		for ( var i = 0; i <= segs; i++ )
+		// Curved centerline point at 0..1 along the arrow, and the ground-plane lateral (perpendicular to the
+		// local tangent) there, so the ribbon keeps a constant width around the curve.
+		Vector3 Center( float s ) => origin + fwd * (length * s) + lat0 * (bend * s * s);
+		Vector3 LatAt( float s )
 		{
-			var s = i / (float)segs;
-			pts[i] = origin + fwd * (length * s) + lat0 * (bend * s * s);
-		}
-
-		// Ground-plane lateral at point i (perpendicular to the LOCAL tangent), so the ribbon keeps a constant
-		// width even where the shaft curves.
-		Vector3 LatAt( int i )
-		{
-			var a = pts[Math.Max( 0, i - 1 )];
-			var b = pts[Math.Min( segs, i + 1 )];
-			var t = (b - a).WithZ( 0f );
+			var t = (Center( MathF.Min( 1f, s + 0.03f ) ) - Center( MathF.Max( 0f, s - 0.03f ) )).WithZ( 0f );
 			t = t.Length > 0.001f ? t.Normal : fwd;
 			return Vector3.Up.Cross( t );
 		}
 
-		var halfW = MathF.Max( 18f, length * 0.05f );    // shaft half-width
-		var headLen = length * 0.26f;
-		var headHalf = MathF.Max( 30f, length * 0.12f ); // arrowhead half-width (wider than the shaft)
+		var vb = new VertexBuffer();
+		vb.Init( true );
+		var n = Vector3.Up;
+		Vertex V( Vector3 p ) => new Vertex( p, n, Vector3.Zero, new Vector4( 0f, 0f, 0f, 0f ) );
 
-		// Shaft: a filled ribbon of parallel offset polylines across the width.
-		const int fill = 12;
-		for ( var k = 0; k <= fill; k++ )
+		// Shaft: a filled ribbon — a strip of cross-section pairs. Both windings are emitted so it's never culled.
+		const int segs = 14;
+		for ( var i = 0; i <= segs; i++ )
 		{
-			var off = MathX.Lerp( -halfW, halfW, k / (float)fill );
-			for ( var i = 0; i < segs; i++ )
-			{
-				var a = pts[i] + LatAt( i ) * off;
-				var b = pts[i + 1] + LatAt( i + 1 ) * off;
-				DebugOverlay.Line( a, b, color, overlay: true );
-			}
+			var s = shaftEnd * i / segs;
+			var c = Center( s );
+			var lat = LatAt( s );
+			vb.Add( V( c + lat * halfW ) );
+			vb.Add( V( c - lat * halfW ) );
+		}
+		for ( var i = 0; i < segs; i++ )
+		{
+			int a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+			vb.AddRawIndex( a ); vb.AddRawIndex( b ); vb.AddRawIndex( c );
+			vb.AddRawIndex( c ); vb.AddRawIndex( b ); vb.AddRawIndex( d );
+			vb.AddRawIndex( a ); vb.AddRawIndex( c ); vb.AddRawIndex( b ); // back-face
+			vb.AddRawIndex( c ); vb.AddRawIndex( d ); vb.AddRawIndex( b );
 		}
 
-		// Head: a solid triangle at the tip, filled by a fan of lines from the tip across its base edge.
-		var tip = pts[segs];
-		var tipDir = (pts[segs] - pts[segs - 1]).WithZ( 0f );
-		tipDir = tipDir.Length > 0.001f ? tipDir.Normal : fwd;
-		var side = Vector3.Up.Cross( tipDir );
-		var baseC = tip - tipDir * headLen;
-		var bl = baseC + side * headHalf;
-		var br = baseC - side * headHalf;
+		// Head: a solid triangle from the base of the head out to the tip.
+		var baseIdx = (segs + 1) * 2;
+		var latEnd = LatAt( shaftEnd );
+		var baseC = Center( shaftEnd );
+		vb.Add( V( Center( 1f ) ) );                 // baseIdx    — tip
+		vb.Add( V( baseC + latEnd * headHalf ) );    // baseIdx+1  — base left
+		vb.Add( V( baseC - latEnd * headHalf ) );    // baseIdx+2  — base right
+		vb.AddRawIndex( baseIdx ); vb.AddRawIndex( baseIdx + 1 ); vb.AddRawIndex( baseIdx + 2 );
+		vb.AddRawIndex( baseIdx ); vb.AddRawIndex( baseIdx + 2 ); vb.AddRawIndex( baseIdx + 1 ); // back-face
 
-		const int hf = 14;
-		for ( var k = 0; k <= hf; k++ )
-			DebugOverlay.Line( tip, Vector3.Lerp( bl, br, k / (float)hf ), color, overlay: true );
+		var mesh = new Mesh( _arrowMat );
+		mesh.CreateBuffers( vb );
+		var mb = new ModelBuilder();
+		mb.AddMesh( mesh );
+		_arrowRenderer.Model = mb.Create();
 	}
 
 	private void DrawHud()
