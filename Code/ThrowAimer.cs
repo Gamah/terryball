@@ -12,7 +12,7 @@ namespace Terryball;
 ///
 ///   1. LINE   — slide the ball left/right across the lane (A/D or slide the mouse); set the start line.
 ///   2. AIM    — swing the aim arrow left/right (A/D or the mouse); set the aim direction.
-///   3. POWER  — raise/lower the throw speed with forward/back (W/S or slide the mouse up/down).
+///   3. POWER  — raise/lower the throw speed left/right (A/D or the mouse); slide right to fill.
 ///   4. SPIN   — tilt the hook left/right (A/D or the mouse); set how much the ball hooks.
 ///
 /// then the ball is launched with that velocity + spin and committed to physics. The hook is a stylized
@@ -168,8 +168,8 @@ public sealed class ThrowAimer : Component
 			}
 			case Phase.Power:
 			{
-				// Raise/lower the throw speed with forward/back (W/S or the mouse up/down).
-				if ( !blocked ) NudgeVertical();
+				// Raise/lower the throw speed left/right, same as the other steps (slide right to fill).
+				if ( !blocked ) NudgeHorizontal();
 				_power01 = _caret01;
 				HoldBall( ball, _lineY );
 				if ( advance ) { _powerCaret = _caret01; EnterStep( Phase.Spin ); }
@@ -241,22 +241,14 @@ public sealed class ThrowAimer : Component
 	// Caret 0..1 (0 = screen-left) → signed −1..1 (+1 = screen-left), the natural axis for the physical values.
 	private static float Signed( float caret01 ) => 1f - 2f * caret01;
 
-	// Horizontal manual control (LINE / AIM / SPIN): A/D and sliding the mouse left/right. Screen-left = caret 0,
-	// so moving left — A (AnalogMove.y +1) or mouse-left (AnalogLook.yaw +) — drives the caret toward 0.
+	// Horizontal manual control, shared by all four steps: A/D and sliding the mouse left/right. Screen-left =
+	// caret 0, so moving left — A (AnalogMove.y +1) or mouse-left (AnalogLook.yaw +) — drives the caret toward 0
+	// (and moving right fills toward 1, e.g. more power).
 	private void NudgeHorizontal()
 	{
 		_caret01 = (_caret01
 			- Input.AnalogMove.y * (ManualKeySpeed * Time.Delta)
 			- Input.AnalogLook.yaw * ManualMouseSpeed).Clamp( 0f, 1f );
-	}
-
-	// Vertical manual control (POWER): forward/back keys (W/S) and sliding the mouse up/down. Forward (W,
-	// AnalogMove.x +1) and mouse-up (−AnalogLook.pitch) both fill the meter (caret toward 1).
-	private void NudgeVertical()
-	{
-		_caret01 = (_caret01
-			+ Input.AnalogMove.x * (ManualKeySpeed * Time.Delta)
-			- Input.AnalogLook.pitch * ManualMouseSpeed).Clamp( 0f, 1f );
 	}
 
 	private void HoldBall( BallController ball, float y )
