@@ -95,9 +95,13 @@ def wood(name, seed, c_light, c_dark, c_seam, planks=6, rough_lo=0.18, rough_hi=
     # Grain: fbm stretched along the plank length so it reads as long fibres.
     grain = fbm(rng, octaves=6, base=2)
     grain_stretch = fbm(rng, octaves=5, base=3)
-    # X frequency MUST be an integer number of cycles (2*pi*k) or the grain sine
-    # jumps at the X=0/1 tile seam -> a hard stripe across the lane every repeat.
-    grain = norm01(grain * 0.4 + np.sin((grain_stretch * 6 + X * 2 * np.pi * 6)) * 0.15 + 0.5)
+    # Fine grain fibres must run ALONG the plank length (X, down-lane), NOT across it.
+    # So the fibre sine oscillates across the board (Y), producing thin lines PARALLEL
+    # to the lane; a slow X phase (1 cycle) lets them waver. An X-frequency sine here
+    # instead banded the texture into ~6 shadow-like ridges ACROSS the lane. Y*2*pi*k
+    # and the 1-cycle X term both stay periodic, so the tile still wraps seamlessly.
+    fibre = np.sin(Y * 2 * np.pi * 64 + grain_stretch * 7 + X * 2 * np.pi) * 0.12
+    grain = norm01(grain * 0.5 + fibre + 0.5)
     # Per-plank tone offset so neighbours differ.
     tone = (np.sin(plank_id.astype(np.float32) * 2.399) * 0.5 + 0.5)
     col = lerp(c_dark, c_light, grain)                 # (N,N,3)
@@ -212,10 +216,12 @@ def pit(name, seed):
 
 # ---------------------------------------------------------------- terrazzo floor
 
-def floor(name, seed):
-    """Graphic terrazzo: pale base packed with coloured aggregate chips."""
+def floor(name, seed, base=(0.86, 0.84, 0.80)):
+    """Graphic terrazzo: a base packed with coloured aggregate chips. `base` sets
+    the matrix colour — pale for the concourse, near-black for the spawn/ramps
+    (the same bright chips read as confetti dots on black)."""
     rng = np.random.default_rng(seed)
-    base = np.array([0.86, 0.84, 0.80])
+    base = np.array(base)
     col = np.broadcast_to(base, (N, N, 3)).copy()
     chip_cols = [np.array(c) for c in [
         [0.85, 0.30, 0.30], [0.25, 0.45, 0.75], [0.30, 0.65, 0.45],
@@ -255,4 +261,5 @@ if __name__ == "__main__":
     carpet("carpet", 53)
     pit("pit", 61)
     floor("floor", 71)
+    floor("floordark", 83, base=[0.05, 0.05, 0.06])   # spawn/ramps: bright chips on near-black
     print("done.")

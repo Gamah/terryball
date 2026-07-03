@@ -45,6 +45,7 @@ public sealed class SpawnAreaBuilder : Component
 	[Property, Group( "Colors" )] public Color TeleportTopColor { get; set; } = new( 0.28f, 0.55f, 0.62f, 1f );
 
 	private bool _built;
+	private Material _matFloorDark; // dark terrazzo shared by the concourse floor + ramps
 
 	protected override void OnUpdate() => EnsureBuilt();
 
@@ -92,8 +93,9 @@ public sealed class SpawnAreaBuilder : Component
 
 		// ---- Concourse floor slab (thin, on the building floor). A raised lip reads it as a defined area.
 		var slabThk = 8f * cu;
+		_matFloorDark ??= Material.Load( "materials/floordark.vmat" ); // terrazzo: bright chips on near-black
 		MakeBox( "ConcourseFloor", new Vector3( concMidX, yMid, slabThk * 0.5f ),
-			new Vector3( ConcourseDepth, ySpan, slabThk ), FloorColor );
+			new Vector3( ConcourseDepth, ySpan, slabThk ), FloorColor, mat: _matFloorDark, tileWorld: 200f );
 
 		// ---- Stairs: one flight per lane, from the concourse floor up to that lane's settee deck.
 		foreach ( var b in lanes )
@@ -146,7 +148,7 @@ public sealed class SpawnAreaBuilder : Component
 		MakeBox( $"StairRamp_{laneY:F0}",
 			new Vector3( midX - MathF.Sin( angle ) * thk * 0.5f, laneY, topZ * 0.5f - MathF.Cos( angle ) * thk * 0.5f ),
 			new Vector3( len, halfWidth * 2f, thk ), StairColor,
-			rot: Rotation.FromPitch( angleDeg ) );
+			rot: Rotation.FromPitch( angleDeg ), mat: _matFloorDark, tileWorld: 200f );
 	}
 
 	/// <summary>A walk-up podium: a solid desk box + a themed top + a floating billboarded label sign
@@ -192,7 +194,9 @@ public sealed class SpawnAreaBuilder : Component
 	}
 
 	// Static box with a box collider (walkable/solid). World-positioned; root is identity so no local math.
-	private void MakeBox( string name, Vector3 worldPos, Vector3 size, Color tint, Rotation? rot = null )
+	// Optional material tiled to a fixed physical size (units per tile) across the box's dominant face.
+	private void MakeBox( string name, Vector3 worldPos, Vector3 size, Color tint, Rotation? rot = null,
+		Material mat = null, float tileWorld = 0f )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		go.WorldPosition = worldPos;
@@ -205,6 +209,16 @@ public sealed class SpawnAreaBuilder : Component
 		var mr = visual.Components.GetOrCreate<ModelRenderer>();
 		mr.Model = Model.Load( "models/dev/box.vmdl" );
 		mr.Tint = tint;
+		if ( mat is not null && tileWorld > 0f )
+		{
+			// Tile across the box's two largest dims (the dominant face); box face UVs run 0..1.
+			var mx = MathF.Max( size.x, MathF.Max( size.y, size.z ) );
+			var mn = MathF.Min( size.x, MathF.Min( size.y, size.z ) );
+			var mid = size.x + size.y + size.z - mx - mn;
+			var m = mat.CreateCopy();
+			m.Set( "g_vTexCoordScale", new Vector2( MathF.Max( mx / tileWorld, 0.02f ), MathF.Max( mid / tileWorld, 0.02f ) ) );
+			mr.MaterialOverride = m;
+		}
 		var b = mr.Model.Bounds.Size;
 		visual.LocalScale = new Vector3( size.x / b.x, size.y / b.y, size.z / b.z );
 	}
