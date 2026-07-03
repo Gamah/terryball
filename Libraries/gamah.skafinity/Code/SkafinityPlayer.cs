@@ -346,7 +346,18 @@ public sealed class SkafinityPlayer : Component
 		_flatConfigured = true;
 	}
 
-	float TargetVolume() => Enabled ? Volume : 0f;
+	float TargetVolume()
+	{
+		if ( !Enabled ) return 0f;
+		var v = Volume;
+		// The sound-options music slider (Preferences.MusicVolume) is applied by the engine only to a
+		// mixer named "Music" AND only in a real build — Mixer.FinishMixing gates it on
+		// !Application.IsEditor. So while running in the editor the slider is inaudible. Fold it in here
+		// for the editor so it's testable; in a build we leave it to the Music mixer to avoid scaling twice.
+		if ( Application.IsEditor )
+			v *= Preferences.MusicVolume;
+		return v;
+	}
 
 	/// <summary>The config currently in effect (inspector knobs with any <see cref="Vibe"/> applied).</summary>
 	public MusicGen.Config EffectiveConfig() => BuildConfig();
