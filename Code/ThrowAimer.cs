@@ -388,6 +388,10 @@ public sealed class ThrowAimer : Component
 	/// committed. The camera reads this to lock a steady down-lane shot instead of following the ball's shuffle.</summary>
 	public bool LiningUp => _phase is Phase.Line or Phase.Aim or Phase.Power or Phase.Spin;
 
+	/// <summary>True only during the first (LINE) step, where the ball shuttles side to side. The camera stays
+	/// centred on the lane then; once the line is locked (AIM/POWER/SPIN) it eases in behind the parked ball.</summary>
+	public bool ChoosingLine => _phase == Phase.Line;
+
 	public bool AimHudVisible { get; private set; }
 	public int AimStep { get; private set; }             // 1..4
 	public string AimStepLabel { get; private set; } = "";

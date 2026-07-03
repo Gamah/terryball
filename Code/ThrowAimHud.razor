@@ -24,6 +24,7 @@
 		var step = aimer.AimStep;
 		var twoSided = aimer.AimTwoSided;
 		var sweet = aimer.AimSweet01;
+		<div class="dock">
 		<div class="meter">
 			<div class="title">STEP @(step)/4 · @aimer.AimStepLabel</div>
 			<div class="track">
@@ -54,27 +55,33 @@
 				@(sweet >= 0f ? "Click / Space to set  ·  line up the tick (past it = overcooked)" : "Click / Space to set")
 			</div>
 		</div>
+		</div>
 	}
 </root>
 
 <style>
-	/* Absolutely positioned, sized explicitly, centred at the bottom of the screen — mirrors the working
-	   corner panels (PinStatusOverlay) rather than relying on full-screen flex centring, which dropped the
-	   card to the top-left. left:50% + margin-left:-half-width centres the fixed-width card. */
+	/* Full-screen transparent passthrough; the card is centred at the bottom by an absolute full-width row
+	   (.dock, left:0/right:0 + justify-content:center) — the project's proven bottom-centre pattern (see
+	   TeleportPanel/HowToPlay). Sizing/centring the root panel itself directly is unreliable. */
 	root {
-		position: absolute;
-		bottom: 40px;
-		left: 50%;
-		margin-left: -230px;
-		width: 460px;
-		flex-direction: column;
-		align-items: center;
+		width: 100%;
+		height: 100%;
 		pointer-events: none;
 		font-family: Poppins, sans-serif;
 	}
 
+	.dock {
+		position: absolute;
+		left: 0px;
+		right: 0px;
+		bottom: 48px;
+		flex-direction: row;
+		justify-content: center;
+		pointer-events: none;
+	}
+
 	.meter {
-		width: 100%;
+		width: 460px;
 		flex-direction: column;
 		align-items: center;
 		padding: 12px 20px;

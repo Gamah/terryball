@@ -129,9 +129,9 @@ public sealed class BallCamera : Component
 		}
 
 		// --- Play framing: third-person follow behind the ball, horizon-locked. ----------------
-		// While a guided (Aim-mode) throw is being lined up, LOCK a steady shot straight down the lane centre
-		// from behind the parked ball: the ball shuffles side-to-side as you pick your line, and chasing that
-		// (or the mouse) is jarring, so hold the yaw down-lane and ignore look here.
+		// While a guided (Aim-mode) throw is being lined up, hold a steady shot straight down the lane from
+		// behind the parked ball — the mouse is ignored (yaw pinned down-lane). The lateral framing is handled
+		// below: centred on the lane while you pick the LINE, then eased in behind the ball once it's locked.
 		var liningUp = (Aimer?.LiningUp ?? false) && _lane.IsValid();
 		if ( liningUp )
 		{
@@ -139,11 +139,14 @@ public sealed class BallCamera : Component
 			_pitch = AimPitch;
 		}
 
-		// Lateral follow anchor: the ball's own Y for a tight follow in normal play, but eased to the lane
-		// centre-line while aiming. We keep easing for a moment AFTER the throw commits, so the camera slides —
-		// rather than snaps — from the centred aim shot onto the ball's actual line as it starts down the lane.
+		// Lateral follow anchor: the ball's own Y for a tight follow. It eases to the lane centre-line ONLY
+		// during the LINE step, where the ball shuttles side to side and chasing it is jarring; once the line is
+		// locked (AIM/POWER/SPIN) the ball sits still on its chosen line, so the anchor eases back to the ball —
+		// moving the camera in behind it. It keeps easing a moment after the throw commits too, so the release
+		// slides onto the ball's line rather than snapping.
 		var tightY = _ball.WorldPosition.y;
-		var targetY = liningUp ? _lane.RunUpWorldPosition.y : tightY;
+		var choosingLine = (Aimer?.ChoosingLine ?? false) && _lane.IsValid();
+		var targetY = choosingLine ? _lane.RunUpWorldPosition.y : tightY;
 		if ( !_followYInit ) { _followY = targetY; _followYInit = true; }
 		if ( liningUp ) _lockEngaged = true;
 		if ( _lockEngaged )
