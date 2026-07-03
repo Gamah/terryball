@@ -350,11 +350,14 @@ public sealed class SkafinityPlayer : Component
 	{
 		if ( !Enabled ) return 0f;
 		var v = Volume;
-		// The sound-options music slider (Preferences.MusicVolume) is applied by the engine only to a
-		// mixer named "Music" AND only in a real build — Mixer.FinishMixing gates it on
-		// !Application.IsEditor. So while running in the editor the slider is inaudible. Fold it in here
-		// for the editor so it's testable; in a build we leave it to the Music mixer to avoid scaling twice.
-		if ( Application.IsEditor )
+		// Honour the sound-options music slider (Preferences.MusicVolume). The engine already applies it,
+		// but ONLY to a mixer named "Music" AND only in a real build (Mixer.FinishMixing gates on
+		// !Application.IsEditor). So we apply it ourselves in every other case — in the editor (any mixer),
+		// and in a build when we're NOT on the Music mixer — and skip it only when the engine will, so it's
+		// never scaled twice.
+		bool engineWillApply = !Application.IsEditor
+			&& string.Equals( MixerName, "Music", StringComparison.OrdinalIgnoreCase );
+		if ( !engineWillApply )
 			v *= Preferences.MusicVolume;
 		return v;
 	}
