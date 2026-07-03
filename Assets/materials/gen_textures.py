@@ -92,18 +92,21 @@ def wood(name, seed, c_light, c_dark, c_seam, planks=6, rough_lo=0.18, rough_hi=
     # Planks run along X; seams are periodic in Y.
     plank_v = (Y * planks) % 1.0
     plank_id = np.floor(Y * planks).astype(int)
-    # Grain: fbm stretched along the plank length so it reads as long fibres.
-    grain = fbm(rng, octaves=6, base=2)
-    grain_stretch = fbm(rng, octaves=5, base=3)
-    # Fine grain fibres must run ALONG the plank length (X, down-lane), NOT across it.
-    # So the fibre sine oscillates across the board (Y), producing thin lines PARALLEL
-    # to the lane; a slow X phase (1 cycle) lets them waver. An X-frequency sine here
-    # instead banded the texture into ~6 shadow-like ridges ACROSS the lane. Y*2*pi*k
-    # and the 1-cycle X term both stay periodic, so the tile still wraps seamlessly.
-    fibre = np.sin(Y * 2 * np.pi * 64 + grain_stretch * 7 + X * 2 * np.pi) * 0.12
-    grain = norm01(grain * 0.5 + fibre + 0.5)
-    # Per-plank tone offset so neighbours differ.
-    tone = (np.sin(plank_id.astype(np.float32) * 2.399) * 0.5 + 0.5)
+    # Grain: a FEW soft grain lines running down the plank (along X). Their across-
+    # board position (Y) is domain-warped by a flowing low-freq field, so the lines
+    # WANDER with irregular spacing instead of running ruler-straight and evenly
+    # pitched (which read as "stiff"), and there are few of them at low contrast so
+    # the surface reads as calm wood rather than busy corduroy. base_tone, warp and
+    # Y*lines are all periodic, so the tile still wraps seamlessly.
+    base_tone = fbm(rng, octaves=4, base=3)
+    warp = fbm(rng, octaves=4, base=5) - 0.5          # flowing wander, ~[-.5, .5]
+    lines = 18                                        # grain lines across a whole tile
+    ripple = np.sin((Y * lines + warp * 3.0) * 2 * np.pi) * 0.5 + 0.5
+    grain = norm01(base_tone * 0.6 + ripple * 0.22)
+    grain = 0.32 + 0.55 * grain                       # compress tonal range -> soft contrast
+    # Per-plank tone offset so neighbours differ. Periodic over `planks` (3 is coprime
+    # to 5 and 7) so the first/last plank tones match and the tile wraps in Y too.
+    tone = (np.sin(2 * np.pi * 3 * plank_id.astype(np.float32) / planks) * 0.5 + 0.5)
     col = lerp(c_dark, c_light, grain)                 # (N,N,3)
     col = col * (0.82 + 0.18 * tone)[..., None]
     # Dark seam grooves between planks.
@@ -114,7 +117,7 @@ def wood(name, seed, c_light, c_dark, c_seam, planks=6, rough_lo=0.18, rough_hi=
     # Height: grain relief minus deep seams.
     h = grain * 0.5 - seam * 1.0
     rough = rough_lo + (rough_hi - rough_lo) * (1 - grain) + seam * 0.3
-    save(name, col, h, np.clip(rough, 0, 1), nstrength=1.5)
+    save(name, col, h, np.clip(rough, 0, 1), nstrength=0.9)  # gentler relief -> less ribbed
 
 # ---------------------------------------------------------------- gutter plastic
 
