@@ -57,8 +57,9 @@ public sealed class ThrowAimer : Component
 	/// spinning this fast; on the dry back end friction converts that side rotation into the sideways break and
 	/// REVS THE SPIN DOWN as it goes (BallController applies the hook at the contact point). So the spin you
 	/// see is what breaks the ball, it's clearly spinning off the hand, and it rolls out as it sets — like a
-	/// real hook. Bigger = more revs and a bigger break.</summary>
-	[Property, Group( "Launch" )] public float SideRotationRate { get; set; } = 22f;
+	/// real hook. Bigger = more revs and a bigger break. (The realized sideways break is roughly a third of
+	/// this × the radius once it revs out, so it takes a lot of revs for a big hook — hence the high value.)</summary>
+	[Property, Group( "Launch" )] public float SideRotationRate { get; set; } = 32f;
 
 	// Locked-in values as each step is committed.
 	private float _lineY;     // world Y of the chosen start line

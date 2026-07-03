@@ -120,15 +120,24 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// back to 0 whenever the ball is under free drive so a free throw never hooks.</summary>
 	public float HookAmount { get; set; }
 	/// <summary>Max lateral grip (u/s² of sideways accel) friction can apply on the fully-dry back end — the
-	/// Coulomb limit that resists the ball's sideways contact slip. Higher = the hook develops faster/earlier;
-	/// it does NOT set how far the ball ultimately breaks (that's the side rotation the bowler put on — see
-	/// ThrowAimer.SideRotationRate), because the grip self-limits once the ball revs up to rolling on its new
-	/// line. Tune the pocket break by feel.</summary>
-	[Property, Group( "Oil" )] public float HookAccel { get; set; } = 1400f;
+	/// Coulomb limit that resists the ball's sideways contact slip. Higher = the hook develops faster and
+	/// SHARPER once the ball reaches the dry back end; it does NOT set how far the ball ultimately breaks
+	/// (that's the revs the bowler put on — see ThrowAimer.SideRotationRate), because the grip self-limits once
+	/// the ball revs up to rolling on its new line.</summary>
+	[Property, Group( "Oil" )] public float HookAccel { get; set; } = 2000f;
 	/// <summary>Fraction of the foul-line→pin-deck distance that is "oiled" — over this front stretch the
 	/// hook stays near zero (the ball slides), then ramps to full over the remaining dry back end. Higher
 	/// = the ball holds its line longer and breaks later/harder near the pins.</summary>
-	[Property, Group( "Oil" )] public float OilFrontFraction { get; set; } = 0.5f;
+	[Property, Group( "Oil" )] public float OilFrontFraction { get; set; } = 0.6f;
+	/// <summary>Slip (u/s) below which the contact is treated as ROLLING (static) and the hook friction cuts
+	/// out — a deadband so a tiny residual slip after rev-out doesn't slam full grip back and forth and jitter
+	/// the ball. Above it, kinetic friction grips at the full <see cref="HookAccel"/> limit.</summary>
+	[Property, Group( "Oil" )] public float HookSlipDeadband { get; set; } = 40f;
+	/// <summary>Angular damping used ONLY while an aimed throw is coasting — near zero, so the revs the bowler
+	/// put on survive the long oiled front with plenty left to hook on the dry back end (the normal rolling
+	/// <see cref="AngularDamping"/> would bleed roughly a third of them before the ball ever reaches the dry
+	/// lane, killing the break and making the ball look under-spun). Friction handles the rev-out.</summary>
+	[Property, Group( "Oil" )] public float HookCoastAngularDamping { get; set; } = 0.005f;
 
 	/// <summary>Ball world velocity (units/s); zero before the body exists. For the roll audio.</summary>
 	public Vector3 Velocity => _body.IsValid() ? _body.Velocity : Vector3.Zero;
@@ -460,6 +469,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// sets HookAmount) ever curves.
 		if ( !ControlsLocked ) HookAmount = 0f;
 
+		// Preserve an aimed throw's revs through the long oiled front (so it still has spin to hook with on the
+		// dry back end, and stays visibly spinning); the normal rolling damping would bleed ~a third of them
+		// before the break. Friction does the rev-out, not damping. Restore normal damping otherwise.
+		if ( _body.IsValid() )
+			_body.AngularDamping = (ControlsLocked && MathF.Abs( HookAmount ) > 0.001f)
+				? HookCoastAngularDamping : AngularDamping;
+
 		// Camera-relative run direction on the horizontal plane. While controls are locked (the
 		// ball has crossed the throw line) we read no input at all — wish stays zero.
 		var move = ControlsLocked ? Vector3.Zero : Input.AnalogMove; // x = forward, y = left
@@ -553,11 +569,14 @@ public sealed class BallController : Component, Component.ICollisionListener
 				var contactV = Vector3.Cross( _body.AngularVelocity, Vector3.Down * Radius );
 				var lateralSlip = Vector3.Dot( horiz + contactV, lateralDir );
 
-				// Kinetic friction opposing that slip, capped at the dry-lane grip limit (HookAccel·oil) and at
-				// what would exactly kill the slip this step — so it eases off smoothly as the ball reaches
-				// rolling on its new line (rev-out), no runaway into the gutter.
+				// Kinetic friction opposing that slip at the full dry-lane grip limit (HookAccel·oil) — Coulomb,
+				// so it grips hard the whole time the ball is sliding sideways and only quits once the ball has
+				// revved up to rolling on its new line (slip inside the deadband). The deadband stops a tiny
+				// residual slip from slamming full grip back and forth once it's set.
 				var maxA = HookAccel * oil;
-				var accel = -Math.Clamp( lateralSlip / dt, -maxA, maxA );
+				var accel = MathF.Abs( lateralSlip ) < HookSlipDeadband
+					? 0f
+					: -MathF.Sign( lateralSlip ) * MathF.Min( maxA, MathF.Abs( lateralSlip ) / dt );
 				var force = lateralDir * (accel * _body.Mass);
 				// Apply at the CONTACT POINT (ball bottom), not the COM: the same friction that curves the path
 				// also applies the torque that revs the side spin down — so the visible spin IS the hook and the
@@ -565,18 +584,17 @@ public sealed class BallController : Component, Component.ICollisionListener
 				// the amount of spin you see to the amount of break you get.
 				_body.ApplyForceAt( WorldPosition + Vector3.Down * Radius, force );
 
-				// Throttled trace of the hook developing, for review (director's Log Throw checkbox). Reads:
-				// where down-lane (x, progress p, oil grip), how fast, the side-spin rev-out (ω about travel),
-				// the sideways drift built up (comLat) vs the spin's contact slip driving it, and the accel.
+				// Throttled trace of the hook developing, for review (director's Log Throw checkbox): where
+				// down-lane (x, progress p, oil grip), how fast, the actual sideways speed built up (vy — this
+				// IS the hook), the side-spin rev-out (ω about travel), the spin's contact slip, and the accel.
 				if ( (Director?.LogThrow ?? false) && Time.Now - _throwLogAt >= 0.06f )
 				{
 					_throwLogAt = Time.Now;
 					var omegaSide = Vector3.Dot( _body.AngularVelocity, dir );      // spin about travel axis (revs)
-					var comLat = Vector3.Dot( horiz, lateralDir );                  // sideways speed built up
 					var contactLat = Vector3.Dot( contactV, lateralDir );           // slip the spin is producing
 					Log.Info( $"[terryball][throw] p={p:F2} oil={oil:F2} x={WorldPosition.x:F0} y={WorldPosition.y:F0} " +
-						$"spd={speed:F0} omegaSide={omegaSide:+0.0;-0.0} comLat={comLat:+0;-0} " +
-						$"contactLat={contactLat:+0;-0} slip={lateralSlip:+0;-0} accel={accel:+0;-0}" );
+						$"spd={speed:F0} vy={_body.Velocity.y:F0} omegaSide={omegaSide:F1} " +
+						$"contactLat={contactLat:F0} slip={lateralSlip:F0} accel={accel:F0}" );
 				}
 			}
 		}
