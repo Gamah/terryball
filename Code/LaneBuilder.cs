@@ -367,6 +367,7 @@ public sealed class LaneBuilder : Component
 
 		EnsureScale();
 		var u = _u;
+		var ballDiameterUnits = u * BallDiameterInches; // the lane's size unit, passed to the WorldPanel builders
 
 		// --- Vertical: platform top is the play surface; gutters recess below, barriers rise above.
 		var H = PlatformHeightInches * u;
