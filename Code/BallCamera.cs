@@ -44,6 +44,9 @@ public sealed class BallCamera : Component
 	/// <summary>Fixed pitch used while the bowler is lining up a guided (Aim-mode) throw — the camera is locked
 	/// to a steady down-lane shot then, so it doesn't read the mouse or follow the ball's lateral shuffle.</summary>
 	[Property, Group( "Aim" )] public float AimPitch { get; set; } = 10f;
+	/// <summary>Camera height while lining up a guided throw — raised above the normal follow height so the
+	/// aim arrow floating down-lane ahead of the ball clears the top of the ball.</summary>
+	[Property, Group( "Aim" )] public float AimHeight { get; set; } = 150f;
 	/// <summary>Rate (per second) the camera's lateral anchor eases onto the ball's line while aiming and after
 	/// the throw commits — a light, smooth follow so the ball's motion and the release don't snap the view.</summary>
 	[Property, Group( "Aim" )] public float AimLockLerp { get; set; } = 6f;
@@ -150,7 +153,9 @@ public sealed class BallCamera : Component
 
 		var playRot = Rotation.From( _pitch, _yaw, 0f );
 		var anchor = new Vector3( _ball.WorldPosition.x, _followY, _ball.WorldPosition.z );
-		var playPos = anchor + Vector3.Up * Height - playRot.Forward * Distance;
+		// Sit higher while lining up so the down-lane aim arrow clears the top of the ball.
+		var camHeight = liningUp ? AimHeight : Height;
+		var playPos = anchor + Vector3.Up * camHeight - playRot.Forward * Distance;
 
 		// --- Watch framing: behind + above the pin deck, looking at it. -------------------------
 		var watchPos = playPos;
