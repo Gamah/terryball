@@ -381,13 +381,14 @@ public sealed class ThrowAimer : Component
 	/// not the goal. Marked with a bright tick on the meter.</summary>
 	[Property, Group( "Aim" )] public float SweetSpot { get; set; } = 0.8f;
 
-	// --- Step meter (a first-party procedural mesh floating above the ball) -------------
-	// A flat plaque billboarded to face the camera, sat where the debug speed readout used to float: a dark
-	// track, a coloured fill that sweeps with the live step value (centred both-ways for the signed SPIN
-	// step), a bright sweet-spot tick on POWER/SPIN, and a row of four pips above showing which of the four
-	// steps you're on. A short text LABEL over it names the step (no % — the meter IS the number). Built like
-	// the aim arrow — a client-local ModelRenderer (NetworkMode.Never, a procedural model can't replicate),
-	// only the local bowler sees it — but on the vertex_color material so one mesh carries every colour.
+	// --- Step meter (a first-party procedural mesh pinned in front of the ball) ---------
+	// A flat plaque billboarded to face the camera, floating a little down-lane in front of the ball and fixed
+	// on the lane centre-line (it does NOT follow the ball's lateral shuttle): a dark track, a single-colour
+	// fill that sweeps with the live step value (a centred both-ways marker for the signed SPIN step), a bright
+	// sweet-spot tick on POWER/SPIN, and a row of four pips showing which of the four steps you're on. A short
+	// text LABEL over it names the step (no % — the meter IS the number). Built like the aim arrow — a
+	// client-local ModelRenderer (NetworkMode.Never, a procedural model can't replicate), only the local bowler
+	// sees it — but on the vertex_color material so the one mesh carries the track / fill / tick colours.
 	private GameObject _meterGo;
 	private ModelRenderer _meterRenderer;
 
@@ -403,27 +404,32 @@ public sealed class ThrowAimer : Component
 		_meterRenderer = null;
 	}
 
+	/// <summary>How far down-lane (in ball radii) the step meter floats IN FRONT of the held ball, and how high
+	/// it floats above the lane surface. It's pinned to the lane centre-line at this spot — it does NOT follow
+	/// the ball's lateral shuttle.</summary>
+	[Property, Group( "Aim" )] public float MeterFrontGap { get; set; } = 4f;
+	[Property, Group( "Aim" )] public float MeterFloatHeight { get; set; } = 1.2f;
+
 	private void DrawStepMeter( BallController ball )
 	{
-		// Per-step display values: a 0..1 fill (or a signed −1..1 for SPIN), the phase colour, the step index,
-		// whether it carries a sweet-spot tick, and the label.
-		float fill; var signed = false; float sweet = -1f; Color color; int step; string label;
+		// Per-step display value: a 0..1 fill (or a signed −1..1 marker for SPIN), whether it carries a
+		// sweet-spot tick, the step index, and the label. Directional steps (LINE/AIM/SPIN) are negated so the
+		// meter reads the SAME way round as the screen — the camera sits behind the ball, so screen-right is −Y,
+		// and moving the ball/hook toward screen-left moves the marker toward the LEFT of the meter.
+		float fill; var signed = false; float sweet = -1f; int step; string label;
 		switch ( _phase )
 		{
-			case Phase.Line:
-				fill = (SignedPing( LineSpeed ) + 1f) * 0.5f; color = new Color( 0.3f, 0.9f, 1f ); step = 1; label = "STEP 1/4   ·   LINE"; break;
-			case Phase.Aim:
-				fill = (SignedPing( AimSpeed ) + 1f) * 0.5f; color = new Color( 1f, 0.85f, 0.2f ); step = 2; label = "STEP 2/4   ·   AIM"; break;
-			case Phase.Power:
-				fill = _power01; sweet = SweetSpot; color = Color.Lerp( new Color( 0.3f, 1f, 0.3f ), new Color( 1f, 0.3f, 0.2f ), _power01 ); step = 3; label = "STEP 3/4   ·   POWER"; break;
-			case Phase.Spin:
-				fill = SignedPing( SpinSpeed ); signed = true; sweet = SweetSpot; color = new Color( 0.75f, 0.45f, 1f ); step = 4; label = "STEP 4/4   ·   SPIN"; break;
-			default:
-				HideMeter(); return;
+			case Phase.Line: fill = (-SignedPing( LineSpeed ) + 1f) * 0.5f; step = 1; label = "STEP 1/4   ·   LINE"; break;
+			case Phase.Aim: fill = (-SignedPing( AimSpeed ) + 1f) * 0.5f; step = 2; label = "STEP 2/4   ·   AIM"; break;
+			case Phase.Power: fill = _power01; sweet = SweetSpot; step = 3; label = "STEP 3/4   ·   POWER"; break;
+			case Phase.Spin: fill = -SignedPing( SpinSpeed ); signed = true; sweet = SweetSpot; step = 4; label = "STEP 4/4   ·   SPIN"; break;
+			default: HideMeter(); return;
 		}
 
-		// Sit the plaque where the old speed readout floated — above the ball — and billboard it at the camera.
-		var center = ball.WorldPosition + Vector3.Up * (ball.Radius + 90f);
+		// Pin the plaque to a FIXED spot: lane centre-line (_centerY), a little down-lane in front of the held
+		// ball (_startX), floating above the lane. It stays put while the ball shuttles left/right underneath.
+		var r = ball.Radius;
+		var center = new Vector3( _startX + r * MeterFrontGap, _centerY, _surfaceZ + r * MeterFloatHeight );
 		var cam = Scene.Camera;
 		var toCam = cam.IsValid() ? (cam.WorldPosition - center) : Vector3.Backward;
 		toCam = toCam.Length > 0.01f ? toCam.Normal : Vector3.Backward;
@@ -431,19 +437,18 @@ public sealed class ThrowAimer : Component
 		right = right.Length > 0.01f ? right.Normal : Vector3.Forward;
 		var up = toCam.Cross( right ).Normal;
 
-		UpdateMeterMesh( ball, center, right, up, toCam, fill, signed, sweet, color, step );
+		UpdateMeterMesh( r, center, right, up, toCam, fill, signed, sweet, step );
 
-		// Text label above the plaque naming the step, plus the commit hint. World-space text billboards to the
-		// camera on its own. No percentage — the meter shows the value.
-		var titleAt = center + up * (ball.Radius * 1.9f);
-		DebugOverlay.Text( titleAt, label, 22, TextFlag.Center, Color.White );
+		// Text label above the plaque naming the step, plus the commit hint below it. World-space text billboards
+		// to the camera on its own. No percentage — the meter shows the value.
+		DebugOverlay.Text( center + up * (r * 0.75f), label, 18, TextFlag.Center, Color.White );
 		var hint = sweet >= 0f ? "Click / Space to set   ·   the tick is perfect (past it = overcooked)"
 			: "Click / Space to set";
-		DebugOverlay.Text( center - up * (ball.Radius * 1.1f), hint, 15, TextFlag.Center, new Color( 1f, 1f, 1f, 0.75f ) );
+		DebugOverlay.Text( center - up * (r * 0.5f), hint, 13, TextFlag.Center, new Color( 1f, 1f, 1f, 0.75f ) );
 	}
 
-	private void UpdateMeterMesh( BallController ball, Vector3 center, Vector3 right, Vector3 up, Vector3 toCam,
-		float fill, bool signed, float sweet, Color color, int step )
+	private void UpdateMeterMesh( float r, Vector3 center, Vector3 right, Vector3 up, Vector3 toCam,
+		float fill, bool signed, float sweet, int step )
 	{
 		if ( !_meterRenderer.IsValid() )
 		{
@@ -452,19 +457,20 @@ public sealed class ThrowAimer : Component
 			_meterRenderer = _meterGo.Components.GetOrCreate<ModelRenderer>();
 		}
 
-		var r = ball.Radius;
-		var halfW = r * 4.0f;              // track half-width
-		var halfH = r * 0.55f;            // track half-height
-		var fillH = halfH * 0.68f;        // fill inset within the track
-		var tickHW = r * 0.06f;           // sweet-spot tick half-width
-		var pipHalf = r * 0.16f;          // step-pip half-size
-		var pipV = halfH + r * 0.55f;     // pip row height above the track centre
-		var pipSpread = halfW * 0.55f;    // how far the four pips fan out
+		var halfW = r * 1.2f;             // track half-width
+		var halfH = r * 0.16f;            // track half-height
+		var fillH = halfH * 0.70f;        // fill inset within the track
+		var tickHW = r * 0.03f;           // sweet-spot tick half-width
+		var pipHalf = r * 0.055f;         // step-pip half-size
+		var pipV = halfH + r * 0.18f;     // pip row height above the track centre
+		var pipSpread = halfW * 0.5f;     // how far the four pips fan out
 
+		// One consistent colour scheme for every step — the step is named in the label and shown by the pips,
+		// so the meter itself doesn't change colour as you go.
 		var track = new Color32( 46, 51, 64 );
 		var pipOff = new Color32( 70, 76, 92 );
 		var tickCol = new Color32( 255, 255, 255 );
-		var fillCol = color.ToColor32();
+		var fillCol = new Color32( 90, 200, 255 ); // cyan accent
 
 		var vb = new VertexBuffer();
 		vb.Init( true );
@@ -521,7 +527,7 @@ public sealed class ThrowAimer : Component
 			}
 		}
 
-		// Four step pips above the track — filled in the phase colour up to the current step, dim beyond.
+		// Four step pips above the track — filled in the accent colour up to the current step, dim beyond.
 		plane = center + toCam * 0.6f;
 		for ( var i = 0; i < 4; i++ )
 		{
