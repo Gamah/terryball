@@ -156,9 +156,14 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// ball's travel direction and blends into a tucked forward somersault as it speeds up; see
 	// RollAtMph / RunTopSpeed up top, OnUpdate (anim) and PlaceTerry.
 
-	[Property, Group( "Debug" )] public bool ShowSpeed { get; set; } = true;
 	/// <summary>Real ball size used only to report a bowling-scale mph on the HUD.</summary>
 	[Property, Group( "Debug" )] public float RealBallInches { get; set; } = 8.5f;
+
+	/// <summary>Bowling-scale mph LATCHED the instant the ball crossed the blue throw line, then HELD until the
+	/// next throw crosses it. This is the number the HUD speed readout shows — a measured "throw speed", not the
+	/// live velocity. Synced owner→everyone so spectators see the same figure. Zero until the first throw.</summary>
+	[Sync] public float ThrowLineMph { get; set; }
+	private bool _throwLineLatched; // rising-edge guard so we sample the crossing once per throw
 
 	private Rigidbody _body;
 	private SphereCollider _col;
@@ -469,6 +474,22 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// sets HookAmount) ever curves.
 		if ( !ControlsLocked ) HookAmount = 0f;
 
+		// Latch the ball's speed the instant it crosses the blue throw line — this is what the HUD's speed
+		// readout HOLDS (ThrowLineMph, synced to spectators). Reset the guard once the ball is set back behind
+		// the foul line for the next throw, so the last figure persists on-screen between throws. We're on the
+		// bowler's client here (the early-out above), where the body velocity is real.
+		var throwLane = Lane.Of( this )?.Builder;
+		if ( throwLane.IsValid() && _body.IsValid() )
+		{
+			var bx = WorldPosition.x;
+			if ( bx < throwLane.FoulLineWorldX ) _throwLineLatched = false;
+			else if ( !_throwLineLatched && bx >= throwLane.ThrowLineWorldX )
+			{
+				_throwLineLatched = true;
+				ThrowLineMph = UnitsToMph( _body.Velocity.Length );
+			}
+		}
+
 		// Preserve an aimed throw's revs through the long oiled front (so it still has spin to hook with on the
 		// dry back end, and stays visibly spinning); the normal rolling damping would bleed ~a third of them
 		// before the break. Friction does the rev-out, not damping. Restore normal damping otherwise.
@@ -626,7 +647,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		{
 			var speed = _body.IsValid() ? _body.Velocity.WithZ( 0f ).Length : 0f;
 			// Roll threshold expressed in the HUD's bowling-scale mph, so "11.5 mph and up" means what the
-			// gauge says (and survives a Radius change). Same mph mapping as the ShowSpeed readout below.
+			// gauge says (and survives a Radius change). Same mph mapping as the HUD speed readout (ThrowLineMph).
 			var rollSpeed = MphToUnits( RollAtMph );
 			var rolling = speed >= rollSpeed;
 			var ramp01 = rollSpeed > 0f ? (speed / rollSpeed).Clamp( 0f, 1f ) : 0f;
@@ -670,13 +691,9 @@ public sealed class BallController : Component, Component.ICollisionListener
 			_anim.WithVelocity( _faceDir * (RunTopSpeed * ramp01) );
 		}
 
-		if ( ShowSpeed && _body.IsValid() )
-		{
-			// Speed in units, plus a real-world mph treating the ball's diameter as RealBallInches.
-			var v = _body.Velocity.Length;
-			DebugOverlay.Text( WorldPosition + Vector3.Up * (Radius + 90f),
-				$"{UnitsToMph( v ):F1} mph   ({v:F0} u/s)", 24, TextFlag.Center, Color.White );
-		}
+		// The live speed used to float above the ball as debug text; it now lives in the first-party HUD
+		// (the SPEED card under the pin count in PinStatusOverlay) and shows the value LATCHED at the throw
+		// line — see ThrowLineMph.
 	}
 
 	// Bowling-scale mph ↔ units, treating the ball's diameter as RealBallInches (1 mph = 17.6 in/s). The

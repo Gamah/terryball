@@ -96,6 +96,7 @@ public sealed class ThrowAimer : Component
 			// isn't left frozen with gravity off, then go dormant.
 			if ( _holding && ball.IsValid() ) { ball.EndHold(); _holding = false; }
 			HideArrow();
+			HideMeter();
 			_phase = Phase.Idle;
 			return;
 		}
@@ -155,6 +156,7 @@ public sealed class ThrowAimer : Component
 		if ( _holding && ball.IsValid() ) ball.EndHold();
 		_holding = false;
 		DestroyArrow();
+		DestroyMeter();
 		_phase = Phase.Idle;
 	}
 
@@ -204,6 +206,7 @@ public sealed class ThrowAimer : Component
 		ball.ControlsLocked = true; // committed — no steering; the director arms watch on the throw-line cross
 		_holding = false;
 		HideArrow(); // the throw's away — drop the aim guide off the lane
+		HideMeter(); // and the step plaque
 		_phase = Phase.Launched;
 
 		if ( ActiveLane?.Director?.LogThrow ?? false )
@@ -269,8 +272,9 @@ public sealed class ThrowAimer : Component
 		DebugOverlay.Line( new Vector3( _startX, yNow - half, z ), new Vector3( _startX, yNow + half, z ),
 			color.WithAlpha( 0.5f ), overlay: false );
 
-		// On-screen step prompt + meter.
-		DrawHud();
+		// The step meter — a first-party mesh floating above the ball (where the debug speed readout used to
+		// be), with a text label naming the step. Replaces the old bottom-of-screen ASCII meter.
+		DrawStepMeter( ball );
 	}
 
 	// --- Aim arrow (a REAL rendered mesh, not debug lines) -----------------------------
@@ -372,72 +376,172 @@ public sealed class ThrowAimer : Component
 		_arrowRenderer.Model = mb.Create();
 	}
 
-	private void DrawHud()
-	{
-		var w = Screen.Width;
-		var h = Screen.Height;
-		var cx = w * 0.5f;
-
-		string title;
-		string meter;
-		var showSweet = false; // POWER/SPIN have a ~80% "perfect" mark; LINE/AIM are just positions
-		switch ( _phase )
-		{
-			case Phase.Line: title = "STEP 1/4  -  LINE"; meter = Bar( (SignedPing( LineSpeed ) + 1f) * 0.5f ); break;
-			case Phase.Aim: title = "STEP 2/4  -  AIM"; meter = Bar( (SignedPing( AimSpeed ) + 1f) * 0.5f ); break;
-			case Phase.Power: title = "STEP 3/4  -  POWER"; meter = Bar( _power01, SweetSpot ); showSweet = true; break;
-			case Phase.Spin: title = "STEP 4/4  -  SPIN"; meter = SpinBar( SignedPing( SpinSpeed ) ); showSweet = true; break;
-			default: return;
-		}
-
-		DebugOverlay.ScreenText( new Vector2( cx, h - 150f ), title, 22, TextFlag.Center, Color.White );
-		DebugOverlay.ScreenText( new Vector2( cx, h - 120f ), meter, 20, TextFlag.Center, new Color( 0.8f, 0.9f, 1f ) );
-		var hint = showSweet ? "Click / Space to set   ·   ':' = perfect (past it = overcooked)" : "Click / Space to set";
-		DebugOverlay.ScreenText( new Vector2( cx, h - 92f ), hint, 16, TextFlag.Center, new Color( 1f, 1f, 1f, 0.7f ) );
-	}
-
 	/// <summary>Where "perfect" sits on the power/spin meters (0..1). The physics is tuned so this fill is the
 	/// ideal pocket throw, leaving the top of the meter as room to overcook it — so maxing out is a mistake,
-	/// not the goal. Marked with a ':' tick on the meter.</summary>
+	/// not the goal. Marked with a bright tick on the meter.</summary>
 	[Property, Group( "Aim" )] public float SweetSpot { get; set; } = 0.8f;
 
-	// A filled bar, with an optional ':' tick at the sweet-spot fraction (negative = none).
-	private static string Bar( float v01, float sweet01 = -1f )
+	// --- Step meter (a first-party procedural mesh floating above the ball) -------------
+	// A flat plaque billboarded to face the camera, sat where the debug speed readout used to float: a dark
+	// track, a coloured fill that sweeps with the live step value (centred both-ways for the signed SPIN
+	// step), a bright sweet-spot tick on POWER/SPIN, and a row of four pips above showing which of the four
+	// steps you're on. A short text LABEL over it names the step (no % — the meter IS the number). Built like
+	// the aim arrow — a client-local ModelRenderer (NetworkMode.Never, a procedural model can't replicate),
+	// only the local bowler sees it — but on the vertex_color material so one mesh carries every colour.
+	private GameObject _meterGo;
+	private ModelRenderer _meterRenderer;
+
+	private void HideMeter()
 	{
-		v01 = v01.Clamp( 0f, 1f );
-		const int n = 20;
-		var f = (int)MathF.Round( v01 * n );
-		var sweet = sweet01 >= 0f ? (int)MathF.Round( sweet01.Clamp( 0f, 1f ) * n ) : -1;
-		var sb = new System.Text.StringBuilder( "[" );
-		for ( var i = 0; i < n; i++ )
-		{
-			var c = i < f ? '|' : '.';
-			if ( i == sweet ) c = i < f ? '#' : ':'; // sweet-spot tick (filled vs empty)
-			sb.Append( c );
-		}
-		sb.Append( $"]  {v01 * 100f:F0}%" );
-		return sb.ToString();
+		if ( _meterRenderer.IsValid() ) _meterRenderer.Enabled = false;
 	}
 
-	private string SpinBar( float signed )
+	private void DestroyMeter()
 	{
-		signed = signed.Clamp( -1f, 1f );
-		const int half = 10;
-		var pos = (int)MathF.Round( (signed + 1f) * 0.5f * (half * 2) );
-		var sweet = (int)MathF.Round( SweetSpot.Clamp( 0f, 1f ) * half ); // ticks this far out from centre, both sides
-		var sb = new System.Text.StringBuilder( "[" );
-		for ( var i = 0; i <= half * 2; i++ )
+		_meterGo?.Destroy();
+		_meterGo = null;
+		_meterRenderer = null;
+	}
+
+	private void DrawStepMeter( BallController ball )
+	{
+		// Per-step display values: a 0..1 fill (or a signed −1..1 for SPIN), the phase colour, the step index,
+		// whether it carries a sweet-spot tick, and the label.
+		float fill; var signed = false; float sweet = -1f; Color color; int step; string label;
+		switch ( _phase )
 		{
-			var c = i == pos ? '#'
-				: i == half ? '+'
-				: (i == half - sweet || i == half + sweet) ? ':' // ~80% hook sweet spot on each side
-				: '.';
-			sb.Append( c );
+			case Phase.Line:
+				fill = (SignedPing( LineSpeed ) + 1f) * 0.5f; color = new Color( 0.3f, 0.9f, 1f ); step = 1; label = "STEP 1/4   ·   LINE"; break;
+			case Phase.Aim:
+				fill = (SignedPing( AimSpeed ) + 1f) * 0.5f; color = new Color( 1f, 0.85f, 0.2f ); step = 2; label = "STEP 2/4   ·   AIM"; break;
+			case Phase.Power:
+				fill = _power01; sweet = SweetSpot; color = Color.Lerp( new Color( 0.3f, 1f, 0.3f ), new Color( 1f, 0.3f, 0.2f ), _power01 ); step = 3; label = "STEP 3/4   ·   POWER"; break;
+			case Phase.Spin:
+				fill = SignedPing( SpinSpeed ); signed = true; sweet = SweetSpot; color = new Color( 0.75f, 0.45f, 1f ); step = 4; label = "STEP 4/4   ·   SPIN"; break;
+			default:
+				HideMeter(); return;
 		}
-		sb.Append( "]  " );
-		// +spin curves toward +Y, which reads as screen-LEFT from the behind-ball camera (camera-right is -Y).
-		sb.Append( signed > 0.05f ? $"HOOK < LEFT {signed * 100f:F0}%"
-			: signed < -0.05f ? $"HOOK > RIGHT {MathF.Abs( signed ) * 100f:F0}%" : "STRAIGHT" );
-		return sb.ToString();
+
+		// Sit the plaque where the old speed readout floated — above the ball — and billboard it at the camera.
+		var center = ball.WorldPosition + Vector3.Up * (ball.Radius + 90f);
+		var cam = Scene.Camera;
+		var toCam = cam.IsValid() ? (cam.WorldPosition - center) : Vector3.Backward;
+		toCam = toCam.Length > 0.01f ? toCam.Normal : Vector3.Backward;
+		var right = Vector3.Up.Cross( toCam );
+		right = right.Length > 0.01f ? right.Normal : Vector3.Forward;
+		var up = toCam.Cross( right ).Normal;
+
+		UpdateMeterMesh( ball, center, right, up, toCam, fill, signed, sweet, color, step );
+
+		// Text label above the plaque naming the step, plus the commit hint. World-space text billboards to the
+		// camera on its own. No percentage — the meter shows the value.
+		var titleAt = center + up * (ball.Radius * 1.9f);
+		DebugOverlay.Text( titleAt, label, 22, TextFlag.Center, Color.White );
+		var hint = sweet >= 0f ? "Click / Space to set   ·   the tick is perfect (past it = overcooked)"
+			: "Click / Space to set";
+		DebugOverlay.Text( center - up * (ball.Radius * 1.1f), hint, 15, TextFlag.Center, new Color( 1f, 1f, 1f, 0.75f ) );
+	}
+
+	private void UpdateMeterMesh( BallController ball, Vector3 center, Vector3 right, Vector3 up, Vector3 toCam,
+		float fill, bool signed, float sweet, Color color, int step )
+	{
+		if ( !_meterRenderer.IsValid() )
+		{
+			_meterGo = new GameObject( true, "AimMeter" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+			_meterGo.NetworkMode = NetworkMode.Never;
+			_meterRenderer = _meterGo.Components.GetOrCreate<ModelRenderer>();
+		}
+
+		var r = ball.Radius;
+		var halfW = r * 4.0f;              // track half-width
+		var halfH = r * 0.55f;            // track half-height
+		var fillH = halfH * 0.68f;        // fill inset within the track
+		var tickHW = r * 0.06f;           // sweet-spot tick half-width
+		var pipHalf = r * 0.16f;          // step-pip half-size
+		var pipV = halfH + r * 0.55f;     // pip row height above the track centre
+		var pipSpread = halfW * 0.55f;    // how far the four pips fan out
+
+		var track = new Color32( 46, 51, 64 );
+		var pipOff = new Color32( 70, 76, 92 );
+		var tickCol = new Color32( 255, 255, 255 );
+		var fillCol = color.ToColor32();
+
+		var vb = new VertexBuffer();
+		vb.Init( true );
+		var count = 0;
+		var plane = center; // bumped toward the camera per layer so stacked quads never z-fight
+
+		Vertex MV( Vector3 p, Color32 c ) { var v = new Vertex( p, c ); v.Normal = Vector3.Up; return v; }
+		void Quad( float u0, float u1, float v0, float v1, Color32 c )
+		{
+			Vector3 P( float u, float v ) => plane + right * u + up * v;
+			var b = count;
+			vb.Add( MV( P( u0, v0 ), c ) ); vb.Add( MV( P( u1, v0 ), c ) );
+			vb.Add( MV( P( u1, v1 ), c ) ); vb.Add( MV( P( u0, v1 ), c ) );
+			count += 4;
+			vb.AddRawIndex( b ); vb.AddRawIndex( b + 1 ); vb.AddRawIndex( b + 2 );
+			vb.AddRawIndex( b ); vb.AddRawIndex( b + 2 ); vb.AddRawIndex( b + 3 );
+			vb.AddRawIndex( b ); vb.AddRawIndex( b + 2 ); vb.AddRawIndex( b + 1 ); // back-face
+			vb.AddRawIndex( b ); vb.AddRawIndex( b + 3 ); vb.AddRawIndex( b + 2 );
+		}
+
+		// Track.
+		plane = center;
+		Quad( -halfW, halfW, -halfH, halfH, track );
+
+		// Fill: from the left edge for a 0..1 bar, or out from the centre for the signed SPIN meter.
+		plane = center + toCam * 0.6f;
+		if ( signed )
+		{
+			var s = fill.Clamp( -1f, 1f );
+			var end = s * halfW;
+			Quad( MathF.Min( 0f, end ), MathF.Max( 0f, end ), -fillH, fillH, fillCol );
+		}
+		else
+		{
+			var end = -halfW + fill.Clamp( 0f, 1f ) * (halfW * 2f);
+			Quad( -halfW, end, -fillH, fillH, fillCol );
+		}
+
+		// Sweet-spot tick(s) + centre mark, brought fully forward so they read over the fill.
+		plane = center + toCam * 1.2f;
+		if ( sweet >= 0f )
+		{
+			if ( signed )
+			{
+				var at = sweet.Clamp( 0f, 1f ) * halfW;
+				Quad( at - tickHW, at + tickHW, -halfH, halfH, tickCol );
+				Quad( -at - tickHW, -at + tickHW, -halfH, halfH, tickCol );
+				Quad( -tickHW * 0.7f, tickHW * 0.7f, -fillH, fillH, new Color32( 200, 205, 220 ) ); // centre
+			}
+			else
+			{
+				var at = -halfW + sweet.Clamp( 0f, 1f ) * (halfW * 2f);
+				Quad( at - tickHW, at + tickHW, -halfH, halfH, tickCol );
+			}
+		}
+
+		// Four step pips above the track — filled in the phase colour up to the current step, dim beyond.
+		plane = center + toCam * 0.6f;
+		for ( var i = 0; i < 4; i++ )
+		{
+			var u = MathX.Lerp( -pipSpread, pipSpread, i / 3f );
+			Quad( u - pipHalf, u + pipHalf, pipV - pipHalf, pipV + pipHalf, i < step ? fillCol : pipOff );
+		}
+
+		_meterGo.WorldPosition = Vector3.Zero; // vertices are world-space
+		_meterGo.WorldRotation = Rotation.Identity;
+		_meterGo.WorldScale = Vector3.One;
+		_meterRenderer.Enabled = true;
+		_meterRenderer.Tint = Color.White; // per-vertex colour is multiplied by this tint in the shader
+
+		// vertex_color.vmat's shader reads the mesh's per-vertex COLOR (vColor * instance tint); the default
+		// complex/white shader ignores it (it drives colour from the tint alone), so the meter needs this one
+		// to show its dark track / phase-coloured fill / white tick as distinct colours in a single mesh.
+		var mesh = new Mesh( Material.Load( "materials/default/vertex_color.vmat" ) );
+		mesh.CreateBuffers( vb );
+		var mb = new ModelBuilder();
+		mb.AddMesh( mesh );
+		_meterRenderer.Model = mb.Create();
 	}
 }
