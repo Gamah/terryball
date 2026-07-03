@@ -219,10 +219,11 @@ def pit(name, seed):
 
 # ---------------------------------------------------------------- terrazzo floor
 
-def floor(name, seed, base=(0.86, 0.84, 0.80)):
+def floor(name, seed, base=(0.86, 0.84, 0.80), chip_rough=0.3):
     """Graphic terrazzo: a base packed with coloured aggregate chips. `base` sets
     the matrix colour — pale for the concourse, near-black for the spawn/ramps
-    (the same bright chips read as confetti dots on black)."""
+    (the same bright chips read as confetti dots on black). `chip_rough` is the
+    chips' roughness: lower = glossier. Raise it to calm shiny confetti dots."""
     rng = np.random.default_rng(seed)
     base = np.array(base)
     col = np.broadcast_to(base, (N, N, 3)).copy()
@@ -247,8 +248,8 @@ def floor(name, seed, base=(0.86, 0.84, 0.80)):
     spk = fbm(rng, octaves=6, base=32)
     col = col * (0.94 + 0.10 * spk[..., None])
     rough = np.full((N, N), 0.45, np.float32) + 0.2 * spk
-    # chips are a touch glossier than the matrix
-    rough[h > 0.4] = 0.3
+    # chips can be glossier than the matrix (chip_rough); raise it to calm the confetti
+    rough[h > 0.4] = chip_rough
     save(name, col, h * 0.3, rough, nstrength=0.6)
 
 # ---------------------------------------------------------------- go
@@ -264,5 +265,6 @@ if __name__ == "__main__":
     carpet("carpet", 53)
     pit("pit", 61)
     floor("floor", 71)
-    floor("floordark", 83, base=[0.05, 0.05, 0.06])   # spawn/ramps: bright chips on near-black
+    # ramps + settees: bright chips on near-black, chips kept matte so the dots don't glare
+    floor("floordark", 83, base=[0.05, 0.05, 0.06], chip_rough=0.6)
     print("done.")
