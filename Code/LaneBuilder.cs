@@ -849,11 +849,51 @@ public sealed class LaneBuilder : Component
 
 		// Ball camera on the bowler's LEFT, scoreboard on their RIGHT — which Y that is depends on which
 		// way the seats face (−away).
-		BuildPanelScreen( "LaneFeedScreen", cu, frontX, away, -away * offsetY, centerZ, boardW,
+		var feedY = -away * offsetY;
+		BuildPanelScreen( "LaneFeedScreen", cu, frontX, away, feedY, centerZ, boardW,
 			new Vector2( 1280f, 720f ) ).Components.Create<MonitorFeed>();
+
+		// The guided-throw ("Aim") meter for spectators rides its OWN slim panel floating just above the
+		// feed board — a WorldPanel clips to its surface, so it can't be drawn above the feed from inside it.
+		BuildAimBanner( cu, frontX, away, feedY, centerZ, boardW );
 
 		BuildPanelScreen( "LaneScoreScreen", cu, frontX, away, away * offsetY, centerZ, boardW,
 			new Vector2( 1200f, 675f ) ).Components.Create<LaneConsole>();
+	}
+
+	/// <summary>A slim, bezel-less transparent WorldPanel floating just above the feed board (which is
+	/// <paramref name="boardW"/> wide, centred at <paramref name="feedCenterZ"/>), hosting the spectator
+	/// guided-throw meter (<see cref="AimFeedBanner"/>). Same plane and facing as the boards.</summary>
+	private void BuildAimBanner( float cu, float frontX, float away, float centerY, float feedCenterZ, float boardW )
+	{
+		const float s2w = 0.05f; // WorldPanel.ScreenToWorldScale — world units per panel pixel at scale 1
+		var feedWorldH = boardW * (720f / 1280f); // the feed board is 16:9 at boardW wide
+		var bezelPad = 2f * cu;                    // matches BuildPanelScreen's bezel padding
+		var feedTopZ = feedCenterZ + feedWorldH * 0.5f + bezelPad;
+
+		// Wide + short so the meter card hugs just over the board top; the card anchors to the panel's
+		// bottom (see AimFeedBanner). Same physical width as the board (RenderScale stays 1, LocalScale sizes it).
+		var panelPx = new Vector2( 1280f, 460f );
+		var scale = boardW / (panelPx.x * s2w);
+		var worldH = panelPx.y * s2w * scale;
+		var gap = 3f * cu;                          // clearance above the board's bezel
+		var centerZ = feedTopZ + gap + worldH * 0.5f;
+		var screenX = frontX + away * 6f * cu;      // same plane as the boards (overhead the seats)
+		var faceYaw = away > 0f ? 0f : 180f;        // aim the normal at the seats (+away)
+
+		var screen = new GameObject( true, "LaneAimBanner" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
+		screen.NetworkMode = NetworkMode.Never; // client-local UI — don't replicate an empty duplicate panel
+		screen.LocalPosition = new Vector3( screenX + away * 0.5f * cu, centerY, centerZ );
+		screen.LocalRotation = Rotation.FromYaw( faceYaw );
+		screen.LocalScale = scale;
+
+		var panel = screen.Components.Create<WorldPanel>();
+		panel.PanelSize = panelPx;
+		panel.RenderScale = 1f;
+		panel.LookAtCamera = false;
+		panel.InteractionRange = 100000f;
+
+		screen.Components.Create<AimFeedBanner>();
 	}
 
 	/// <summary>Build one bezelled WorldPanel screen on support posts at the settee, facing the seats, and

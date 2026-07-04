@@ -1,0 +1,291 @@
+@using Sandbox
+@using Sandbox.UI
+@using System
+@using System.Linq
+@using System.Collections.Generic
+@using Terryball
+@inherits PanelComponent
+
+@*
+	A slim, transparent panel floating just ABOVE the settee feed board (built by LaneBuilder, positioned
+	over the MonitorFeed screen). When the lane's active bowler is lining up a GUIDED ("Aim") throw, it
+	shows a broadcast-style duplicate of their LINE/AIM/POWER/SPIN step meter — sitting over the top of the
+	screen rather than covering the shot — so the seated spectators can read the throw being set up.
+
+	It draws from the state the bowler mirrors onto their networked avatar (TerryAvatar.AimHudActive & co,
+	published by their client-local ThrowAimer), so it shows and hides for exactly as long as the bowler's
+	own HUD meter does. This lives on its OWN WorldPanel because a WorldPanel clips to its surface — the
+	meter could not be rendered above the feed panel from inside it.
+
+	Sized against this panel's CSS area: a WorldPanel root is Scale 2, so that area is PanelSize/2 (the
+	LaneBuilder banner is 1280×460 → ~640×230 css px), NOT the raw panel pixels.
+*@
+
+<root style="width: 100%; height: 100%;">
+	@{
+		var av = Bowler;
+		var show = av?.AimHudActive ?? false;
+	}
+	@if ( show )
+	{
+		var step = av.AimStepNet;
+		var twoSided = av.AimTwoSidedNet;
+		var sweet = av.AimSweetNet;
+		var committed = av.AimCommittedNet;
+		var label = StepLabel( step );
+
+		// Rebuild the already-committed steps as dimmed ghost tracks, oldest first — the same set the
+		// bowler's own HUD derives from the step count and the locked carets.
+		var ghosts = new List<(string Label, float Caret, bool Center)>();
+		if ( step >= 2 ) ghosts.Add( ("LINE", av.AimLineCaretNet, true) );
+		if ( step >= 3 ) ghosts.Add( ("AIM", av.AimAimCaretNet, true) );
+		if ( step >= 4 ) ghosts.Add( ("POWER", av.AimPowerCaretNet, false) );
+
+		<div class="lower3">
+			<div class="feedtag">@(committed ? "THROWN" : "LINING UP")</div>
+			<div class="meter">
+				<div class="title">@label</div>
+				@if ( ghosts.Count > 0 )
+				{
+					<div class="ghosts">
+						@foreach ( var g in ghosts )
+						{
+							<div class="grow">
+								<div class="glabel">@g.Label</div>
+								<div class="gtrack">
+									@if ( g.Center )
+									{
+										<div class="gcenter"></div>
+									}
+									<div class="gcaret" style="left: @((g.Caret * 100f))%;"></div>
+								</div>
+							</div>
+						}
+					</div>
+				}
+				<div class="track">
+					@if ( twoSided || sweet < 0f )
+					{
+						<div class="center"></div>
+					}
+					@if ( twoSided )
+					{
+						<div class="sweet" style="left: @(((1f - sweet) * 50f))%;"></div>
+						<div class="sweet" style="left: @(((1f + sweet) * 50f))%;"></div>
+					}
+					else if ( sweet >= 0f )
+					{
+						<div class="sweet" style="left: @((sweet * 100f))%;"></div>
+					}
+					<div class="caret" @ref="_caret"></div>
+				</div>
+				<div class="pips">
+					@for ( int i = 0; i < 4; i++ )
+					{
+						<div class="pip @(i < step ? "on" : "")"></div>
+					}
+				</div>
+			</div>
+		</div>
+	}
+</root>
+
+<style>
+	/* Card anchored to the BOTTOM of this banner panel, so it hugs just above the feed board (the panel
+	   itself is positioned above the board in world space). CSS area is ~640×230 (see the header note). */
+	.lower3 {
+		position: absolute;
+		left: 0px;
+		right: 0px;
+		bottom: 8px;
+		flex-direction: column;
+		align-items: center;
+		font-family: Poppins, sans-serif;
+	}
+
+	.feedtag {
+		font-size: 14px;
+		font-weight: 700;
+		letter-spacing: 2px;
+		color: rgba(255, 255, 255, 0.85);
+		margin-bottom: 5px;
+		padding: 3px 11px;
+		background-color: rgba(0, 0, 0, 0.55);
+		border-radius: 5px;
+	}
+
+	.meter {
+		width: 470px;
+		flex-direction: column;
+		align-items: center;
+		padding: 12px 20px;
+		background-color: rgba(0, 0, 0, 0.72);
+		border-radius: 12px;
+	}
+
+	.title {
+		font-size: 20px;
+		font-weight: 700;
+		letter-spacing: 1px;
+		color: white;
+		margin-bottom: 9px;
+	}
+
+	.ghosts {
+		width: 100%;
+		flex-direction: column;
+		gap: 5px;
+		margin-bottom: 9px;
+	}
+
+	.grow {
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		opacity: 0.55;
+	}
+
+	.glabel {
+		width: 60px;
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 1px;
+		color: rgba(255, 255, 255, 0.75);
+	}
+
+	.gtrack {
+		flex-grow: 1;
+		height: 8px;
+		background-color: rgba(46, 51, 64, 0.9);
+		border-radius: 4px;
+		position: relative;
+	}
+
+	.gcenter {
+		position: absolute;
+		left: 50%;
+		margin-left: -1px;
+		top: 1px;
+		bottom: 1px;
+		width: 2px;
+		background-color: rgba(255, 255, 255, 0.22);
+	}
+
+	.gcaret {
+		position: absolute;
+		margin-left: -2px;
+		top: -2px;
+		bottom: -2px;
+		width: 5px;
+		border-radius: 3px;
+		background-color: rgb(90, 200, 255);
+	}
+
+	.track {
+		width: 100%;
+		height: 18px;
+		background-color: rgba(46, 51, 64, 0.95);
+		border-radius: 9px;
+		position: relative;
+	}
+
+	.center {
+		position: absolute;
+		left: 50%;
+		margin-left: -1px;
+		top: 2px;
+		bottom: 2px;
+		width: 2px;
+		background-color: rgba(255, 255, 255, 0.28);
+	}
+
+	.sweet {
+		position: absolute;
+		margin-left: -2px;
+		top: -3px;
+		bottom: -3px;
+		width: 5px;
+		border-radius: 3px;
+		background-color: rgba(255, 255, 255, 0.9);
+	}
+
+	.caret {
+		position: absolute;
+		left: 0%;
+		margin-left: -3px;
+		top: -4px;
+		bottom: -4px;
+		width: 7px;
+		border-radius: 4px;
+		background-color: rgb(90, 200, 255);
+		box-shadow: 0px 0px 9px 1px rgba(90, 200, 255, 0.8);
+	}
+
+	.pips {
+		flex-direction: row;
+		gap: 10px;
+		margin-top: 11px;
+	}
+
+	.pip {
+		width: 11px;
+		height: 11px;
+		border-radius: 6px;
+		background-color: rgba(70, 76, 92, 1);
+	}
+
+	.pip.on {
+		background-color: rgb(90, 200, 255);
+	}
+</style>
+
+@code
+{
+	private Panel _caret;
+
+	// The lane's active bowler avatar (the one the director has spotlighted), which mirrors the guided-throw
+	// meter state the seated spectators want to read. Null when nobody's up.
+	private TerryAvatar Bowler
+	{
+		get
+		{
+			var id = Lane.Of( this )?.Director?.ActiveBowlerId ?? Guid.Empty;
+			if ( id == Guid.Empty ) return null;
+			return Scene.GetAllComponents<TerryAvatar>()
+				.FirstOrDefault( a => a.IsValid() && a.GameObject.Network.Owner?.Id == id );
+		}
+	}
+
+	private static string StepLabel( int step ) => step switch
+	{
+		1 => "LINE",
+		2 => "AIM",
+		3 => "POWER",
+		4 => "SPIN",
+		_ => "",
+	};
+
+	protected override void OnUpdate()
+	{
+		base.OnUpdate();
+
+		// Sweep the live caret every frame (the tree only rebuilds on step/show changes — see BuildHash).
+		var av = Bowler;
+		if ( av is not null && av.AimHudActive && _caret is { IsValid: true, IsDeleting: false } )
+			_caret.Style.Left = Length.Fraction( av.AimCaretNet );
+	}
+
+	// Rebuild only when the meter shows/hides, the step changes, the throw commits, or a ghost caret re-locks —
+	// the continuous caret sweep is set per-frame in OnUpdate, so it doesn't churn the tree.
+	protected override int BuildHash()
+	{
+		var av = Bowler;
+		return System.HashCode.Combine(
+			av?.AimHudActive ?? false,
+			av?.AimStepNet ?? 0,
+			av?.AimCommittedNet ?? false,
+			av?.AimLineCaretNet ?? 0f,
+			av?.AimAimCaretNet ?? 0f,
+			av?.AimPowerCaretNet ?? 0f );
+	}
+}
