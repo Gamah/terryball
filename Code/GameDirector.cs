@@ -168,6 +168,84 @@ public sealed class GameDirector : Component
 	/// parked ball. (Watching ActiveBowlerId alone can't catch a same-bowler hand-back — it never edges.)</summary>
 	[Sync] public int TurnSerial { get; set; }
 
+	// --- Active ball design (the skin the shared ball wears) -----------------------------------
+	// The ball reads its look from HERE, not off the bowler's avatar. The avatar's own [Sync] design
+	// fields proved unreliable for late joiners — a host-spawned avatar's one-time owner write can miss
+	// the join snapshot, so spectators who connect mid-turn keep the default skin forever. The director,
+	// by contrast, is a stable per-lane networked object whose [Sync] fields (ActiveBowlerId, roster)
+	// reliably reach late joiners. So each client PUSHES its chosen design to this lane's director via
+	// SetBallDesignRpc (an owner RPC, like EndTurnRpc), the director stashes it per-connection, and
+	// mirrors the CURRENT bowler's design onto these three synced fields — which every client, joining
+	// early or late, resolves the same way. Stored as three primitives to keep the sync trivial.
+	[Sync] public int ActiveBallPatternId { get; set; } = (int)BallDesign.DefaultPattern;
+	[Sync] public float ActiveBallPrimaryHue { get; set; } = BallDesign.DefaultPrimaryHue;
+	[Sync] public float ActiveBallAccentHue { get; set; } = BallDesign.DefaultAccentHue;
+
+	/// <summary>The active bowler's ball look, assembled from the synced fields — read by BallController
+	/// to skin the shared ball. Falls back to <see cref="BallDesign.Default"/> between bowlers.</summary>
+	public BallDesign ActiveBallDesign => new()
+	{
+		Pattern = (BallPattern)ActiveBallPatternId,
+		PrimaryHue = ActiveBallPrimaryHue,
+		AccentHue = ActiveBallAccentHue,
+	};
+
+	// Director-side (owner-local, not synced): each connection's most recently submitted ball design.
+	// Populated by SetBallDesignRpc; PublishActiveBallDesign copies the active bowler's entry into the
+	// synced fields above. Clients re-submit periodically, so this repopulates after a director handover.
+	private readonly Dictionary<Guid, BallDesign> _ballDesigns = new();
+
+	/// <summary>A client registers/updates its chosen ball design with this lane's director. Called by the
+	/// avatar owner on join, on every designer edit, and re-asserted periodically (so it survives a director
+	/// ownership handover and reaches whoever currently runs the lane). Runs on the director owner: it stashes
+	/// the design per-connection and, if this caller is the one up, refreshes the synced active design at once.</summary>
+	[Rpc.Owner]
+	public void SetBallDesignRpc( int patternId, float primaryHue, float accentHue )
+	{
+		var caller = Rpc.Caller?.Id ?? Guid.Empty;
+		if ( caller == Guid.Empty ) return;
+
+		_ballDesigns[caller] = new BallDesign
+		{
+			Pattern = (BallPattern)patternId,
+			PrimaryHue = primaryHue,
+			AccentHue = accentHue,
+		};
+
+		if ( caller == ActiveBowlerId ) PublishActiveBallDesign();
+	}
+
+	/// <summary>Director: mirror the current bowler's stashed design onto the synced active-design fields
+	/// (default between bowlers / for a bowler who hasn't submitted yet). Cheap no-op when unchanged, so it's
+	/// safe to call every frame.</summary>
+	private void PublishActiveBallDesign()
+	{
+		if ( !IsDirector ) return;
+
+		// Prefer the design the bowler explicitly submitted (the reliable path). Fall back to reading it off
+		// their avatar when nothing's arrived yet — covers solo/editor play (no RPCs fire without a live
+		// session) and bridges the brief gap before a fresh submission lands. Default if we have neither.
+		BallDesign d;
+		if ( ActiveBowlerId != Guid.Empty && _ballDesigns.TryGetValue( ActiveBowlerId, out var found ) )
+			d = found;
+		else
+			d = ActiveBowlerAvatarDesign() ?? BallDesign.Default;
+
+		ActiveBallPatternId = (int)d.Pattern;
+		ActiveBallPrimaryHue = d.PrimaryHue;
+		ActiveBallAccentHue = d.AccentHue;
+	}
+
+	/// <summary>The active bowler's design read off their avatar — the fallback source for
+	/// <see cref="PublishActiveBallDesign"/> before/without an explicit SetBallDesignRpc submission.</summary>
+	private BallDesign? ActiveBowlerAvatarDesign()
+	{
+		if ( ActiveBowlerId == Guid.Empty ) return null;
+		var avatar = Scene.GetAllComponents<TerryAvatar>()
+			.FirstOrDefault( a => a.IsValid() && a.Network.Owner?.Id == ActiveBowlerId );
+		return avatar?.Design;
+	}
+
 	/// <summary>True if the local client is the bowler currently up. (With no active network session
 	/// — e.g. running the scene raw in the editor before a lobby exists — defaults to true so the
 	/// ball is still drivable.)</summary>
@@ -581,6 +659,10 @@ public sealed class GameDirector : Component
 		// Re-assert every frame: the engine swaps the PhysicsWorld after OnStart, so a one-time set
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
 		Scene.PhysicsWorld.SubSteps = PhysicsSubSteps;
+
+		// Keep the synced ball skin matching whoever's up — picks up a bowler's design once their
+		// SetBallDesignRpc lands (may arrive a frame or two after their turn starts) and live edits.
+		if ( IsDirector ) PublishActiveBallDesign();
 
 		// Host: bring the shared, networked rack online (once the lane is built) and flag the ball AND the
 		// director Takeover-transferable — the bowler grabs the ball/rack for their turn, and any player

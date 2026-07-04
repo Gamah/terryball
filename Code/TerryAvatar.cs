@@ -105,7 +105,22 @@ public sealed class TerryAvatar : Component
 		BallPrimaryHue = d.PrimaryHue;
 		BallAccentHue = d.AccentHue;
 		if ( save ) d.Save();
+
+		// Push straight to our lane's director so a live designer edit re-skins the ball immediately.
+		SubmitDesignToDirector();
 	}
+
+	/// <summary>Register our current ball design with the lane we're on, via the director's owner RPC. The
+	/// director (not this avatar) is the ball's skin source — its [Sync] fields reliably reach late joiners
+	/// where the avatar's did not. No-op until we've joined a lane / networking is live; re-asserted
+	/// periodically from OnUpdate so it also survives a director ownership handover.</summary>
+	private void SubmitDesignToDirector()
+	{
+		if ( IsProxy || !Network.Active ) return;
+		Director?.SetBallDesignRpc( BallPatternId, BallPrimaryHue, BallAccentHue );
+	}
+
+	private float _designPushAt; // next time (Time.Now) to re-assert our design to the director
 
 	private PlayerController _player;
 	private GameObject _body;
@@ -252,6 +267,15 @@ public sealed class TerryAvatar : Component
 			{
 				ApplyDesign( BallDesign.Load(), save: false );
 				_designPublished = true;
+			}
+
+			// Re-assert our design to the lane's director every so often. Cheap, and it self-heals every
+			// gap the one-shot push can't cover: joining a lane after we spawned, and a director ownership
+			// handover (the new owner's per-connection cache starts empty). No-op until we're on a lane.
+			if ( Network.Active && Time.Now >= _designPushAt )
+			{
+				_designPushAt = Time.Now + 1.5f;
+				SubmitDesignToDirector();
 			}
 
 			// Safety: if we're not up, we're not in the ball — never leave a non-bowling avatar stuck

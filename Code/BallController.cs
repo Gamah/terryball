@@ -316,19 +316,19 @@ public sealed class BallController : Component, Component.ICollisionListener
 			_ = DressForBowler( id );
 		}
 
-		SkinToBowler( id );
+		SkinToBowler();
 	}
 
-	// Skin the glass shell + coloured shadow to the active bowler's chosen ball design (networked on their
-	// avatar, so every client resolves the same look). Regenerates the colour map only when the design
-	// actually changes — so a bowler live-editing in the designer updates their ball, but it's otherwise idle.
-	private void SkinToBowler( Guid id )
+	// Skin the glass shell + coloured shadow to the active bowler's chosen ball design. The design comes
+	// from the lane DIRECTOR (GameDirector.ActiveBallDesign), not the bowler's avatar: the director's synced
+	// fields reliably reach late joiners, so a spectator connecting mid-turn skins the same as everyone else
+	// (the avatar's own design fields did not — see the note on GameDirector.ActiveBallPatternId). Regenerates
+	// the colour map only when the design actually changes — live designer edits update it, otherwise idle.
+	private void SkinToBowler()
 	{
-		var avatar = id == Guid.Empty ? null
-			: Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && a.Network.Owner?.Id == id );
-		if ( avatar is null ) return;
+		if ( Director is null ) return;
 
-		var design = avatar.Design;
+		var design = Director.ActiveBallDesign;
 		if ( _skinnedAny && design.Equals( _skinnedDesign ) ) return;
 		_skinnedDesign = design;
 		_skinnedAny = true;
