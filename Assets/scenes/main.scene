@@ -31,7 +31,7 @@
           "__enabled": true,
           "Preset": "room.diffuse.small",
           "MixerName": "Game",
-          "Wet": 1
+          "Wet": 0.6
         }
       ]
     },
