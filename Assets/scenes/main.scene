@@ -24,6 +24,13 @@
             "go": "3db541a9-4e38-4efe-bc9b-858000feb78e"
           },
           "SpawnSpread": 120
+        },
+        {
+          "__type": "Terryball.AlleyReverb",
+          "__guid": "b0000001-0003-4000-8000-000000000003",
+          "__enabled": true,
+          "Preset": "brite.large",
+          "MixerName": "Game"
         }
       ]
     },

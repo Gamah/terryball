@@ -1,0 +1,16 @@
+Pin impact sounds — provenance & processing
+============================================
+
+clack0..5.wav, thud0..1.wav — real CC0 (Creative Commons 0) bowling recordings,
+sliced into single isolated hits (pin-on-pin clacks + low deck thuds). Played by
+Code/Audio/PinImpactAudio.cs via a native SoundEvent (random pick + pitch/volume
+spread), jumbled per pin-contact so each throw's crash is emergent, not a baked sample.
+
+Processing (ffmpeg), applied to even them out and take the harsh edge off the top:
+  - high-shelf -5 dB above 3 kHz + low-pass 8.5 kHz on the clacks (thuds: -1 dB shelf,
+    LP 11 kHz — they're already dark), to shave the brittle transient "tick";
+  - loudness-matched to ~-15 dB RMS (was a ~7 dB spread across the set → ~2.5 dB);
+  - soft-limited to -1 dB peak so the sharp attacks don't clip while levels sit even.
+
+Room reverb is NOT baked in — the alley adds it live in-engine (see Code/Audio/AlleyReverb.cs,
+a DSP reverb on the Game mixer), so these stay dry/close-mic'd and the space is tunable.
