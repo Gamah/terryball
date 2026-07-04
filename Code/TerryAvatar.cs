@@ -65,6 +65,21 @@ public sealed class TerryAvatar : Component
 	[Sync] public Vector3 BowlCamPos { get; set; }
 	[Sync] public Rotation BowlCamRot { get; set; } = Rotation.Identity;
 
+	// --- Guided-throw ("Aim" mode) step meter, mirrored for the settee feed board -----------------------
+	// While this bowler lines up a guided throw, their client-local ThrowAimer publishes the live meter state
+	// here (see ThrowAimer.PublishBoard). The per-lane MonitorFeed board reads it off the active bowler and
+	// draws a duplicate of the LINE/AIM/POWER/SPIN meter for the seated spectators, up for the same span as
+	// the bowler's own HUD. Only meaningful while AimHudActive.
+	[Sync] public bool AimHudActive { get; set; }
+	[Sync] public int AimStepNet { get; set; }            // 1..4 (LINE/AIM/POWER/SPIN)
+	[Sync] public float AimCaretNet { get; set; }         // live caret 0..1 (0 = screen-left)
+	[Sync] public float AimSweetNet { get; set; } = -1f;  // sweet-spot fraction, or <0 for none
+	[Sync] public bool AimTwoSidedNet { get; set; }       // SPIN: centred, hooks either way
+	[Sync] public bool AimCommittedNet { get; set; }      // throw's away — frozen summary
+	[Sync] public float AimLineCaretNet { get; set; }     // locked LINE caret (ghost track)
+	[Sync] public float AimAimCaretNet { get; set; }      // locked AIM caret (ghost track)
+	[Sync] public float AimPowerCaretNet { get; set; }    // locked POWER caret (ghost track)
+
 	// --- Ball design (owner-chosen, networked so everyone's ball skins the same when they're up) -----
 	// Each client picks its OWN look in the designer; it's saved client-local (BallDesign.Save) and
 	// mirrored here so the shared ball (BallController) can skin itself to whoever is currently bowling.

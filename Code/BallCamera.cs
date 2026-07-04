@@ -141,13 +141,15 @@ public sealed class BallCamera : Component
 			_pitch = AimPitch;
 		}
 
-		// Lateral follow anchor: the camera tracks the ball's own Y. While lining up (and until it re-converges
-		// after release) it eases onto that line with a light, smooth follow — the ball is hand-positioned side
-		// to side during LINE (we want the camera to track it) and sits parked on the later steps — so the
-		// aiming and the release slide onto the ball's line rather than snapping. Otherwise it follows tightly.
+		// Lateral follow anchor: the camera tracks the ball's own Y. This light easing is an AIM-MODE behaviour
+		// only — while lining up (and until it re-converges after the aimed release) the ball is hand-positioned
+		// side to side / parked, so the aiming and the release slide onto its line rather than snapping. In free
+		// hamster-ball drive it must follow the ball TIGHTLY: the eased Y used to lag the ball as it darted
+		// across the lane, leaving the camera sat on the lane centre-line instead of behind the ball.
+		var aimFollow = director?.AimMode ?? false;
 		var tightY = _ball.WorldPosition.y;
 		if ( !_followYInit ) { _followY = tightY; _followYInit = true; }
-		_followY = ( liningUp || MathF.Abs( _followY - tightY ) >= 2f )
+		_followY = ( aimFollow && (liningUp || MathF.Abs( _followY - tightY ) >= 2f) )
 			? MathX.Lerp( _followY, tightY, MathF.Min( 1f, AimLockLerp * Time.Delta ) )
 			: tightY;
 

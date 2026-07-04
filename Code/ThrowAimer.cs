@@ -109,11 +109,14 @@ public sealed class ThrowAimer : Component
 		if ( !active )
 		{
 			// Left the aim window (throw released, bailed, walked off, mode toggled off): make sure the ball
-			// isn't left frozen with gravity off, then go dormant.
-			if ( _holding && ball.IsValid() ) { ball.EndHold(); _holding = false; }
+			// isn't left frozen with gravity off — and if we were still MID-LINE-UP (holding, not launched),
+			// hand control back to free drive so toggling off Aim mid-throw doesn't strand the ball locked and
+			// un-drivable. (A launched throw sets _holding=false, so its coasting lock is untouched here.)
+			if ( _holding && ball.IsValid() ) { ball.EndHold(); ball.ControlsLocked = false; _holding = false; }
 			HideArrow();
 			AimHudVisible = false;
 			AimCommitted = false;
+			PublishBoard( false );
 			_phase = Phase.Idle;
 			return;
 		}
@@ -197,6 +200,7 @@ public sealed class ThrowAimer : Component
 		_holding = false;
 		DestroyArrow();
 		AimHudVisible = false;
+		PublishBoard( false );
 		_phase = Phase.Idle;
 	}
 
@@ -291,6 +295,7 @@ public sealed class ThrowAimer : Component
 		AimSweet01 = SweetSpot; AimTwoSided = true;
 		AimCommitted = true;
 		AimHudVisible = true;
+		PublishBoard( true ); // mirror the committed throw onto the settee feed board for spectators
 
 		if ( ActiveLane?.Director?.LogThrow ?? false )
 		{
@@ -340,14 +345,6 @@ public sealed class ThrowAimer : Component
 		};
 
 		UpdateArrowMesh( origin, yaw, baseLen * lengthFrac, color, previewSpin );
-
-		// A ground line clear across the lane at the ball's chosen/lining-up start line, so the lateral
-		// position reads clearly against the boards.
-		var yNow = _phase == Phase.Line ? ball.WorldPosition.y : _lineY;
-		var half = builder.LaneWidthInches * 0.5f * builder.UnitsPerInch;
-		var z = _surfaceZ - ball.Radius + 1f;
-		DebugOverlay.Line( new Vector3( _startX, yNow - half, z ), new Vector3( _startX, yNow + half, z ),
-			color.WithAlpha( 0.5f ), overlay: false );
 
 		// Publish the live step state for the bottom-of-screen HUD panel (ThrowAimHud) to render.
 		UpdateAimHud();
@@ -498,6 +495,27 @@ public sealed class ThrowAimer : Component
 		if ( _phase >= Phase.Spin ) _ghosts.Add( new AimGhost( "POWER", _powerCaret, false ) );
 
 		AimHudVisible = true;
+		PublishBoard( true ); // mirror the live line-up onto the settee feed board for spectators
+	}
+
+	// Mirror the local step-meter state onto the bowler's networked avatar so the per-lane settee feed board
+	// (MonitorFeed) can draw the SAME LINE/AIM/POWER/SPIN meter for spectators — the bowler owns their avatar,
+	// so these [Sync] fields replicate to everyone watching. Cleared (active=false) on teardown so the board
+	// meter appears and disappears exactly when the bowler's own HUD does.
+	private void PublishBoard( bool active )
+	{
+		var av = TerryAvatar.Local( Scene );
+		if ( !av.IsValid() ) return;
+		av.AimHudActive = active;
+		if ( !active ) return;
+		av.AimStepNet = AimStep;
+		av.AimCaretNet = AimCaret01;
+		av.AimSweetNet = AimSweet01;
+		av.AimTwoSidedNet = AimTwoSided;
+		av.AimCommittedNet = AimCommitted;
+		av.AimLineCaretNet = _lineCaret;
+		av.AimAimCaretNet = _aimCaret;
+		av.AimPowerCaretNet = _powerCaret;
 	}
 
 }
