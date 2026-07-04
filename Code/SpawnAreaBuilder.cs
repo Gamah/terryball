@@ -57,13 +57,18 @@ public sealed class SpawnAreaBuilder : Component
 	{
 		if ( _built ) return;
 
-		// Wait until the lanes have finished building (their deck-top Z is published on first geometry pass).
-		var lanes = Scene.GetAllComponents<Lane>()
+		// The lanes are authored (all present at load), but each publishes its deck-top Z only when its
+		// DEFERRED geometry build finishes — one lane per frame via BuildScheduler. Wait for EVERY lane before
+		// laying the concourse: building off whichever lanes happened to be ready first (often just lane 1) and
+		// then locking (_built) is what left the plaza sized to a single lane instead of spanning all four.
+		var all = Scene.GetAllComponents<Lane>()
 			.Select( l => l.Builder )
-			.Where( b => b.IsValid() && b.SetteeDeckTopWorldZ > 0.01f )
-			.OrderBy( b => b.WorldPosition.y )
+			.Where( b => b.IsValid() )
 			.ToList();
-		if ( lanes.Count == 0 ) return;
+		if ( all.Count == 0 ) return;
+		if ( all.Any( b => b.SetteeDeckTopWorldZ <= 0.01f ) ) return; // some lane hasn't finished building yet
+
+		var lanes = all.OrderBy( b => b.WorldPosition.y ).ToList();
 
 		_built = true;
 		Build( lanes );
