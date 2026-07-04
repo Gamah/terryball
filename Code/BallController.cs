@@ -257,10 +257,16 @@ public sealed class BallController : Component, Component.ICollisionListener
 		_shadow = shadow;
 
 		// Visual: scaled dev sphere with the glass material so Terry inside shows through.
+		// NetworkMode.Never: this is a purely LOCAL cosmetic child. Runtime children of a networked object
+		// otherwise default to Snapshot and replicate inside the ball's snapshot — so the host's copy (whose
+		// runtime MaterialOverride can't replicate) would land on every client carrying the DEFAULT glass
+		// material, sitting over the copy each client builds + skins here. That's why a spectator's ball held
+		// the right synced design yet still rendered the default skin. Each client builds and skins its own.
 		var visual = new GameObject( true, "BallVisual" )
 		{
 			Parent = GameObject,
-			Flags = GameObjectFlags.NotSaved
+			Flags = GameObjectFlags.NotSaved,
+			NetworkMode = NetworkMode.Never
 		};
 		var shell = visual.Components.GetOrCreate<ModelRenderer>();
 		shell.Model = Model.Load( "models/dev/sphere.vmdl" );
@@ -273,11 +279,14 @@ public sealed class BallController : Component, Component.ICollisionListener
 		visual.LocalScale = new Vector3( (Radius * 2f) / shellBounds );
 
 		// Terry: a Citizen riding the inside. His world transform is driven every frame, so
-		// the ball's spin never carries him — he rides the inner surface independently.
+		// the ball's spin never carries him — he rides the inner surface independently. Also LOCAL
+		// (NetworkMode.Never): each client builds + dresses its own in-ball Terry (DressForBowler runs
+		// per client), so replicating this child would just duplicate/conflict with that local one.
 		_terry = new GameObject( true, "Terry" )
 		{
 			Parent = GameObject,
-			Flags = GameObjectFlags.NotSaved
+			Flags = GameObjectFlags.NotSaved,
+			NetworkMode = NetworkMode.Never
 		};
 		_terry.LocalScale = new Vector3( TerryScale );
 		_terry.Tags.Add( "occupant" ); // OccupantSilhouetteCapture renders only this tag => Terry's live silhouette for his coloured shadows
@@ -324,23 +333,14 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// fields reliably reach late joiners, so a spectator connecting mid-turn skins the same as everyone else
 	// (the avatar's own design fields did not — see the note on GameDirector.ActiveBallPatternId). Regenerates
 	// the colour map only when the design actually changes — live designer edits update it, otherwise idle.
-	private float _skinDbgAt; // TEMP diag throttle
 	private void SkinToBowler()
 	{
-		if ( Time.Now >= _skinDbgAt )
-		{
-			_skinDbgAt = Time.Now + 1f;
-			var dir = Director;
-			Log.Info( $"[terryball][skin] ball TICK built={_built} proxy={Network.IsProxy} laneOf={(Lane.Of( this )?.GameObject.Name ?? "NULL")} dir={(dir is null ? "NULL" : "ok")} active={dir?.ActiveBowlerId} design={(dir is null ? "?" : $"{dir.ActiveBallPatternId}/{dir.ActiveBallPrimaryHue:0}/{dir.ActiveBallAccentHue:0}")}" );
-		}
-
 		if ( Director is null ) return;
 
 		var design = Director.ActiveBallDesign;
 		if ( _skinnedAny && design.Equals( _skinnedDesign ) ) return;
 		_skinnedDesign = design;
 		_skinnedAny = true;
-		Log.Info( $"[terryball][skin] ball SKIN pat={(int)design.Pattern} p={design.PrimaryHue:0} a={design.AccentHue:0} (active={Director.ActiveBowlerId})" );
 
 		_designMap?.Dispose();
 		_designMap = design.BuildColorMap();
@@ -664,12 +664,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// Lazy build: stay an empty, cheap networked object until this lane is in use, then build once.
 		if ( !_built )
 		{
-			if ( Time.Now >= _skinDbgAt )
-			{
-				_skinDbgAt = Time.Now + 1f;
-				var dir = Director;
-				Log.Info( $"[terryball][skin] ball PREBUILD shouldBuild={ShouldBuild} proxy={Network.IsProxy} laneOf={(Lane.Of( this )?.GameObject.Name ?? "NULL")} dir={(dir is null ? "NULL" : "ok")} laneActive={dir?.LaneActive} active={dir?.ActiveBowlerId}" );
-			}
 			if ( !ShouldBuild ) return;
 			EnsureBuilt();
 		}

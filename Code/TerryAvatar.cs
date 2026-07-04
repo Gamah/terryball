@@ -117,17 +117,10 @@ public sealed class TerryAvatar : Component
 	private void SubmitDesignToDirector()
 	{
 		if ( IsProxy || !Network.Active ) return;
-		var dir = Director;
-		if ( !_designSendLogged && dir is not null )
-		{
-			_designSendLogged = true;
-			Log.Info( $"[terryball][skin] avatar SEND design pat={BallPatternId} p={BallPrimaryHue:0} a={BallAccentHue:0} -> dir=ok (lane={JoinedLaneId})" );
-		}
-		dir?.SetBallDesignRpc( BallPatternId, BallPrimaryHue, BallAccentHue );
+		Director?.SetBallDesignRpc( BallPatternId, BallPrimaryHue, BallAccentHue );
 	}
 
 	private float _designPushAt;      // next time (Time.Now) to re-assert our design to the director
-	private bool _designSendLogged;   // TEMP diag: logged the first successful send
 
 	private PlayerController _player;
 	private GameObject _body;

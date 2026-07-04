@@ -205,16 +205,12 @@ public sealed class GameDirector : Component
 		var caller = Rpc.Caller?.Id ?? Guid.Empty;
 		if ( caller == Guid.Empty ) return;
 
-		var d = new BallDesign
+		_ballDesigns[caller] = new BallDesign
 		{
 			Pattern = (BallPattern)patternId,
 			PrimaryHue = primaryHue,
 			AccentHue = accentHue,
 		};
-		var changed = !_ballDesigns.TryGetValue( caller, out var prev ) || !prev.Equals( d );
-		_ballDesigns[caller] = d;
-		if ( changed )
-			Log.Info( $"[terryball][skin] director RX design from {caller} pat={patternId} p={primaryHue:0} a={accentHue:0} (active={ActiveBowlerId}, isDir={IsDirector})" );
 
 		if ( caller == ActiveBowlerId ) PublishActiveBallDesign();
 	}
@@ -234,9 +230,6 @@ public sealed class GameDirector : Component
 			d = found;
 		else
 			d = ActiveBowlerAvatarDesign() ?? BallDesign.Default;
-
-		if ( !d.Equals( ActiveBallDesign ) )
-			Log.Info( $"[terryball][skin] director PUBLISH active={ActiveBowlerId} pat={(int)d.Pattern} p={d.PrimaryHue:0} a={d.AccentHue:0} (src={(_ballDesigns.ContainsKey( ActiveBowlerId ) ? "rpc" : "fallback")})" );
 
 		ActiveBallPatternId = (int)d.Pattern;
 		ActiveBallPrimaryHue = d.PrimaryHue;
