@@ -30,8 +30,7 @@
           "__guid": "b0000001-0003-4000-8000-000000000003",
           "__enabled": true,
           "Preset": "room.diffuse.small",
-          "MixerName": "Game",
-          "Wet": 0.6
+          "Wet": 0.3
         }
       ]
     },

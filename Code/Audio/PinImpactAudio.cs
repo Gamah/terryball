@@ -203,6 +203,9 @@ public sealed class PinImpactAudio : Component
 		if ( !h.IsValid() ) return;
 		h.Volume = volume;
 		h.Distance = SoundDistance;
+		// Route to the dedicated pins mixer so the alley reverb (which inserts there) wets the pins ONLY —
+		// the ball roll and everything else stay on the dry Game bus. Null (audio not up) falls back to default.
+		h.TargetMixer = AlleyReverb.EnsurePinMixer();
 	}
 
 	private bool IsCoalesced( Vector3 pos )
