@@ -31,7 +31,7 @@ public sealed class AlleyReverb : Component
 	[Property] public string Preset { get; set; } = "room.diffuse.small";
 
 	/// <summary>Dry/wet blend on the pins bus. Lower = drier / feels smaller and further back.</summary>
-	[Property, Range( 0f, 1f )] public float Wet { get; set; } = 0.3f;
+	[Property, Range( 0f, 1f )] public float Wet { get; set; } = 0.225f;
 
 	private DspProcessor _processor;
 	private Mixer _mixer;

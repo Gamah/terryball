@@ -11,6 +11,9 @@ Processing (ffmpeg), applied to even them out and take the harsh edge off the to
     LP 11 kHz — they're already dark), to shave the brittle transient "tick";
   - loudness-matched to ~-15 dB RMS (was a ~7 dB spread across the set → ~2.5 dB);
   - soft-limited to -1 dB peak so the sharp attacks don't clip while levels sit even.
+  - tonal tilt to bias the whole crash LOWER without pitch-shifting: low-shelf +3 dB @ 250 Hz
+    + high-shelf -4 dB @ 2.8 kHz, re-limited to -1 dB peak. Drops the spectral centroid ~15-20%
+    (e.g. clacks ~800->~670 Hz, thuds ~400->~285 Hz) so it reads darker/heavier, same pitch.
 
 Room reverb is NOT baked in — the alley adds it live in-engine (see Code/Audio/AlleyReverb.cs,
 a DSP reverb on the Game mixer), so these stay dry/close-mic'd and the space is tunable.
