@@ -165,6 +165,12 @@ public sealed class BallController : Component, Component.ICollisionListener
 	[Sync] public float ThrowLineMph { get; set; }
 	private bool _throwLineLatched; // rising-edge guard so we sample the crossing once per throw
 
+	/// <summary>True while the claw is flying the ball (crane mode): the collider is dropped so the ball sails
+	/// over the fresh rack without scattering it. Synced owner→everyone because the ball's transform is driven
+	/// to every client — without this, only the owner dropped its collider and spectators/waiting bowlers saw
+	/// the flying ball physically bump the pins as it reset between throws and frames.</summary>
+	[Sync] public bool CraneColliderOff { get; set; }
+
 	private Rigidbody _body;
 	private SphereCollider _col;
 	private GameObject _terry;
@@ -388,6 +394,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// rack or sag) and kill any residual motion; leaving restores normal physics for the roll.</summary>
 	public void SetCraneMode( bool on )
 	{
+		CraneColliderOff = on;                 // synced: every client drops the collider, not just the owner
 		if ( _col.IsValid() ) _col.Enabled = !on;
 		if ( _body.IsValid() )
 		{
@@ -637,6 +644,12 @@ public sealed class BallController : Component, Component.ICollisionListener
 	protected override void OnUpdate()
 	{
 		UpdateBowlerDress();
+
+		// Mirror the synced crane state onto the collider on EVERY client (the owner also set it directly in
+		// SetCraneMode). Proxies drive the ball's transform from the network, so without dropping the collider
+		// here the flying claw ball would collide with the fresh rack on spectators' screens.
+		if ( _col.IsValid() && _col.Enabled == CraneColliderOff )
+			_col.Enabled = !CraneColliderOff;
 
 		PlaceTerry();
 

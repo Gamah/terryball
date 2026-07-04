@@ -14,7 +14,8 @@
 *@
 
 <root style="position: absolute; top: 24px; left: 24px; flex-direction: column; align-items: stretch;
-             font-family: Poppins, sans-serif; color: white;">
+             font-family: Poppins, sans-serif; color: white;
+             display: @(IsJoined ? "flex" : "none");">
 	@{
 		var director = Director;
 		var down = director?.DownCount ?? 0;
@@ -71,6 +72,10 @@
 	// from one source and can't disagree.
 	private GameDirector Director => Lane.ForLocalPlayer( Scene )?.Director;
 
+	// This corner HUD only belongs to a bowler who's signed in to a lane — a lobby spectator who hasn't
+	// joined shouldn't get another lane's pins/speed splashed on their screen. Gate the whole panel on it.
+	private bool IsJoined => TerryAvatar.Local( Scene )?.Joined ?? false;
+
 	// Rebuild whenever the round state, the set of downed pins, or the held throw-line speed changes.
 	protected override int BuildHash()
 	{
@@ -80,6 +85,6 @@
 			foreach ( var s in director.PinStatuses )
 				if ( s.Down ) mask |= 1 << s.Number;
 		var mph = Lane.ForLocalPlayer( Scene )?.Ball?.ThrowLineMph ?? 0f;
-		return System.HashCode.Combine( director?.State, mask, System.MathF.Round( mph * 10f ) );
+		return System.HashCode.Combine( director?.State, mask, System.MathF.Round( mph * 10f ), IsJoined );
 	}
 }

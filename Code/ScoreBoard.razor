@@ -15,7 +15,8 @@
 
 <root style="position: absolute; top: 24px; right: 24px; flex-direction: column;
              padding: 14px 16px; background-color: rgba(0,0,0,0.62); border-radius: 10px;
-             font-family: Poppins, sans-serif; color: white;">
+             font-family: Poppins, sans-serif; color: white;
+             display: @(IsJoined ? "flex" : "none");">
 	@{
 		var director = Director;
 		var players = director?.BuildScoreView() ?? new List<GameDirector.PlayerView>();
@@ -89,13 +90,17 @@
 	// The HUD is client-local (not under a lane), so it shows the lane the local player has joined.
 	private GameDirector Director => Lane.ForLocalPlayer( Scene )?.Director;
 
+	// Only draw for a player signed in to a lane — a lobby spectator gets no scoreboard on their screen.
+	private bool IsJoined => TerryAvatar.Local( Scene )?.Joined ?? false;
+
 	// Rebuild whenever the marks, totals, current frame or game-over state could have changed.
 	protected override int BuildHash()
 	{
 		var director = Director;
-		if ( director is null ) return 0;
+		if ( director is null ) return IsJoined ? 1 : 0;
 
 		var hash = new System.HashCode();
+		hash.Add( IsJoined );
 		hash.Add( director.GameOver );
 		foreach ( var player in director.BuildScoreView() )
 		{

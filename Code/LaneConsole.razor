@@ -30,7 +30,7 @@
 	@* ---- Header: lane label + game state ---- *@
 	<div style="flex-direction: row; align-items: center; margin-bottom: 10px;">
 		<div style="font-size: 28px; font-weight: 800; flex-grow: 1; letter-spacing: 2px;">
-			LANE <span style="color: #5aa0e6;">1</span>
+			LANE <span style="color: #5aa0e6;">@LaneNumber</span>
 		</div>
 		<div style="font-size: 16px; font-weight: 700;
 		            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.45)");">
@@ -116,6 +116,9 @@
 @code
 {
 	private GameDirector Director => Lane.Of( this )?.Director;
+
+	// 1-based lane number in stable left-to-right order, so each lane's monitor reads "LANE n".
+	private int LaneNumber => (Lane.Of( this )?.Index ?? 0) + 1;
 
 	// Rebuild whenever the marks, totals, current frame or game-over state could have changed.
 	protected override int BuildHash()
