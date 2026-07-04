@@ -270,6 +270,17 @@ public sealed class GameDirector : Component
 	public bool LocalIsBowling =>
 		!Networking.IsActive ? true : (ActiveBowlerId != Guid.Empty && ActiveBowlerId == Connection.Local.Id);
 
+	private Guid LocalConnId => Connection.Local?.Id ?? Guid.Empty;
+
+	/// <summary>Practice UI: is the local client currently in this lane's throw queue (waiting or up)? The
+	/// "Get in line" button hides once you're queued (you're in for exactly one round — see
+	/// <see cref="PracticeAdvanceTurn"/>).</summary>
+	public bool LocalQueued => Networking.IsActive && _rosterIds.Contains( LocalConnId );
+
+	/// <summary>Practice: the lane is open (Playing) but nobody is up — the "live but idle" state, waiting for
+	/// someone to get in line. Drives the "waiting for bowlers" header/banner instead of an "X is up".</summary>
+	public bool PracticeIdle => Mode == LaneMode.Practice && Phase == GamePhase.Playing && ActiveBowlerId == Guid.Empty;
+
 	// --- Shared, host-authoritative game state (synced to every client) -----------------
 	// The host runs all the scoring (against its _players + pins); these mirror just enough for any
 	// client's scoreboard/console to render the same thing. Strings keep it simple: the per-player
@@ -532,11 +543,18 @@ public sealed class GameDirector : Component
 
 	/// <summary>Claim this lane and lock the joined players into a fresh scorecard, tipping off frame 1.
 	/// Any player at the lobby can press START — it takes ownership of the director so THEY run the game.</summary>
-	public void StartGame()
+	// Lobby picks (mode/drill/aim/crane) are applied AFTER we claim the director but BEFORE we tip off — the
+	// tip-off branches on Mode and racks for Drill, so setting them post-tip-off (as the picks used to) would
+	// open a Practice pick as a Play game. Nulls mean "leave the lane's current value".
+	public void StartGame( LaneMode? mode = null, PracticeDrill? drill = null, bool? aim = null, bool? crane = null )
 	{
 		if ( Phase == GamePhase.Playing ) return;
 		ClaimDirector();               // become this lane's authority before we write any synced state
 		if ( !IsDirector ) return;     // ownership didn't take (shouldn't happen with Takeover) — bail
+		if ( mode.HasValue ) Mode = mode.Value;
+		if ( drill.HasValue ) Drill = drill.Value;
+		if ( aim.HasValue ) AimMode = aim.Value;
+		if ( crane.HasValue ) CraneEnabled = crane.Value;
 		TipOffFreshGame( "START" );
 	}
 
@@ -555,6 +573,27 @@ public sealed class GameDirector : Component
 	// and RESET (mid-game start-over) — the caller has already secured director ownership.
 	private void TipOffFreshGame( string reason )
 	{
+		// Practice opens the lane IDLE with an EMPTY queue — nobody is locked in just by being joined to the
+		// lane. Players opt into a drill turn with "Get in line" (JoinQueueRpc); each enqueue is good for one
+		// round. So START/RESET here just clears the queue, presents a clean rack, and clears the spotlight.
+		if ( Mode == LaneMode.Practice )
+		{
+			_players.Clear();
+			_rosterIds.Clear();
+			_current = 0;
+			_frame = 0;
+			_ballStartDown = 0;
+			_sweptPins.Clear();
+			_gameOver = false;
+			Phase = GamePhase.Playing;
+			HostReclaimThrowOwnership();
+			FullRack( instant: true );
+			SetActiveBowler(); // empty queue -> ActiveBowlerId = Guid.Empty (idle, waiting for bowlers)
+			PublishScores();
+			Log.Info( $"[terryball][practice] {reason} — lane open, waiting for bowlers (get in line)" );
+			return;
+		}
+
 		// Only roster players who joined THIS lane (each lane runs its own game), so with N lanes a START
 		// on one alley doesn't sweep up everyone who's joined elsewhere.
 		var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
@@ -736,8 +775,10 @@ public sealed class GameDirector : Component
 		{
 			// Self-heal: if we just inherited a "Playing" game with no roster — e.g. the previous director
 			// disconnected and ownership reverted to us (the host) — there's no authoritative state left to
-			// run, so drop the lane back to the lobby cleanly rather than wedging.
-			if ( _players.Count == 0 )
+			// run, so drop the lane back to the lobby cleanly rather than wedging. PRACTICE is exempt: an
+			// empty queue there is the legitimate "live but idle" state (waiting for someone to get in line),
+			// not a wedge — the lane stays open until STOP.
+			if ( Mode == LaneMode.Play && _players.Count == 0 )
 			{
 				StopGame();
 				return;
@@ -1060,31 +1101,28 @@ public sealed class GameDirector : Component
 		PublishScores();
 	}
 
-	// PRACTICE: there are no frames — the roster IS a live queue (front = _current = 0). Reconcile it each
-	// turn: rotate the bowler who just finished to the back, drop anyone who's left the lane, append anyone
-	// who joined mid-practice, then spotlight the new front. No _frame++, no EndGame — practice just keeps
-	// cycling until STOP. The queue reuses _rosterIds/_players (mirrored to RosterNames) so the UI reads it
-	// exactly like a game roster.
+	// PRACTICE: there are no frames — the roster IS an opt-in throw queue (front = _current = 0). Each enqueue
+	// is good for exactly ONE round: the bowler who just finished is DROPPED (not rotated back) — to go again
+	// they press "Get in line" (JoinQueueRpc). Cull anyone who walked off, then spotlight the new front; if the
+	// queue drains the lane stays OPEN and IDLE (Playing, nobody up) waiting for the next bowler — never a
+	// teardown. The queue reuses _rosterIds/_players (mirrored to RosterNames) so the UI reads it like a roster.
 	private void PracticeAdvanceTurn()
 	{
 		var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
-		var joined = Scene.GetAllComponents<TerryAvatar>()
-			.Where( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId )
-			.ToList();
-		var joinedIds = new HashSet<Guid>( joined.Select( a => a.GameObject.Network.Owner?.Id ?? Guid.Empty ) );
+		var joinedIds = new HashSet<Guid>(
+			Scene.GetAllComponents<TerryAvatar>()
+				.Where( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId )
+				.Select( a => a.GameObject.Network.Owner?.Id ?? Guid.Empty ) );
 
-		// Rotate the just-finished bowler (front of the queue) to the back.
+		// One round then out: drop the bowler who just finished (front of the queue). No rotate-to-back — this
+		// is what lets a solo bowler leave the ball (the queue drains to idle) instead of being re-racked.
 		if ( _rosterIds.Count > 0 )
 		{
-			var frontId = _rosterIds[0];
-			var frontScore = _players[0];
 			_rosterIds.RemoveAt( 0 );
 			_players.RemoveAt( 0 );
-			_rosterIds.Add( frontId );
-			_players.Add( frontScore );
 		}
 
-		// Drop anyone no longer joined to this lane (they walked off / left the session).
+		// Cull anyone who's since walked off the lane / left the session while they waited in line.
 		for ( var i = _rosterIds.Count - 1; i >= 0; i-- )
 			if ( !joinedIds.Contains( _rosterIds[i] ) )
 			{
@@ -1092,31 +1130,54 @@ public sealed class GameDirector : Component
 				_players.RemoveAt( i );
 			}
 
-		// Append newly-joined avatars not already queued (live join mid-practice), preserving lane order.
-		var queued = new HashSet<Guid>( _rosterIds );
-		foreach ( var a in joined )
-		{
-			var id = a.GameObject.Network.Owner?.Id ?? Guid.Empty;
-			if ( queued.Add( id ) )
-			{
-				_rosterIds.Add( id );
-				_players.Add( new PlayerScore( a.DisplayName ) );
-			}
-		}
+		_current = 0; // the front of the queue is always the one up
 
-		_current = 0; // the front of the live queue is always up
-
-		// Queue emptied out (everyone bailed): publish the empty roster and let the director's self-heal
-		// (_players.Count == 0) drop the lane back to the lobby next tick.
+		// Queue drained: the lane stays open and IDLE (live but nobody bowling). Host reclaims the ball + rack
+		// from the bowler who just left and presents a clean deck; the spotlight clears until someone gets in
+		// line. The Play-only self-heal is gated off for practice, so this idle state persists until STOP.
 		if ( _rosterIds.Count == 0 )
 		{
-			SetActiveBowler(); // clears the spotlight (ActiveBowlerId = Guid.Empty)
+			HostReclaimThrowOwnership();
+			FullRack();
+			SetActiveBowler(); // empty queue -> ActiveBowlerId = Guid.Empty (idle)
 			PublishScores();
 			return;
 		}
 
 		HostRackForNextBowler();
 		SetActiveBowler();
+		PublishScores();
+	}
+
+	/// <summary>Practice: the caller asks to take a drill turn — appended to the throw queue (good for ONE
+	/// round; dropped after their turn, see <see cref="PracticeAdvanceTurn"/>). If the lane is idle (nobody
+	/// up) they go straight up; otherwise they wait in line. [Rpc.Owner] — routes to the lane's director.
+	/// Guards: practice + Playing + the caller is actually joined to THIS lane (no cross-lane enqueue).</summary>
+	[Rpc.Owner]
+	public void JoinQueueRpc()
+	{
+		if ( !IsDirector || Mode != LaneMode.Practice || Phase != GamePhase.Playing ) return;
+
+		var callerId = Rpc.Caller?.Id ?? LocalConnId;
+		if ( callerId == Guid.Empty ) return;
+		if ( _rosterIds.Contains( callerId ) ) return; // already queued / up
+
+		var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
+		var av = Scene.GetAllComponents<TerryAvatar>()
+			.FirstOrDefault( a => a.IsValid() && (a.GameObject.Network.Owner?.Id ?? Guid.Empty) == callerId );
+		if ( av is null || !av.Joined || av.JoinedLaneId != laneId ) return; // must be on this lane
+
+		_rosterIds.Add( callerId );
+		_players.Add( new PlayerScore( av.DisplayName ) );
+
+		// Idle lane (nobody up): this newcomer is the front — rack their drill and spotlight them now. If a
+		// bowler's already up they just wait; the dequeue at that bowler's turn-end will bring them forward.
+		if ( ActiveBowlerId == Guid.Empty )
+		{
+			_current = 0;
+			HostRackForNextBowler();
+			SetActiveBowler();
+		}
 		PublishScores();
 	}
 

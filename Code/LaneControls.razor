@@ -21,6 +21,12 @@
 		var me = LocalAvatar;
 		var playing = director?.Phase == GameDirector.GamePhase.Playing;
 		var over = director?.GameOver ?? false;
+		var practice = director?.Mode == GameDirector.LaneMode.Practice;
+		var practiceIdle = director?.PracticeIdle ?? false;
+		var laneId = ActiveLane?.GameObject.Id ?? System.Guid.Empty;
+		var joinedHere = me is not null && me.Joined && me.JoinedLaneId == laneId;
+		// "Get in line": only in a running practice lane, when you're joined here and not already queued/up.
+		var canGetInLine = practice && playing && joinedHere && !(director?.LocalQueued ?? false);
 	}
 
 	@if ( director is not null )
@@ -122,7 +128,10 @@
 						}
 						<div style="font-size: 18px; font-weight: 700;
 						            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.6)");">
-							@(over ? "GAME OVER" : (playing ? (UpName + " is up") : ("LOBBY — " + JoinedCount + " joined")))
+							@(over ? "GAME OVER"
+							  : (playing
+							     ? (practiceIdle ? "PRACTICE — get in line to bowl" : (UpName + " is up"))
+							     : ("LOBBY — " + JoinedCount + " joined")))
 						</div>
 					</div>
 
@@ -151,7 +160,7 @@
 							@if ( queue.Count == 0 )
 							{
 								<div style="font-size: 16px; color: rgba(255,255,255,0.5); padding: 8px 4px;">
-									No one queued yet — JOIN, then press START to open practice.
+									No one in line. Press <span style="color: #2ecc71; font-weight: 800;">GET IN LINE</span> to take a drill turn.
 								</div>
 							}
 							else
@@ -258,6 +267,17 @@
 							</div>
 						}
 						<div style="flex-grow: 1;"></div>
+						@* GET IN LINE: opt into the practice throw queue for one drill round (you're dropped after
+						   your turn — press again to go again). Only shown when you're joined to a running practice
+						   lane and not already queued. *@
+						@if ( canGetInLine )
+						{
+							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+							            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(46,204,113,0.9);"
+							     onclick=@(() => director.JoinQueueRpc())>
+								GET IN LINE
+							</div>
+						}
 						@if ( me is not null && !playing )
 						{
 							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
@@ -428,14 +448,9 @@
 	{
 		var d = Director;
 		if ( d is null ) return;
-		d.StartGame();
-		if ( d.IsDirector )
-		{
-			if ( _pendingAim.HasValue ) d.SetAimMode( _pendingAim.Value );
-			if ( _pendingCrane.HasValue ) d.SetCraneEnabled( _pendingCrane.Value );
-			if ( _pendingMode.HasValue ) d.SetMode( _pendingMode.Value );
-			if ( _pendingDrill.HasValue ) d.SetDrill( _pendingDrill.Value );
-		}
+		// Pass the lobby picks INTO StartGame so they land before the tip-off (which branches on Mode / racks
+		// for Drill) — applying them after StartGame would open a PRACTICE pick as a Play game.
+		d.StartGame( _pendingMode, _pendingDrill, _pendingAim, _pendingCrane );
 		_pendingAim = null;
 		_pendingCrane = null;
 		_pendingMode = null;
@@ -467,6 +482,8 @@
 		hash.Add( d?.Drill );
 		hash.Add( ModeOn );
 		hash.Add( DrillOn );
+		hash.Add( d?.ActiveBowlerId );   // idle vs someone-up flips the header + GET IN LINE button
+		hash.Add( d?.LocalQueued );
 		foreach ( var name in QueueNames )
 			hash.Add( name );
 		foreach ( var p in Players )

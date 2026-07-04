@@ -60,6 +60,12 @@
 			<div style="font-size: 16px; color: rgba(255,255,255,0.4); margin-bottom: 10px;
 			            letter-spacing: 3px;">THROW QUEUE</div>
 			@{ var queue = director.RosterNames?.ToList() ?? new List<string>(); }
+			@if ( queue.Count == 0 )
+			{
+				<div style="font-size: 20px; color: rgba(255,255,255,0.45); padding: 8px 4px;">
+					Waiting for bowlers — get in line at the lane controls.
+				</div>
+			}
 			@for ( var qi = 0; qi < queue.Count; qi++ )
 			{
 				var current = qi == director.CurrentPlayer;
@@ -175,6 +181,7 @@
 		hash.Add( director.Mode );
 		hash.Add( director.Drill );
 		hash.Add( director.CurrentPlayer );
+		hash.Add( director.ActiveBowlerId ); // idle (empty queue) vs someone up
 		foreach ( var name in director.RosterNames )
 			hash.Add( name );
 		foreach ( var player in director.BuildScoreView() )
