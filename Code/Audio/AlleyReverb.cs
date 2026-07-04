@@ -26,8 +26,8 @@ namespace Terryball;
 public sealed class AlleyReverb : Component
 {
 	/// <summary>DSP reverb preset name (see <see cref="Sound.DspNames"/>). Diffuse + no delay line = a
-	/// smooth boomy tail with no repeated echoes; small presets keep the space tight (pin-deck sized).</summary>
-	[Property] public string Preset { get; set; } = "concrete.small";
+	/// smooth tail with no repeated echoes; a short-decay small preset keeps the space tight (pin-deck sized).</summary>
+	[Property] public string Preset { get; set; } = "room.diffuse.small";
 
 	/// <summary>Mixer the reverb inserts on. "Game" is the SFX bus (pins/ball/announcer); "Music" is separate.</summary>
 	[Property] public string MixerName { get; set; } = "Game";
