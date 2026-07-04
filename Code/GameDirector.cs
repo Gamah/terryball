@@ -1573,8 +1573,12 @@ public sealed class GameDirector : Component
 		// real scorecard takes over once the host presses START.
 		if ( Phase != GamePhase.Playing )
 		{
+			// Only players who joined THIS lane — each lane runs its own game, so a bowler joined to (or
+			// playing on) another lane must NOT bleed onto this one's lobby card. (The Playing branch below
+			// is already lane-scoped via RosterNames; this branch has to match by JoinedLaneId.)
+			var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
 			var joined = Scene.GetAllComponents<TerryAvatar>()
-				.Where( a => a.IsValid() && a.Joined )
+				.Where( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId )
 				.OrderBy( a => a.GameObject.Network.Owner?.Id.ToString() ?? "" );
 			foreach ( var a in joined )
 			{
