@@ -313,6 +313,7 @@ public sealed class GameDirector : Component
 
 	private Vector3 _ballHome;
 	private Rotation _ballHomeRot;
+	private bool _ballHomeReady; // false until the lane's deferred build published RunUpWorldPosition
 	private float _watchStart;
 	private float _quietSince;  // when the scene first went still this watch (-1 = currently moving)
 	private bool _probed;      // one-shot physics probe logged?
@@ -367,18 +368,10 @@ public sealed class GameDirector : Component
 		_ball = lane?.Ball;
 		_camera = lane?.Camera;
 
-		if ( _ball.IsValid() )
-		{
-			// Rack the ball in the run-up area on the lane platform (sitting on the surface), not at
-			// the world origin. Fall back to wherever it was placed if the lane isn't up yet.
-			_ballHome = _lane.IsValid()
-				? _lane.RunUpWorldPosition + Vector3.Up * _ball.Radius
-				: _ball.WorldPosition;
-			_ballHomeRot = _ball.WorldRotation;
-
-			// Put it there now, too, so the first throw starts from the run-up under the camera.
-			PlaceBallHome();
-		}
+		// Capture the ball's run-up "home" (the crane's return target). Deferred: the lane's build is now
+		// frame-spread by BuildScheduler, so RunUpWorldPosition is still zero here on the first frame —
+		// TryInitBallHome retries from OnUpdate until the lane has actually built. See _ballHomeReady.
+		TryInitBallHome();
 
 		// Start in the LOBBY: no roster yet. Players walk up and Join from the lane controls; the
 		// host presses START to lock the roster in and begin frame 1. (Host publishes the empty
@@ -547,6 +540,9 @@ public sealed class GameDirector : Component
 	protected override void OnUpdate()
 	{
 		if ( !_lane.IsValid() || !_ball.IsValid() ) return;
+
+		// Latch the ball's run-up home once this lane's deferred build has published its anchors (no-op after).
+		TryInitBallHome();
 
 		// Re-assert every frame: the engine swaps the PhysicsWorld after OnStart, so a one-time set
 		// silently reverted to 1. This keeps the cascade properly substepped on the live world.
@@ -1446,6 +1442,27 @@ public sealed class GameDirector : Component
 			ballBody.Velocity = Vector3.Zero;
 			ballBody.AngularVelocity = Vector3.Zero;
 		}
+	}
+
+	/// <summary>Capture the ball's run-up "home" — the crane's return target — once, when it's actually known.
+	/// The lane build is frame-spread (BuildScheduler), so <see cref="LaneBuilder.RunUpWorldPosition"/> is still
+	/// zero (the world origin, which sits BETWEEN the lanes) during OnStart. Retried from OnUpdate until the
+	/// lane has published its geometry, then it places the ball there and latches. Without the retry the crane
+	/// returned the ball to the origin instead of this lane's approach.</summary>
+	private void TryInitBallHome()
+	{
+		if ( _ballHomeReady || !_ball.IsValid() ) return;
+		// Wait for this lane's deferred build (SetteeDeckTopWorldZ is published at the end of BuildNow).
+		if ( _lane.IsValid() && _lane.SetteeDeckTopWorldZ <= 0.01f ) return;
+
+		_ballHome = _lane.IsValid()
+			? _lane.RunUpWorldPosition + Vector3.Up * _ball.Radius
+			: _ball.WorldPosition;
+		_ballHomeRot = _ball.WorldRotation;
+		_ballHomeReady = true;
+
+		// Put it there now, too, so the first throw starts from the run-up under the camera.
+		PlaceBallHome();
 	}
 
 	// Re-evaluate every pin against the alley's "still on its spot, still upright?" test.

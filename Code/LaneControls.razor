@@ -52,10 +52,11 @@
 						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 1px;">
 							LANE <span style="color: #5aa0e6;">@LaneNumber</span> CONTROLS
 						</div>
-						@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). Director-only:
-						   shown once you run the lane (claimed via START), not in the lobby — a lobby toggle used to
-						   claim the lane on click, which disturbed the ownership handshake and broke joining. *@
-						@if ( CanDirect )
+						@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). Shown in the
+						   LOBBY too: there it's a LOCAL pending pick (see ToggleAim) that gets written when you press
+						   START and claim the lane — it never grabs the director off a bare toggle, which is what broke
+						   joining before (commit 7292bf3). Once you run the lane it writes straight through. *@
+						@if ( CanDirect || !playing )
 						{
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
@@ -65,8 +66,9 @@
 								Throw: <span style="color: @(AimOn ? "#b07cd6" : "#5aa0e6");">@(AimOn ? "AIM" : "FREE")</span>
 							</div>
 						}
-						@* Ball Crane — same lane-wide setting; director-only, alongside the throw toggle. *@
-						@if ( CanDirect )
+						@* Ball Crane — same lane-wide setting; shown in the lobby as a local pending pick alongside the
+						   throw toggle, applied on START. *@
+						@if ( CanDirect || !playing )
 						{
 							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
 							            font-size: 15px; font-weight: 700; cursor: pointer;
@@ -150,7 +152,7 @@
 						{
 							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
 							            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(52,152,219,0.9);"
-							     onclick=@(() => director.StartGame())>
+							     onclick=@StartAndApply>
 								START
 							</div>
 						}
@@ -255,14 +257,48 @@
 		}
 	}
 
-	// Throw-mode toggle: a lane-wide setting on the director (AimMode is synced). Director-only — SetAimMode is
-	// a no-op unless you run this lane, so it doesn't claim the lane on click (that broke joining). Defaults FREE.
-	private bool AimOn => Director?.AimMode ?? false;
-	private void ToggleAim() => Director?.SetAimMode( !(Director?.AimMode ?? false) );
+	// Lobby pre-game picks: in the lobby the host owns the director, so a joiner can't write AimMode/CraneEnabled
+	// (and grabbing ownership off a toggle broke joining). Instead we stash the choice locally and apply it in
+	// StartAndApply once START has claimed the lane. Null = "no local override, show the lane's current value".
+	private bool? _pendingAim;
+	private bool? _pendingCrane;
 
-	// Ball Crane toggle: a lane-wide setting on the director; director-only, same as the throw toggle.
-	private bool CraneOn => Director?.CraneEnabled ?? true;
-	private void ToggleCrane() => Director?.SetCraneEnabled( !(Director?.CraneEnabled ?? true) );
+	// Throw-mode toggle. Once you run the lane (director) it writes straight through to the synced AimMode; in the
+	// lobby it just records a local pending pick. Display falls back to the lane's live value. Defaults FREE.
+	private bool AimOn => _pendingAim ?? (Director?.AimMode ?? false);
+	private void ToggleAim()
+	{
+		var d = Director;
+		if ( d is null ) return;
+		if ( d.IsDirector ) { d.SetAimMode( !d.AimMode ); _pendingAim = null; }
+		else _pendingAim = !AimOn; // lobby: local pick, applied on START
+	}
+
+	// Ball Crane toggle: same pattern as the throw toggle. Defaults ON.
+	private bool CraneOn => _pendingCrane ?? (Director?.CraneEnabled ?? true);
+	private void ToggleCrane()
+	{
+		var d = Director;
+		if ( d is null ) return;
+		if ( d.IsDirector ) { d.SetCraneEnabled( !d.CraneEnabled ); _pendingCrane = null; }
+		else _pendingCrane = !CraneOn; // lobby: local pick, applied on START
+	}
+
+	// START: claim + begin the game, then flush any lobby picks now that we own the lane (StartGame claims the
+	// director synchronously, so IsDirector is true here on success). Clears the pending picks either way.
+	private void StartAndApply()
+	{
+		var d = Director;
+		if ( d is null ) return;
+		d.StartGame();
+		if ( d.IsDirector )
+		{
+			if ( _pendingAim.HasValue ) d.SetAimMode( _pendingAim.Value );
+			if ( _pendingCrane.HasValue ) d.SetCraneEnabled( _pendingCrane.Value );
+		}
+		_pendingAim = null;
+		_pendingCrane = null;
+	}
 
 	// CLOSE button: hand back to the avatar so it restores look + cursor exactly like pressing E.
 	private void CloseControls() => LocalAvatar?.RequestCloseControls();
@@ -283,6 +319,8 @@
 		hash.Add( me?.ControlsOpen );
 		hash.Add( d?.CraneEnabled );
 		hash.Add( d?.AimMode );
+		hash.Add( AimOn );
+		hash.Add( CraneOn );
 		foreach ( var p in Players )
 		{
 			hash.Add( p.Name );

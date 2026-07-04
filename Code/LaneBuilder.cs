@@ -146,7 +146,10 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Monitor" )] public Color MonitorBezelColor { get; set; } = new Color( 0.05f, 0.06f, 0.08f, 1f );
 	[Property, Group( "Monitor" )] public Color MonitorPostColor { get; set; } = new Color( 0.22f, 0.23f, 0.26f, 1f );
 
-	private bool _built;
+	private bool _built;        // set true when BuildNow has run the full geometry build
+	private bool _buildQueued;  // set true once OnEnabled has handed BuildNow to the BuildScheduler
+	private bool _scaleReady;   // set true once EnsureScale has resolved _u / _pinGravityScale
+	private float _u;           // units-per-inch (resolved by EnsureScale); the whole lane is sized off it
 	private Model _pinModel;   // shared by all ten pins; built once at the lane's scale
 	private PinImpactAudio _pinAudio; // shared procedural-crash bank; pins route collisions here
 
@@ -302,6 +305,53 @@ public sealed class LaneBuilder : Component
 
 	protected override void OnEnabled()
 	{
+		if ( _built || _buildQueued ) return;
+		_buildQueued = true;
+		// Defer the heavy geometry build OFF the scene-load / connection-critical path. Building all four
+		// lanes synchronously here — 160+ colliders plus the lathed pin mesh, per lane — pegged a JOINING
+		// client's main thread straight through the network handshake and timed the join out. BuildScheduler
+		// runs one lane per frame AFTER load, so OnEnabled returns immediately, the connection settles, and
+		// the alley streams in. The scale + pin model are resolved on demand (EnsureScale / EnsurePinModel)
+		// so a pin that replicates in before this lane's turn in the queue can still skin/arm itself.
+		BuildScheduler.For( Scene ).Enqueue( 10, BuildNow );
+	}
+
+	/// <summary>Resolve the lane's units-per-inch scale + the pins' scale-correct gravity. Split out of the
+	/// full build so a pin replicating in before this lane's deferred <see cref="BuildNow"/> runs can still
+	/// arm itself. Cheap float math; idempotent.</summary>
+	private void EnsureScale()
+	{
+		if ( _scaleReady ) return;
+		_scaleReady = true;
+
+		// Treat the actual ball as 8.5" to get a units-per-inch scale for everything else.
+		var ball = Lane.Of( this )?.Ball;
+		var ballDiameterUnits = ball.IsValid() ? ball.Radius * 2f : 200f;
+		_u = ballDiameterUnits / BallDiameterInches; // units per inch
+		UnitsPerInch = _u;
+
+		// Resolve the pins' gravity: scale-correct 1g at this lane size (386 in/s² → units, ÷ world g)
+		// times the feel knob. Stops a kicked pin from sliding/floating across the whole deck.
+		var worldG = Scene.PhysicsWorld.Gravity.Length;
+		_pinGravityScale = worldG > 1f ? (386f * _u) / worldG * PinGravityScale : PinGravityScale;
+	}
+
+	/// <summary>Build (once) the shared lathed pin model + the lane's audio banks. Split out so a replicating
+	/// pin can skin itself via <see cref="ConfigurePin"/> without forcing this lane's whole deferred build.</summary>
+	private void EnsurePinModel()
+	{
+		if ( _pinModel is not null ) return;
+		EnsureScale();
+		_pinModel = BuildPinModel( _u );
+		_pinAudio = Components.GetOrCreate<PinImpactAudio>(); // one bank for the lane; pins funnel here
+		Components.GetOrCreate<AnnouncerAudio>(); // one announcer VO bank for the lane (director routes calls here)
+	}
+
+	/// <summary>The lane's full procedural geometry build. Runs a few frames after load via
+	/// <see cref="BuildScheduler"/> (never synchronously in OnEnabled), so it can't block a joining client's
+	/// connection. Idempotent — guarded by <see cref="_built"/>.</summary>
+	private void BuildNow()
+	{
 		if ( _built ) return;
 		_built = true;
 
@@ -315,16 +365,9 @@ public sealed class LaneBuilder : Component
 		_matPit = Material.Load( "materials/pit.vmat" );
 		_matFloorDark = Material.Load( "materials/floordark.vmat" ); // terrazzo — matches the spawn ramps
 
-		// Treat the actual ball as 8.5" to get a units-per-inch scale for everything else.
-		var ball = Lane.Of( this )?.Ball;
-		var ballDiameterUnits = ball.IsValid() ? ball.Radius * 2f : 200f;
-		var u = ballDiameterUnits / BallDiameterInches; // units per inch
-		UnitsPerInch = u;
-
-		// Resolve the pins' gravity: scale-correct 1g at this lane size (386 in/s² → units, ÷ world g)
-		// times the feel knob. Stops a kicked pin from sliding/floating across the whole deck.
-		var worldG = Scene.PhysicsWorld.Gravity.Length;
-		_pinGravityScale = worldG > 1f ? (386f * u) / worldG * PinGravityScale : PinGravityScale;
+		EnsureScale();
+		var u = _u;
+		var ballDiameterUnits = u * BallDiameterInches; // the lane's size unit, passed to the WorldPanel builders
 
 		// --- Vertical: platform top is the play surface; gutters recess below, barriers rise above.
 		var H = PlatformHeightInches * u;
@@ -521,12 +564,15 @@ public sealed class LaneBuilder : Component
 			var ax = foulX + (ArrowCenterDistanceInches - steps * ArrowStepInches) * u;
 			MakeArrow( $"Arrow{board}", new Vector3( ax, ay, arrowZ ) );
 		}
+		// Assign the shared procedural arrow model now. BuildNow is deferred by BuildScheduler, so it runs
+		// post-OnStart during OnUpdate — the OnStart-or-later timing that dodges the client ERROR-model (the
+		// reason MakeArrow leaves the renderer's Model null; see its note and OnStart below).
+		foreach ( var mr in _arrowRenderers )
+			if ( mr.IsValid() ) mr.Model = _arrowModel;
 
 		// ---- Pins: regulation triangle on the platform top — head pin nearest the bowler, rows of
 		// 1/2/3/4 stepping away, each centred across the lane.
-		_pinModel = BuildPinModel( u );
-		_pinAudio = Components.GetOrCreate<PinImpactAudio>(); // one bank for the lane; pins funnel here
-		Components.GetOrCreate<AnnouncerAudio>(); // one announcer VO bank for the lane (director routes calls here)
+		EnsurePinModel(); // shared lathed pin model + audio banks (may already be built for a replicated pin)
 		// Compute the rack layout (WORLD home spots — the director respots/scores in world space). Built
 		// on EVERY client so the model/audio/scale are ready when the networked pins replicate in, but the
 		// pin OBJECTS themselves are spawned once by the host (HostSpawnPins).
@@ -556,10 +602,12 @@ public sealed class LaneBuilder : Component
 		Components.GetOrCreate<LaneMonitorCamera>();
 	}
 
-	/// <summary>FIRST assignment of the procedural arrow model to its renderers — in OnStart, with the
-	/// renderers left null in OnEnabled. A runtime ModelBuilder model assigned during OnEnabled shows the
-	/// purple ERROR model on a joining CLIENT; a fresh null->model assignment in OnStart renders correctly
-	/// (the same trick the pins use via Pin.OnStart/ConfigurePin). Host-harmless.</summary>
+	/// <summary>Fallback assignment of the procedural arrow model to its renderers. A runtime ModelBuilder
+	/// model must NOT be assigned during OnEnabled or a joining CLIENT shows the purple ERROR model; it has to
+	/// be a fresh null->model assignment in OnStart or later (the same trick the pins use via
+	/// Pin.OnStart/ConfigurePin). Now that the build is DEFERRED (BuildScheduler), BuildNow runs post-OnStart
+	/// and does the real assignment itself — so at OnStart the renderers usually don't exist yet and this is a
+	/// no-op. Kept as a safety net in case a lane ever builds before its OnStart. Host-harmless.</summary>
 	protected override void OnStart()
 	{
 		foreach ( var mr in _arrowRenderers )
@@ -998,7 +1046,10 @@ public sealed class LaneBuilder : Component
 		// session too, so only the genuine connected host ever spawns. (The solo host is fine: AlleyServer
 		// creates the lobby in OnStart, so IsActive flips true and this idempotent call spawns a frame later.)
 		if ( PinsSpawned || !Networking.IsActive || !Networking.IsHost ) return;
-		if ( !_built ) OnEnabled();
+		// Wait for this lane's deferred BuildNow (BuildScheduler) to publish the rack layout rather than
+		// forcing a synchronous build here — called every frame from the director, so it spawns the frame
+		// _pinSpots is ready.
+		if ( !_built ) return;
 		if ( _pinSpots.Count == 0 ) return;
 
 		var laneId = Lane.Of( this )?.GameObject.Id ?? System.Guid.Empty;
@@ -1028,7 +1079,7 @@ public sealed class LaneBuilder : Component
 	public void ConfigurePin( Pin pin )
 	{
 		if ( !pin.IsValid() ) return;
-		if ( !_built ) OnEnabled();
+		EnsurePinModel(); // skin/arm a replicating pin without forcing this lane's whole deferred build
 		var go = pin.GameObject;
 
 		// Per-lane collision tag, set BEFORE the collider is built (shapes snapshot GameObject.Tags at build
