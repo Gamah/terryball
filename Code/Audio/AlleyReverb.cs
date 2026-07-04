@@ -1,50 +1,70 @@
 using Sandbox;
 using Sandbox.Audio;
-using Sandbox.Volumes;
+using System;
 
 namespace Terryball;
 
 /// <summary>
-/// Gives the whole alley an in-engine reverb tail. Rather than baking room ambience into every sample,
-/// we let s&amp;box's DSP reverb do it live: this drops an <b>infinite</b> <see cref="DspVolume"/> that
-/// runs a named reverb preset over everything routed to <see cref="MixerName"/> — the pins' clacks, the
-/// ball roll, the announcer. Music sits on its own "Music" mixer, so it stays dry and clean.
+/// Gives the whole alley an in-engine reverb tail by inserting a DSP reverb straight onto the target
+/// mixer (default "Game" — the SFX bus the pins, ball roll and announcer play through; "Music" is a
+/// separate mixer, so it stays dry and clean).
 ///
-/// Reverb is purely LOCAL audio DSP (it's applied on each listener's machine, not networked state), so
-/// every client just runs its own copy — nothing to replicate. Building the DspVolume in code (vs.
-/// authoring it in the scene) keeps the nested volume/mixer/preset config in one tunable place.
+/// We add the <see cref="DspProcessor"/> to the mixer DIRECTLY rather than through a <see cref="DspVolume"/>:
+/// the volume path only engages while the listener sits inside a registered volume AND is hard-disabled in
+/// the editor — which is why an earlier DspVolume version was silent even in a played instance. Reverb is
+/// local audio DSP, and the mixer graph is per-client global, so ONE of these (on the World object) reverbs
+/// that client's whole SFX bus; each client runs its own.
 ///
-/// Preset is a <see cref="Sound.DspNames"/> name. Good alley candidates: "brite.large" (lively, hard
-/// tiled surfaces), "concrete.large" (harder/darker), "room.diffuse.huge" (big, even, natural). Try a
-/// few live in the inspector and pick by ear.
+/// <see cref="Preset"/> is a <see cref="Sound.DspNames"/> name. Bowling-alley candidates, roughly
+/// small→huge: "brite.large", "concrete.large", "room.diffuse.huge", "chamber.large", "cavern.large".
+/// <see cref="Wet"/> is the dry/wet blend (1 = fully wet). Tune both live in the inspector.
 /// </summary>
 [Icon( "graphic_eq" )]
 public sealed class AlleyReverb : Component
 {
-	/// <summary>DSP reverb preset name (see <see cref="Sound.DspNames"/>). Change live to audition.</summary>
-	[Property] public string Preset { get; set; } = "brite.large";
+	/// <summary>DSP reverb preset name (see <see cref="Sound.DspNames"/>). Default is intentionally big.</summary>
+	[Property] public string Preset { get; set; } = "cavern.large";
 
-	/// <summary>Which mixer the reverb applies to. "Game" catches SFX (pins/ball/announcer) but not the
-	/// separately-routed "Music", so music stays dry.</summary>
+	/// <summary>Mixer the reverb inserts on. "Game" is the SFX bus (pins/ball/announcer); "Music" is separate.</summary>
 	[Property] public string MixerName { get; set; } = "Game";
 
-	private DspVolume _dsp;
+	/// <summary>Dry/wet blend of the reverb on the bus. 1 = fully wet (cranked); dial down for subtlety.</summary>
+	[Property, Range( 0f, 1f )] public float Wet { get; set; } = 1f;
 
-	protected override void OnEnabled()
+	private DspProcessor _processor;
+	private Mixer _mixer;
+
+	protected override void OnEnabled() => Attach();
+	protected override void OnDisabled() => Detach();
+
+	private void Attach()
 	{
-		_dsp = Components.GetOrCreate<DspVolume>();
-		_dsp.SceneVolume = new SceneVolume { Type = SceneVolume.VolumeTypes.Infinite };
-		_dsp.Dsp = Preset;
-		_dsp.TargetMixer = new MixerHandle { Name = MixerName };
+		Detach();
+		_mixer = Mixer.FindMixerByName( MixerName );
+		if ( _mixer is null ) return; // audio graph not up yet — OnUpdate retries
+		_processor = new DspProcessor( Preset ) { Mix = Wet };
+		_mixer.AddProcessor( _processor );
 	}
 
-	// Let inspector tweaks to the preset/mixer take effect without a scene reload.
+	private void Detach()
+	{
+		if ( _processor is not null )
+			_mixer?.RemoveProcessor( _processor );
+		_processor = null;
+	}
+
+	// Pick up the mixer once the audio graph is up, and apply live inspector tweaks.
 	protected override void OnUpdate()
 	{
-		if ( !_dsp.IsValid() ) return;
-		if ( _dsp.Dsp.Name != Preset ) _dsp.Dsp = Preset;
-		if ( _dsp.TargetMixer.Name != MixerName ) _dsp.TargetMixer = new MixerHandle { Name = MixerName };
-	}
+		if ( _processor is null ) { Attach(); return; }
 
-	protected override void OnDisabled() => _dsp?.Destroy();
+		bool presetChanged = !string.Equals( _processor.Effect.Name, Preset, StringComparison.OrdinalIgnoreCase );
+		if ( presetChanged || !string.Equals( _mixer?.Name, MixerName, StringComparison.OrdinalIgnoreCase ) )
+		{
+			Attach();
+			return;
+		}
+
+		if ( _processor.Mix != Wet ) _processor.Mix = Wet;
+	}
 }
