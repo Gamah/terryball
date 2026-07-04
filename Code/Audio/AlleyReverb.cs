@@ -18,7 +18,8 @@ namespace Terryball;
 /// <see cref="Preset"/> is a <see cref="Sound.DspNames"/> name — use a diffuse, reverb-only preset (a
 /// diffusor + reverb, NO delay line) so the tail is smooth with no fluttery repeated echoes; AVOID the
 /// "cavern.*"/"outside.*" presets (their feedback delay line IS the echo). "room.diffuse.small" is a tight
-/// pin-deck-sized room. <see cref="Wet"/> is the dry/wet blend.
+/// pin-deck-sized room. <see cref="Wet"/> and <see cref="DryLevel"/> set the reverb and completely-dry
+/// levels INDEPENDENTLY (played in parallel), not as a coupled blend.
 /// </summary>
 [Icon( "graphic_eq" )]
 public sealed class AlleyReverb : Component
@@ -30,8 +31,16 @@ public sealed class AlleyReverb : Component
 	/// no echoes; a short-decay small preset keeps it pin-deck sized.</summary>
 	[Property] public string Preset { get; set; } = "room.diffuse.small";
 
-	/// <summary>Dry/wet blend on the pins bus. Lower = drier / feels smaller and further back.</summary>
+	/// <summary>Wet (reverberated) level. The DSP processor's <see cref="AudioProcessor.Mix"/> is a dry/wet
+	/// CROSSFADE (out = (1-Mix)*dry + Mix*wet), which couples the two — turning up wet turns down dry. We want
+	/// them independent, so this is the ABSOLUTE wet contribution and <see cref="DryLevel"/> the absolute dry;
+	/// <see cref="ApplyLevels"/> back-solves the mixer volume + crossfade to hit both (see there).</summary>
 	[Property, Range( 0f, 1f )] public float Wet { get; set; } = 0.225f;
+
+	/// <summary>Absolute level of the COMPLETELY DRY pin signal, played in parallel with the <see cref="Wet"/>
+	/// reverb. This is the untouched crossfade passthrough (same voice, so no flam vs a 2nd Sound.Play), so the
+	/// clean clack keeps its presence/punch under the tail. Wet + DryLevel must stay <= 1 (mixer volume clamps).</summary>
+	[Property, Range( 0f, 1f )] public float DryLevel { get; set; } = 0.5f;
 
 	private DspProcessor _processor;
 	private Mixer _mixer;
@@ -60,8 +69,9 @@ public sealed class AlleyReverb : Component
 		Detach();
 		_mixer = EnsurePinMixer();
 		if ( _mixer is null ) return; // graph not up yet — OnUpdate retries
-		_processor = new DspProcessor( Preset ) { Mix = Wet };
+		_processor = new DspProcessor( Preset );
 		_mixer.AddProcessor( _processor );
+		ApplyLevels();
 	}
 
 	private void Detach()
@@ -69,6 +79,18 @@ public sealed class AlleyReverb : Component
 		if ( _processor is not null )
 			_mixer?.RemoveProcessor( _processor );
 		_processor = null;
+		if ( _mixer is not null ) _mixer.Volume = 1f; // reverb off -> pins play back at full, fully dry
+	}
+
+	// The mixer crossfade gives dryLeg = Volume*(1-Mix), wetLeg = Volume*Mix. Solve for Volume & Mix that
+	// land dryLeg == DryLevel and wetLeg == Wet: Volume = DryLevel + Wet, Mix = Wet / (DryLevel + Wet).
+	// So the completely-dry pin sits at DryLevel and the reverb at Wet, independently.
+	private void ApplyLevels()
+	{
+		if ( _processor is null || _mixer is null ) return;
+		float sum = DryLevel + Wet;
+		_mixer.Volume = sum; // clamped to [0,1] by the mixer; keep DryLevel + Wet <= 1
+		_processor.Mix = sum > 0f ? Wet / sum : 0f;
 	}
 
 	// Pick up the mixer once the audio graph is up, and apply live inspector tweaks.
@@ -76,6 +98,6 @@ public sealed class AlleyReverb : Component
 	{
 		if ( _processor is null ) { Attach(); return; }
 		if ( !string.Equals( _processor.Effect.Name, Preset, StringComparison.OrdinalIgnoreCase ) ) { Attach(); return; }
-		if ( _processor.Mix != Wet ) _processor.Mix = Wet;
+		ApplyLevels();
 	}
 }
