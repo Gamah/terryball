@@ -182,6 +182,23 @@ public sealed class GameDirector : Component
 	public enum GamePhase { Lobby, Playing }
 	/// <summary>Lobby = players join/leave; Playing = a game is on (START pressed). Host-set.</summary>
 	[Sync] public GamePhase Phase { get; set; } = GamePhase.Lobby;
+
+	/// <summary>Is this lane IN USE — a game running, or at least one player parked in its lobby? Drives the
+	/// lazy build of the lane's ball + pins, so a lane nobody has walked up to never pays for them. Both
+	/// inputs (<see cref="Phase"/> and avatars' <c>Joined</c>/<c>JoinedLaneId</c>) are synced, so every
+	/// client computes the SAME answer and builds/skips the same lanes — spectators of an active lane still
+	/// get its ball.</summary>
+	public bool LaneActive
+	{
+		get
+		{
+			if ( Phase == GamePhase.Playing ) return true;
+			var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
+			if ( laneId == Guid.Empty ) return false;
+			return Scene.GetAllComponents<TerryAvatar>()
+				.Any( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId );
+		}
+	}
 	/// <summary>Host toggle (lane controls): when off, the ball is teleported between spots instead of
 	/// flying the choreographed claw animation — the scoop/drop body↔ball swaps and the roll still
 	/// happen, just instantly. Synced so the active bowler (who runs the crane) reads the host's choice.</summary>

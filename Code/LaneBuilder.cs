@@ -1086,6 +1086,10 @@ public sealed class LaneBuilder : Component
 		// session too, so only the genuine connected host ever spawns. (The solo host is fine: AlleyServer
 		// creates the lobby in OnStart, so IsActive flips true and this idempotent call spawns a frame later.)
 		if ( PinsSpawned || !Networking.IsActive || !Networking.IsHost ) return;
+		// Don't rack a lane nobody's using: hold off until someone has joined its lobby (or a game's on),
+		// so lanes that never get walked up to never spawn ten networked pins. (Once spawned they stay —
+		// the lobby/turn logic re-racks in place; we don't tear the rack back down on empty.)
+		if ( !(Lane.Of( this )?.Director?.LaneActive ?? false) ) return;
 		// Wait for this lane's deferred BuildNow (BuildScheduler) to publish the rack layout rather than
 		// forcing a synchronous build here — called every frame from the director, so it spawns the frame
 		// _pinSpots is ready.

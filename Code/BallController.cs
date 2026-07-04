@@ -206,7 +206,14 @@ public sealed class BallController : Component, Component.ICollisionListener
 	private bool _built;
 	private float _throwLogAt;                  // last time the LogThrow hook trace was written (throttle)
 
-	protected override void OnEnabled()
+	// True once this lane is in use, so the heavy ball build is worth doing. Defaults to building when we
+	// can't resolve a director (solo/editor edge) so the ball is never left stuck unbuilt.
+	private bool ShouldBuild => Director?.LaneActive ?? true;
+
+	// The expensive procedural build (physics, glass shell + coloured shadow, in-ball Terry, dressing) is
+	// deferred to the first frame this lane is actually used (see OnUpdate), so lanes nobody has joined
+	// never pay for a ball — the GameObject stays a cheap, empty networked object until then.
+	private void EnsureBuilt()
 	{
 		if ( _built ) return;
 		_built = true;
@@ -469,6 +476,8 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	protected override void OnFixedUpdate()
 	{
+		if ( !_built ) return; // nothing to simulate until the lane's in use (OnUpdate builds it)
+
 		var dt = Time.Delta;
 		if ( dt <= 0f ) return;
 
@@ -643,6 +652,13 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	protected override void OnUpdate()
 	{
+		// Lazy build: stay an empty, cheap networked object until this lane is in use, then build once.
+		if ( !_built )
+		{
+			if ( !ShouldBuild ) return;
+			EnsureBuilt();
+		}
+
 		UpdateBowlerDress();
 
 		// Mirror the synced crane state onto the collider on EVERY client (the owner also set it directly in
