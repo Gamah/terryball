@@ -21,8 +21,36 @@
 		var director = Director;
 		var players = director?.BuildScoreView() ?? new List<GameDirector.PlayerView>();
 		var over = director?.GameOver ?? false;
+		var practice = director?.Mode == GameDirector.LaneMode.Practice;
 	}
 
+	@if ( practice )
+	{
+		@* Practice: the scorecard is moot — show a PRACTICE MODE banner + the live throw queue (front =
+		   current bowler, highlighted) instead of the ten-frame grid. *@
+		<div style="flex-direction: row; align-items: center; margin-bottom: 8px;">
+			<div style="font-size: 18px; font-weight: 800; letter-spacing: 3px; color: #b07cd6;
+			            flex-grow: 1;">PRACTICE MODE</div>
+			<div style="font-size: 11px; color: rgba(255,255,255,0.5); font-weight: 600;">
+				@director.Drill.ToString().ToUpper()
+			</div>
+		</div>
+		@{ var queue = director.RosterNames?.ToList() ?? new List<string>(); }
+		@for ( var qi = 0; qi < queue.Count; qi++ )
+		{
+			var current = qi == director.CurrentPlayer;
+			<div style="flex-direction: row; align-items: center; margin-bottom: 3px; padding: 3px 6px;
+			            border-radius: 5px;
+			            background-color: @(current ? "rgba(241,196,15,0.16)" : "transparent");">
+				<div style="width: 22px; font-size: 13px; font-weight: 800;
+				            color: @(current ? "#f1c40f" : "rgba(255,255,255,0.4)");">@(qi + 1)</div>
+				<div style="font-size: 14px; font-weight: 700;
+				            color: @(current ? "#f1c40f" : "white");">@queue[qi]</div>
+			</div>
+		}
+	}
+	else
+	{
 	<div style="flex-direction: row; align-items: center; margin-bottom: 8px;">
 		<div style="font-size: 18px; font-weight: 700; flex-grow: 1;">SCOREBOARD</div>
 		<div style="font-size: 11px; color: @(over ? "#f1c40f" : "rgba(255,255,255,0.5)");
@@ -83,6 +111,7 @@
 			</div>
 		</div>
 	}
+	}
 </root>
 
 @code
@@ -102,6 +131,11 @@
 		var hash = new System.HashCode();
 		hash.Add( IsJoined );
 		hash.Add( director.GameOver );
+		hash.Add( director.Mode );
+		hash.Add( director.Drill );
+		hash.Add( director.CurrentPlayer );
+		foreach ( var name in director.RosterNames )
+			hash.Add( name );
 		foreach ( var player in director.BuildScoreView() )
 		{
 			hash.Add( player.Name );

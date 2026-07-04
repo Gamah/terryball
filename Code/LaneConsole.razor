@@ -25,6 +25,7 @@
 		var director = Director;
 		var players = director?.BuildScoreView() ?? new List<GameDirector.PlayerView>();
 		var over = director?.GameOver ?? false;
+		var practice = director?.Mode == GameDirector.LaneMode.Practice;
 	}
 
 	@* ---- Header: lane label + game state ---- *@
@@ -33,11 +34,53 @@
 			LANE <span style="color: #5aa0e6;">@LaneNumber</span>
 		</div>
 		<div style="font-size: 16px; font-weight: 700;
-		            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.45)");">
-			@(over ? "GAME OVER" : "IN PLAY")
+		            color: @(practice ? "#b07cd6" : (over ? "#f1c40f" : "rgba(255,255,255,0.45)"));">
+			@(practice ? "PRACTICE" : (over ? "GAME OVER" : "IN PLAY"))
 		</div>
 	</div>
 
+	@if ( practice )
+	{
+		@* Practice: the scorecard is moot — a PRACTICE MODE banner + the live throw queue (front = current
+		   bowler, highlighted) replaces the ten-frame grid. *@
+		<div style="flex-direction: column; flex-grow: 1;">
+			<div style="flex-direction: row; align-items: center; margin-bottom: 14px;">
+				<div style="font-size: 34px; font-weight: 800; letter-spacing: 5px; color: #b07cd6;
+				            padding: 10px 20px; border-radius: 10px;
+				            background-color: rgba(155,89,182,0.16);
+				            border-width: 2px; border-color: rgba(155,89,182,0.4);">
+					PRACTICE MODE
+				</div>
+				<div style="flex-grow: 1;"></div>
+				<div style="font-size: 20px; font-weight: 700; color: rgba(255,255,255,0.55);
+				            align-items: center;">
+					<span>DRILL: </span><span style="color: #b07cd6;">@director.Drill.ToString().ToUpper()</span>
+				</div>
+			</div>
+			<div style="font-size: 16px; color: rgba(255,255,255,0.4); margin-bottom: 10px;
+			            letter-spacing: 3px;">THROW QUEUE</div>
+			@{ var queue = director.RosterNames?.ToList() ?? new List<string>(); }
+			@for ( var qi = 0; qi < queue.Count; qi++ )
+			{
+				var current = qi == director.CurrentPlayer;
+				<div style="flex-direction: row; align-items: center; margin-bottom: 6px; padding: 8px 16px;
+				            border-radius: 8px;
+				            background-color: @(current ? "rgba(241,196,15,0.14)" : "rgba(255,255,255,0.03)");">
+					<div style="width: 46px; font-size: 22px; font-weight: 800;
+					            color: @(current ? "#f1c40f" : "rgba(255,255,255,0.45)");">@(qi + 1)</div>
+					<div style="flex-grow: 1; font-size: 24px; font-weight: 700;
+					            color: @(current ? "#f1c40f" : "white");">@queue[qi]</div>
+					@if ( current )
+					{
+						<div style="font-size: 16px; font-weight: 800; letter-spacing: 3px;
+						            color: #f1c40f;">UP</div>
+					}
+				</div>
+			}
+		</div>
+	}
+	else
+	{
 	@* ---- Scorecard: one row per player ---- *@
 	<div style="flex-direction: column; flex-grow: 1;">
 		@foreach ( var player in players )
@@ -94,6 +137,7 @@
 			</div>
 		}
 	</div>
+	}
 
 	@* ---- Control strip: placeholders only, nothing wired yet ---- *@
 	<div style="flex-direction: row; align-items: center; margin-top: 14px; padding-top: 14px;
@@ -128,6 +172,11 @@
 
 		var hash = new System.HashCode();
 		hash.Add( director.GameOver );
+		hash.Add( director.Mode );
+		hash.Add( director.Drill );
+		hash.Add( director.CurrentPlayer );
+		foreach ( var name in director.RosterNames )
+			hash.Add( name );
 		foreach ( var player in director.BuildScoreView() )
 		{
 			hash.Add( player.Name );
