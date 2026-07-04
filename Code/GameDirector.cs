@@ -57,6 +57,24 @@ public sealed class GameDirector : Component
 		CraneEnabled = on;
 	}
 
+	/// <summary>Set the lane's experience (<see cref="Mode"/>) from the lane controls. Director-only, same as
+	/// <see cref="SetAimMode"/> — it never claims the lane on its own (a lobby toggle can't break joining).
+	/// No-op if the local client isn't this lane's director.</summary>
+	public void SetMode( LaneMode m )
+	{
+		if ( !IsDirector ) return;
+		Mode = m;
+	}
+
+	/// <summary>Set the Practice drill (<see cref="Drill"/>) from the lane controls. Director-only, same as
+	/// <see cref="SetAimMode"/> — it never claims the lane on its own. No-op if the local client isn't this
+	/// lane's director.</summary>
+	public void SetDrill( PracticeDrill d )
+	{
+		if ( !IsDirector ) return;
+		Drill = d;
+	}
+
 	private bool _dirNetReady; // host: have we tagged the director object Takeover yet?
 
 	// Take ownership of this lane's director so OUR writes to the synced state are authoritative. Called
@@ -261,6 +279,15 @@ public sealed class GameDirector : Component
 	/// <summary>Lobby = players join/leave; Playing = a game is on (START pressed). Host-set.</summary>
 	[Sync] public GamePhase Phase { get; set; } = GamePhase.Lobby;
 
+	/// <summary>What experience this lane runs. <see cref="LaneMode.Play"/> is the standard 10-frame game
+	/// (today's behaviour, the default); <see cref="LaneMode.Practice"/> is the live-queue drill mode. A tier
+	/// so future modes (vs-lane, Baker, …) can slot in.</summary>
+	public enum LaneMode { Play, Practice }
+	/// <summary>The Practice-mode rack drill (lane-wide): <see cref="PracticeDrill.Regular"/> full rack / 2 throws,
+	/// <see cref="PracticeDrill.Strike"/> full rack / 1 throw, <see cref="PracticeDrill.Spare"/> a random non-split
+	/// leave / 1 throw, <see cref="PracticeDrill.Split"/> a random split leave / 1 throw.</summary>
+	public enum PracticeDrill { Regular, Strike, Spare, Split }
+
 	/// <summary>Is this lane IN USE — a game running, or at least one player parked in its lobby? Drives the
 	/// lazy build of the lane's ball + pins, so a lane nobody has walked up to never pays for them. Both
 	/// inputs (<see cref="Phase"/> and avatars' <c>Joined</c>/<c>JoinedLaneId</c>) are synced, so every
@@ -285,6 +312,11 @@ public sealed class GameDirector : Component
 	/// way). false = the free hamster-ball drive; true = the guided "Aim" line-up (see <see cref="ThrowAimer"/>).
 	/// A lane-wide setting, not per-player — whoever runs the lane picks the style for it.</summary>
 	[Sync] public bool AimMode { get; set; }
+	/// <summary>This lane's experience (director toggle, synced). Default <see cref="LaneMode.Play"/> preserves
+	/// the standard 10-frame game byte-for-byte; <see cref="LaneMode.Practice"/> switches to the drill/queue branch.</summary>
+	[Sync] public LaneMode Mode { get; set; } = LaneMode.Play;
+	/// <summary>The Practice-mode rack drill (director toggle, synced, lane-wide). Ignored in <see cref="LaneMode.Play"/>.</summary>
+	[Sync] public PracticeDrill Drill { get; set; } = PracticeDrill.Regular;
 	/// <summary>The bowlers in this game, in turn order (only meaningful in Playing).</summary>
 	[Sync] public NetList<string> RosterNames { get; set; } = new();
 	/// <summary>Per-roster-player encoded frame data, parallel to <see cref="RosterNames"/>.</summary>
@@ -602,6 +634,9 @@ public sealed class GameDirector : Component
 		foreach ( var p in _players )
 		{
 			RosterNames.Add( p.Name );
+			// Practice has no scorecard (the UI shows a PRACTICE banner + the queue), so publish only the
+			// names — skip the per-player frame/split encoding entirely.
+			if ( Mode == LaneMode.Practice ) continue;
 			RosterScores.Add( EncodeFrames( p.Frames ) );
 			RosterSplits.Add( string.Join( ",", p.Splits.Select( s => $"{s.frame}.{s.ball}" ) ) );
 		}
@@ -952,6 +987,18 @@ public sealed class GameDirector : Component
 	// synced CurrentFrame so the 10th-frame rules apply even when the bowler isn't the host.
 	private bool DecideLocal()
 	{
+		// Practice ignores frames / the 10th-frame rules entirely. Single-ball drills (Strike/Spare/Split)
+		// end the moment the ball settles; Regular plays a normal open frame — a strike ends it in one, else a
+		// second ball at the standing pins (ContinueFrame(fresh:false) → SweepAndRespot, exactly as an open
+		// frame does).
+		if ( Mode == LaneMode.Practice )
+		{
+			if ( Drill != PracticeDrill.Regular ) return true;
+			if ( _localBalls[0] == 10 || _localBalls.Count >= 2 ) return true;
+			ContinueFrame( fresh: false );
+			return false;
+		}
+
 		var frame = _localBalls;
 		var tenth = CurrentFrame == 9;
 		var ball = frame.Count; // balls thrown so far this frame (1, 2 or 3)
@@ -987,6 +1034,12 @@ public sealed class GameDirector : Component
 	// bowler, who then just grabs it and rolls on their own machine (BeginTurn) when ActiveBowlerId arrives.
 	private void AdvanceTurn()
 	{
+		if ( Mode == LaneMode.Practice )
+		{
+			PracticeAdvanceTurn();
+			return;
+		}
+
 		_current++;
 		if ( _current >= _players.Count )
 		{
@@ -1007,6 +1060,66 @@ public sealed class GameDirector : Component
 		PublishScores();
 	}
 
+	// PRACTICE: there are no frames — the roster IS a live queue (front = _current = 0). Reconcile it each
+	// turn: rotate the bowler who just finished to the back, drop anyone who's left the lane, append anyone
+	// who joined mid-practice, then spotlight the new front. No _frame++, no EndGame — practice just keeps
+	// cycling until STOP. The queue reuses _rosterIds/_players (mirrored to RosterNames) so the UI reads it
+	// exactly like a game roster.
+	private void PracticeAdvanceTurn()
+	{
+		var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
+		var joined = Scene.GetAllComponents<TerryAvatar>()
+			.Where( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId )
+			.ToList();
+		var joinedIds = new HashSet<Guid>( joined.Select( a => a.GameObject.Network.Owner?.Id ?? Guid.Empty ) );
+
+		// Rotate the just-finished bowler (front of the queue) to the back.
+		if ( _rosterIds.Count > 0 )
+		{
+			var frontId = _rosterIds[0];
+			var frontScore = _players[0];
+			_rosterIds.RemoveAt( 0 );
+			_players.RemoveAt( 0 );
+			_rosterIds.Add( frontId );
+			_players.Add( frontScore );
+		}
+
+		// Drop anyone no longer joined to this lane (they walked off / left the session).
+		for ( var i = _rosterIds.Count - 1; i >= 0; i-- )
+			if ( !joinedIds.Contains( _rosterIds[i] ) )
+			{
+				_rosterIds.RemoveAt( i );
+				_players.RemoveAt( i );
+			}
+
+		// Append newly-joined avatars not already queued (live join mid-practice), preserving lane order.
+		var queued = new HashSet<Guid>( _rosterIds );
+		foreach ( var a in joined )
+		{
+			var id = a.GameObject.Network.Owner?.Id ?? Guid.Empty;
+			if ( queued.Add( id ) )
+			{
+				_rosterIds.Add( id );
+				_players.Add( new PlayerScore( a.DisplayName ) );
+			}
+		}
+
+		_current = 0; // the front of the live queue is always up
+
+		// Queue emptied out (everyone bailed): publish the empty roster and let the director's self-heal
+		// (_players.Count == 0) drop the lane back to the lobby next tick.
+		if ( _rosterIds.Count == 0 )
+		{
+			SetActiveBowler(); // clears the spotlight (ActiveBowlerId = Guid.Empty)
+			PublishScores();
+			return;
+		}
+
+		HostRackForNextBowler();
+		SetActiveBowler();
+		PublishScores();
+	}
+
 	// DIRECTOR: in the gap between turns the director owns the ball + rack. Take them back from the bowler
 	// who just finished, drop a clean full deck and park the ball, so the next bowler grabs a stable,
 	// already-correct rack (no contested writes, no leftover pins). No-op outside a live session.
@@ -1014,7 +1127,10 @@ public sealed class GameDirector : Component
 	{
 		if ( !IsDirector ) return;
 		HostReclaimThrowOwnership();
-		FullRack( instant );
+		if ( Mode == LaneMode.Practice )
+			RackForDrill( Drill, instant ); // full deck or a curated leave, per the lane-wide drill
+		else
+			FullRack( instant );
 		// No PlaceBallHome: the ball isn't reset to the start between turns. It sits where the last crane
 		// left it (the pit, or the previous bowler's seat) and the next bowler's pickup flies it on.
 	}
@@ -1339,6 +1455,19 @@ public sealed class GameDirector : Component
 		PinDownBits = 0;
 		TakeThrowOwnership(); // grab the shared ball + rack so OUR physics drives this turn
 
+		// Practice drills can hand us a PARTIAL rack (spare/split leave the director racked before spotlighting
+		// us). Reconstruct which pins are already off the deck from the replicated rack (same derivation a
+		// spectator uses) and treat them as swept for the whole turn, so Score() reads only the standing leave
+		// and knocked = DownCount - _ballStartDown counts only what THIS ball fells. A full rack (Regular/Strike)
+		// yields no down pins, so this is a no-op there — identical to Play.
+		if ( Mode == LaneMode.Practice )
+		{
+			var down = EvaluateDownBits();
+			for ( var n = 1; n <= 10; n++ ) if ( (down & (1 << n)) != 0 ) _sweptPins.Add( n );
+			_ballStartDown = _sweptPins.Count;
+			PinDownBits = down;
+		}
+
 		var av = LocalAvatar;
 		if ( av.IsValid() && av.Carried )
 		{
@@ -1500,6 +1629,95 @@ public sealed class GameDirector : Component
 				RespotPin( p, instant: false, release ); // nudged-but-standing pin glides back onto its home spot
 			}
 		}
+	}
+
+	// PRACTICE: rack the deck for the current drill. Regular/Strike get a full rack; Spare/Split get a random
+	// curated leave. Called from HostRackForNextBowler (which owns the rack in the gap) in place of FullRack.
+	private void RackForDrill( PracticeDrill drill, bool instant )
+	{
+		switch ( drill )
+		{
+			case PracticeDrill.Spare:
+				RackLeave( PracticeLeaves.RandomSpare(), instant );
+				break;
+			case PracticeDrill.Split:
+				RackLeave( PracticeLeaves.RandomSplit(), instant );
+				break;
+			default: // Regular / Strike — a clean full deck
+				FullRack( instant );
+				break;
+		}
+	}
+
+	// PRACTICE: present a partial rack — only the pins in <paramref name="standing"/> are respotted; the rest
+	// are swept off the deck (and tracked in _sweptPins so Score() reads them down for the whole turn). Built
+	// from the same per-pin primitives (RespotPin / Pin.Sweep) SweepAndRespot uses.
+	private void RackLeave( IReadOnlyCollection<int> standing, bool instant )
+	{
+		_sweptPins.Clear();
+		var standSet = new HashSet<int>( standing );
+		var release = instant ? 0f : RackReleaseTime( standing );
+		foreach ( var p in _lane.Pins )
+		{
+			if ( !p.Pin.IsValid() ) continue;
+			if ( standSet.Contains( p.Number ) )
+			{
+				RespotPin( p, instant, release ); // part of the leave — glide it home
+			}
+			else
+			{
+				_sweptPins.Add( p.Number );
+				p.Pin.Sweep(); // not in the leave — off the deck
+			}
+		}
+	}
+
+	/// <summary>Curated per-turn Practice leaves (standing pin numbers). Authored by hand and validated against
+	/// <see cref="IsSplit"/> at load: every <see cref="Splits"/> entry is a genuine split, every
+	/// <see cref="Spares"/> entry is not — so the Spare drill never accidentally serves a split. Picked at
+	/// random via <see cref="Game.Random"/> when a drill turn is racked.</summary>
+	public static class PracticeLeaves
+	{
+		/// <summary>Non-split single-ball spare leaves.</summary>
+		public static readonly int[][] Spares =
+		{
+			new[] { 10 },
+			new[] { 7 },
+			new[] { 2, 4, 5, 8 },
+			new[] { 3, 6, 9, 10 },
+			new[] { 1, 2, 4 },
+			new[] { 1, 3, 6 },
+			new[] { 5, 6 },
+			new[] { 2, 3, 5 },
+		};
+
+		/// <summary>Split single-ball leaves (head pin down, standing pins in disconnected clusters).</summary>
+		public static readonly int[][] Splits =
+		{
+			new[] { 7, 10 },
+			new[] { 4, 6 },
+			new[] { 4, 7, 10 },
+			new[] { 5, 7 },
+			new[] { 3, 10 },
+			new[] { 2, 7 },
+			new[] { 4, 6, 7, 10 },
+			new[] { 6, 7 },
+		};
+
+		// Authoring guard: assert the library is classified correctly (splits ARE splits, spares are NOT),
+		// so a bad hand-edit is caught the first time the class is touched rather than serving a wrong leave.
+		static PracticeLeaves()
+		{
+			foreach ( var s in Splits )
+				if ( !IsSplit( new List<int>( s ) ) )
+					Log.Warning( $"[terryball][practice] Splits entry {{{string.Join( ",", s )}}} is NOT a split — fix PracticeLeaves" );
+			foreach ( var s in Spares )
+				if ( IsSplit( new List<int>( s ) ) )
+					Log.Warning( $"[terryball][practice] Spares entry {{{string.Join( ",", s )}}} IS a split — fix PracticeLeaves" );
+		}
+
+		public static int[] RandomSpare() => Spares[Game.Random.Next( Spares.Length )];
+		public static int[] RandomSplit() => Splits[Game.Random.Next( Splits.Length )];
 	}
 
 	/// <summary>Pin impact audio is muted until this time — set whenever pins are teleported onto their
