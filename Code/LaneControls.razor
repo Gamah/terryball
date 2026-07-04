@@ -78,12 +78,106 @@
 								Ball Crane: <span style="color: @(CraneOn ? "#2ecc71" : "rgba(255,255,255,0.55)");">@(CraneOn ? "ON" : "OFF")</span>
 							</div>
 						}
+						@* Mode tier — the lane-wide experience (Play = the 10-frame game, Practice = a live queue with
+						   per-turn drills). Same lobby-pending pattern as the throw/crane toggles: a director writes
+						   straight through SetMode, a lobby joiner stashes a local pick (see PickMode) applied on START.
+						   Rendered as a segmented control that iterates the enum, so future modes slot in for free. *@
+						@if ( CanDirect || !playing )
+						{
+							<div style="flex-direction: row; align-items: center; margin-right: 16px; padding: 3px;
+							            border-radius: 8px; border-width: 1px; border-color: rgba(120,160,220,0.4);
+							            background-color: rgba(255,255,255,0.06);">
+								@foreach ( var m in ModeTiers )
+								{
+									var on = ModeOn == m;
+									<div style="pointer-events: all; padding: 5px 12px; border-radius: 6px;
+									            font-size: 15px; font-weight: 700; cursor: pointer;
+									            background-color: @(on ? "rgba(52,152,219,0.28)" : "transparent");
+									            color: @(on ? "#5aa0e6" : "rgba(255,255,255,0.55)");"
+									     onclick=@(() => PickMode( m ))>
+										@ModeLabel( m )
+									</div>
+								}
+							</div>
+						}
+						@* Drill selector — a lane-wide setting for what the rack looks like each practice turn. Only shown
+						   in Practice; same pending pattern (see PickDrill), routed through SetDrill. *@
+						@if ( (CanDirect || !playing) && ModeOn == GameDirector.LaneMode.Practice )
+						{
+							<div style="flex-direction: row; align-items: center; margin-right: 16px; padding: 3px;
+							            border-radius: 8px; border-width: 1px; border-color: rgba(155,89,182,0.4);
+							            background-color: rgba(255,255,255,0.06);">
+								@foreach ( var dr in DrillTiers )
+								{
+									var on = DrillOn == dr;
+									<div style="pointer-events: all; padding: 5px 10px; border-radius: 6px;
+									            font-size: 14px; font-weight: 700; cursor: pointer;
+									            background-color: @(on ? "rgba(155,89,182,0.24)" : "transparent");
+									            color: @(on ? "#b07cd6" : "rgba(255,255,255,0.55)");"
+									     onclick=@(() => PickDrill( dr ))>
+										@dr.ToString()
+									</div>
+								}
+							</div>
+						}
 						<div style="font-size: 18px; font-weight: 700;
 						            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.6)");">
 							@(over ? "GAME OVER" : (playing ? (UpName + " is up") : ("LOBBY — " + JoinedCount + " joined")))
 						</div>
 					</div>
 
+					@* Scoreboard area. In Practice the scorecard is moot: swap the frame grid for a PRACTICE MODE
+					   banner + the live throw queue (front of queue = current bowler, highlighted). Play renders the
+					   grid below unchanged. *@
+					@if ( ModeOn == GameDirector.LaneMode.Practice )
+					{
+						<div style="flex-direction: column; margin-bottom: 18px;">
+							<div style="flex-direction: row; align-items: center; margin-bottom: 10px;">
+								<div style="font-size: 22px; font-weight: 800; letter-spacing: 4px; color: #b07cd6;
+								            padding: 8px 16px; border-radius: 8px;
+								            background-color: rgba(155,89,182,0.16);
+								            border-width: 1px; border-color: rgba(155,89,182,0.4);">
+									PRACTICE MODE
+								</div>
+								<div style="flex-grow: 1;"></div>
+								<div style="font-size: 15px; font-weight: 700; color: rgba(255,255,255,0.55);
+								            align-items: center;">
+									<span>Drill: </span><span style="color: #b07cd6;">@DrillOn.ToString().ToUpper()</span>
+								</div>
+							</div>
+							<div style="font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 8px;
+							            letter-spacing: 2px;">THROW QUEUE</div>
+							@{ var queue = QueueNames; }
+							@if ( queue.Count == 0 )
+							{
+								<div style="font-size: 16px; color: rgba(255,255,255,0.5); padding: 8px 4px;">
+									No one queued yet — JOIN, then press START to open practice.
+								</div>
+							}
+							else
+							{
+								@for ( var qi = 0; qi < queue.Count; qi++ )
+								{
+									var current = qi == CurrentQueueIndex;
+									<div style="flex-direction: row; align-items: center; margin-bottom: 4px;
+									            padding: 6px 12px; border-radius: 6px;
+									            background-color: @(current ? "rgba(241,196,15,0.14)" : "rgba(255,255,255,0.03)");">
+										<div style="width: 34px; font-size: 15px; font-weight: 800;
+										            color: @(current ? "#f1c40f" : "rgba(255,255,255,0.45)");">@(qi + 1)</div>
+										<div style="flex-grow: 1; font-size: 17px; font-weight: 700;
+										            color: @(current ? "#f1c40f" : "white");">@queue[qi]</div>
+										@if ( current )
+										{
+											<div style="font-size: 12px; font-weight: 800; letter-spacing: 2px;
+											            color: #f1c40f;">UP</div>
+										}
+									</div>
+								}
+							}
+						</div>
+					}
+					else
+					{
 					@* Scoreboard for every bowler. *@
 					<div style="flex-direction: column; margin-bottom: 18px;">
 						@foreach ( var p in Players )
@@ -134,6 +228,7 @@
 							</div>
 						}
 					</div>
+					}
 
 					@* Buttons. Game actions (START / STOP / RESET) on the LEFT; JOIN/LEAVE sits on the RIGHT next
 					   to CLOSE. *@
@@ -269,6 +364,42 @@
 	// StartAndApply once START has claimed the lane. Null = "no local override, show the lane's current value".
 	private bool? _pendingAim;
 	private bool? _pendingCrane;
+	private GameDirector.LaneMode? _pendingMode;
+	private GameDirector.PracticeDrill? _pendingDrill;
+
+	// The mode tier + drill options, iterated to render the segmented selectors — new enum members slot in
+	// with no razor change.
+	private static readonly GameDirector.LaneMode[] ModeTiers =
+		(GameDirector.LaneMode[])System.Enum.GetValues( typeof( GameDirector.LaneMode ) );
+	private static readonly GameDirector.PracticeDrill[] DrillTiers =
+		(GameDirector.PracticeDrill[])System.Enum.GetValues( typeof( GameDirector.PracticeDrill ) );
+	private static string ModeLabel( GameDirector.LaneMode m ) => m.ToString().ToUpper();
+
+	// Mode tier pick — same shape as the throw/crane toggles: a director writes straight through to the synced
+	// Mode; in the lobby it records a local pending pick applied on START. Display falls back to the lane's live
+	// value. Defaults Play.
+	private GameDirector.LaneMode ModeOn => _pendingMode ?? (Director?.Mode ?? GameDirector.LaneMode.Play);
+	private void PickMode( GameDirector.LaneMode m )
+	{
+		var d = Director;
+		if ( d is null ) return;
+		if ( d.IsDirector ) { d.SetMode( m ); _pendingMode = null; }
+		else _pendingMode = m; // lobby: local pick, applied on START
+	}
+
+	// Drill pick — same pattern; only meaningful in Practice. Defaults Regular.
+	private GameDirector.PracticeDrill DrillOn => _pendingDrill ?? (Director?.Drill ?? GameDirector.PracticeDrill.Regular);
+	private void PickDrill( GameDirector.PracticeDrill dr )
+	{
+		var d = Director;
+		if ( d is null ) return;
+		if ( d.IsDirector ) { d.SetDrill( dr ); _pendingDrill = null; }
+		else _pendingDrill = dr; // lobby: local pick, applied on START
+	}
+
+	// Practice throw queue — reuses the roster machinery (front of queue = CurrentPlayer).
+	private List<string> QueueNames => Director?.RosterNames?.ToList() ?? new();
+	private int CurrentQueueIndex => Director?.CurrentPlayer ?? 0;
 
 	// Throw-mode toggle. Once you run the lane (director) it writes straight through to the synced AimMode; in the
 	// lobby it just records a local pending pick. Display falls back to the lane's live value. Defaults FREE.
@@ -302,9 +433,13 @@
 		{
 			if ( _pendingAim.HasValue ) d.SetAimMode( _pendingAim.Value );
 			if ( _pendingCrane.HasValue ) d.SetCraneEnabled( _pendingCrane.Value );
+			if ( _pendingMode.HasValue ) d.SetMode( _pendingMode.Value );
+			if ( _pendingDrill.HasValue ) d.SetDrill( _pendingDrill.Value );
 		}
 		_pendingAim = null;
 		_pendingCrane = null;
+		_pendingMode = null;
+		_pendingDrill = null;
 	}
 
 	// CLOSE button: hand back to the avatar so it restores look + cursor exactly like pressing E.
@@ -328,6 +463,12 @@
 		hash.Add( d?.AimMode );
 		hash.Add( AimOn );
 		hash.Add( CraneOn );
+		hash.Add( d?.Mode );
+		hash.Add( d?.Drill );
+		hash.Add( ModeOn );
+		hash.Add( DrillOn );
+		foreach ( var name in QueueNames )
+			hash.Add( name );
 		foreach ( var p in Players )
 		{
 			hash.Add( p.Name );
