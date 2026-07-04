@@ -49,7 +49,7 @@
 
 					@* Header: title + game state. *@
 					<div style="flex-direction: row; align-items: center; margin-bottom: 16px;">
-						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 1px;">
+						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 6px;">
 							LANE <span style="color: #5aa0e6;">@LaneNumber</span> CONTROLS
 						</div>
 						@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). Shown in the
@@ -135,19 +135,11 @@
 						}
 					</div>
 
-					@* Buttons. *@
+					@* Buttons. Game actions (START / STOP / RESET) on the LEFT; JOIN/LEAVE sits on the RIGHT next
+					   to CLOSE. *@
 					<div style="flex-direction: row; align-items: center;">
-						@if ( me is not null && !playing )
-						{
-							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
-							            font-size: 18px; font-weight: 700; cursor: pointer;
-							            background-color: @(me.Joined ? "rgba(192,57,43,0.9)" : "rgba(46,204,113,0.9)");"
-							     onclick=@ToggleJoin>
-								@(me.Joined ? "LEAVE" : "JOIN")
-							</div>
-						}
 						@* START: any player at the lobby can begin a game — it CLAIMS this lane's director so
-						   they run it. STOP: only the player who claimed the lane (its director-owner). *@
+						   they run it. STOP/RESET: only the player who claimed the lane (its director-owner). *@
 						@if ( !playing )
 						{
 							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
@@ -163,8 +155,23 @@
 							     onclick=@(() => director.StopGame())>
 								STOP
 							</div>
+							@* RESET: wipe the current game's scores and start over from frame 1 with the same roster. *@
+							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+							            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(230,126,34,0.9);"
+							     onclick=@(() => director.ResetGame())>
+								RESET
+							</div>
 						}
 						<div style="flex-grow: 1;"></div>
+						@if ( me is not null && !playing )
+						{
+							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
+							            font-size: 18px; font-weight: 700; cursor: pointer;
+							            background-color: @(me.Joined ? "rgba(192,57,43,0.9)" : "rgba(46,204,113,0.9)");"
+							     onclick=@ToggleJoin>
+								@(me.Joined ? "LEAVE" : "JOIN")
+							</div>
+						}
 						<div style="pointer-events: all; padding: 12px 28px; border-radius: 9px;
 						            font-size: 18px; font-weight: 700; cursor: pointer;
 						            background-color: rgba(255,255,255,0.12);"

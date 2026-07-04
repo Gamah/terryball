@@ -410,7 +410,24 @@ public sealed class GameDirector : Component
 		if ( Phase == GamePhase.Playing ) return;
 		ClaimDirector();               // become this lane's authority before we write any synced state
 		if ( !IsDirector ) return;     // ownership didn't take (shouldn't happen with Takeover) — bail
+		TipOffFreshGame( "START" );
+	}
 
+	/// <summary>Director: wipe the current game's scores and tip off a brand-new one for the SAME lane —
+	/// same joined roster, back to frame 1, fresh rack — without dropping everyone to the lobby. The
+	/// "start over" button for a game that's gone sideways.</summary>
+	public void ResetGame()
+	{
+		if ( !IsDirector ) return;
+		if ( Phase != GamePhase.Playing ) return;
+		TipOffFreshGame( "RESET" );
+	}
+
+	// Lock the currently-joined players into a clean scorecard and tip off frame 1: rebuild the roster,
+	// zero the cards, rack a fresh deck, and spotlight the first bowler. Shared by START (from the lobby)
+	// and RESET (mid-game start-over) — the caller has already secured director ownership.
+	private void TipOffFreshGame( string reason )
+	{
 		// Only roster players who joined THIS lane (each lane runs its own game), so with N lanes a START
 		// on one alley doesn't sweep up everyone who's joined elsewhere.
 		var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
@@ -442,7 +459,7 @@ public sealed class GameDirector : Component
 		HostRackForNextBowler( instant: true );
 		SetActiveBowler();
 		PublishScores();
-		Log.Info( $"[terryball][game] START — {_players.Count} bowler(s), frame 1" );
+		Log.Info( $"[terryball][game] {reason} — {_players.Count} bowler(s), frame 1" );
 	}
 
 	/// <summary>Director: clear the scorecard, drop everyone back to the lobby (walking the settee), and
