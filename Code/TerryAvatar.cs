@@ -111,6 +111,7 @@ public sealed class TerryAvatar : Component
 	private GameObject _body;
 	private bool _wasBowling;   // edge-detect the end of our turn, to walk us back to the settee
 	private bool _wasCarried;   // edge-detect leaving the ball, to carry the view aim into the walk camera
+	private bool _designPublished; // have we (re-)pushed our ball design AFTER networking went live? (see OnUpdate)
 	private Rotation _lastInBallCamRot = Rotation.Identity; // ball-cam aim, cached while carried, for the hand-off
 
 	// Where the crane grabbed us (or the settee middle, if we were grabbed off it) — the turn-end drop
@@ -241,6 +242,17 @@ public sealed class TerryAvatar : Component
 		// Only the local player drives the walk-up controls (proxies are other people's avatars).
 		if ( !IsProxy )
 		{
+			// The one-time design write in OnStart can land BEFORE this avatar is fully networked — it's
+			// host-spawned (AlleyServer) with ownership handed to us — so that lone [Sync] write never goes
+			// out and every spectator keeps the DEFAULT ball skin forever. Re-assert it once networking is
+			// live so the owner→everyone replication actually fires. (Same-value re-writes once it's settled
+			// are cheap no-ops; the sync layer only sends real changes.)
+			if ( !_designPublished && Network.Active )
+			{
+				ApplyDesign( BallDesign.Load(), save: false );
+				_designPublished = true;
+			}
+
 			// Safety: if we're not up, we're not in the ball — never leave a non-bowling avatar stuck
 			// invisible (e.g. STOP/disconnect mid-crane).
 			if ( !Bowling && Carried )
