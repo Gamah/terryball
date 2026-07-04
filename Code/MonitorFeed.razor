@@ -12,8 +12,8 @@
 	frame (it's a render target), so we only need to point the panel background at it.
 
 	When the lane's active bowler is lining up a GUIDED ("Aim") throw, we also overlay a duplicate of
-	their LINE/AIM/POWER/SPIN step meter along the bottom of the feed — a broadcast-style lower third —
-	so the seated spectators can read the throw being set up. It draws from the state the bowler mirrors
+	their LINE/AIM/POWER/SPIN step meter floating just ABOVE the feed board — a broadcast-style card that
+	sits over the screen rather than covering the shot — so the seated spectators can read the throw. It draws from the state the bowler mirrors
 	onto their networked avatar (TerryAvatar.AimHudActive & co, published by their client-local
 	ThrowAimer), so it shows and hides for exactly as long as the bowler's own HUD meter does.
 *@
@@ -88,63 +88,66 @@
 </root>
 
 <style>
-	/* Lower-third card pinned across the bottom of the feed, so it reads as a broadcast overlay on the
-	   bowler's shot rather than covering it. Sized for the 1280×720 feed coordinate space. */
+	/* Broadcast-style card floating ABOVE the feed board rather than covering the shot. Anchored off the
+	   top edge of the root (bottom: 100%) so it stacks upward, out of the video. NOTE: a WorldPanel root
+	   is Scale 2, so the real CSS area is PanelSize/2 = 640×360 — everything here is sized against that
+	   (a couple hundred px wide), not the 1280×720 feed pixels, or the card overflows the whole screen. */
 	.lower3 {
 		position: absolute;
 		left: 0px;
 		right: 0px;
-		bottom: 28px;
+		bottom: 100%;
+		margin-bottom: 14px;
 		flex-direction: column;
 		align-items: center;
 		font-family: Poppins, sans-serif;
 	}
 
 	.feedtag {
-		font-size: 22px;
+		font-size: 14px;
 		font-weight: 700;
-		letter-spacing: 3px;
+		letter-spacing: 2px;
 		color: rgba(255, 255, 255, 0.85);
-		margin-bottom: 8px;
-		padding: 4px 16px;
+		margin-bottom: 5px;
+		padding: 3px 11px;
 		background-color: rgba(0, 0, 0, 0.55);
-		border-radius: 6px;
+		border-radius: 5px;
 	}
 
 	.meter {
-		width: 820px;
+		width: 470px;
 		flex-direction: column;
 		align-items: center;
-		padding: 18px 30px;
-		background-color: rgba(0, 0, 0, 0.68);
-		border-radius: 18px;
+		padding: 12px 20px;
+		background-color: rgba(0, 0, 0, 0.72);
+		border-radius: 12px;
 	}
 
 	.title {
-		font-size: 30px;
+		font-size: 20px;
 		font-weight: 700;
-		letter-spacing: 2px;
+		letter-spacing: 1px;
 		color: white;
-		margin-bottom: 14px;
+		margin-bottom: 9px;
 	}
 
 	.ghosts {
 		width: 100%;
 		flex-direction: column;
-		gap: 8px;
-		margin-bottom: 14px;
+		gap: 5px;
+		margin-bottom: 9px;
 	}
 
 	.grow {
 		flex-direction: row;
 		align-items: center;
-		gap: 12px;
+		gap: 8px;
 		opacity: 0.55;
 	}
 
 	.glabel {
-		width: 92px;
-		font-size: 18px;
+		width: 60px;
+		font-size: 12px;
 		font-weight: 600;
 		letter-spacing: 1px;
 		color: rgba(255, 255, 255, 0.75);
@@ -152,9 +155,9 @@
 
 	.gtrack {
 		flex-grow: 1;
-		height: 12px;
+		height: 8px;
 		background-color: rgba(46, 51, 64, 0.9);
-		border-radius: 6px;
+		border-radius: 4px;
 		position: relative;
 	}
 
@@ -162,72 +165,72 @@
 		position: absolute;
 		left: 50%;
 		margin-left: -1px;
-		top: 2px;
-		bottom: 2px;
-		width: 3px;
+		top: 1px;
+		bottom: 1px;
+		width: 2px;
 		background-color: rgba(255, 255, 255, 0.22);
 	}
 
 	.gcaret {
 		position: absolute;
-		margin-left: -3px;
-		top: -3px;
-		bottom: -3px;
-		width: 7px;
-		border-radius: 4px;
+		margin-left: -2px;
+		top: -2px;
+		bottom: -2px;
+		width: 5px;
+		border-radius: 3px;
 		background-color: rgb(90, 200, 255);
 	}
 
 	.track {
 		width: 100%;
-		height: 28px;
+		height: 18px;
 		background-color: rgba(46, 51, 64, 0.95);
-		border-radius: 14px;
+		border-radius: 9px;
 		position: relative;
 	}
 
 	.center {
 		position: absolute;
 		left: 50%;
-		margin-left: -2px;
-		top: 3px;
-		bottom: 3px;
-		width: 3px;
+		margin-left: -1px;
+		top: 2px;
+		bottom: 2px;
+		width: 2px;
 		background-color: rgba(255, 255, 255, 0.28);
 	}
 
 	.sweet {
 		position: absolute;
-		margin-left: -3px;
-		top: -5px;
-		bottom: -5px;
-		width: 7px;
-		border-radius: 4px;
+		margin-left: -2px;
+		top: -3px;
+		bottom: -3px;
+		width: 5px;
+		border-radius: 3px;
 		background-color: rgba(255, 255, 255, 0.9);
 	}
 
 	.caret {
 		position: absolute;
 		left: 0%;
-		margin-left: -5px;
-		top: -7px;
-		bottom: -7px;
-		width: 11px;
-		border-radius: 6px;
+		margin-left: -3px;
+		top: -4px;
+		bottom: -4px;
+		width: 7px;
+		border-radius: 4px;
 		background-color: rgb(90, 200, 255);
-		box-shadow: 0px 0px 14px 2px rgba(90, 200, 255, 0.8);
+		box-shadow: 0px 0px 9px 1px rgba(90, 200, 255, 0.8);
 	}
 
 	.pips {
 		flex-direction: row;
-		gap: 15px;
-		margin-top: 18px;
+		gap: 10px;
+		margin-top: 11px;
 	}
 
 	.pip {
-		width: 16px;
-		height: 16px;
-		border-radius: 8px;
+		width: 11px;
+		height: 11px;
+		border-radius: 6px;
 		background-color: rgba(70, 76, 92, 1);
 	}
 
