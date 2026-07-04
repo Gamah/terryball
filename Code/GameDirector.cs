@@ -1158,14 +1158,29 @@ public sealed class GameDirector : Component
 	{
 		if ( !IsDirector || Mode != LaneMode.Practice || Phase != GamePhase.Playing ) return;
 
-		var callerId = Rpc.Caller?.Id ?? LocalConnId;
-		if ( callerId == Guid.Empty ) return;
-		if ( _rosterIds.Contains( callerId ) ) return; // already queued / up
-
 		var laneId = Lane.Of( this )?.GameObject.Id ?? Guid.Empty;
-		var av = Scene.GetAllComponents<TerryAvatar>()
-			.FirstOrDefault( a => a.IsValid() && (a.GameObject.Network.Owner?.Id ?? Guid.Empty) == callerId );
-		if ( av is null || !av.Joined || av.JoinedLaneId != laneId ) return; // must be on this lane
+
+		// Identify the caller's avatar. Networked: by connection id. Editor/solo (no session): the one local
+		// avatar (ids are all Guid.Empty with no network, so we can't match by id).
+		TerryAvatar av;
+		Guid callerId;
+		if ( Networking.IsActive )
+		{
+			callerId = Rpc.Caller?.Id ?? LocalConnId;
+			av = Scene.GetAllComponents<TerryAvatar>()
+				.FirstOrDefault( a => a.IsValid() && (a.GameObject.Network.Owner?.Id ?? Guid.Empty) == callerId );
+		}
+		else
+		{
+			av = Scene.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
+			callerId = av?.GameObject.Network.Owner?.Id ?? Guid.Empty;
+		}
+		if ( av is null ) return;
+
+		// Tolerate the "get in line" auto-join not having replicated yet: accept an avatar bound to THIS lane
+		// or not yet bound anywhere (the client set Joined locally a tick ago), but reject one bound elsewhere.
+		if ( av.JoinedLaneId != Guid.Empty && av.JoinedLaneId != laneId ) return;
+		if ( _rosterIds.Contains( callerId ) ) return; // already queued / up
 
 		_rosterIds.Add( callerId );
 		_players.Add( new PlayerScore( av.DisplayName ) );

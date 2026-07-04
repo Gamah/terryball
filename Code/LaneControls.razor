@@ -23,10 +23,10 @@
 		var over = director?.GameOver ?? false;
 		var practice = director?.Mode == GameDirector.LaneMode.Practice;
 		var practiceIdle = director?.PracticeIdle ?? false;
-		var laneId = ActiveLane?.GameObject.Id ?? System.Guid.Empty;
-		var joinedHere = me is not null && me.Joined && me.JoinedLaneId == laneId;
-		// "Get in line": only in a running practice lane, when you're joined here and not already queued/up.
-		var canGetInLine = practice && playing && joinedHere && !(director?.LocalQueued ?? false);
+		// "Get in line": in a running practice lane, whenever you're not already queued/up. We're already inside
+		// the "controls open" gate, so being here means you're AT this lane — the click auto-joins you (see
+		// GetInLine), so there's no JOIN-first prerequisite to get stuck behind.
+		var canGetInLine = practice && playing && !(director?.LocalQueued ?? false);
 	}
 
 	@if ( director is not null )
@@ -280,7 +280,7 @@
 						{
 							<div style="pointer-events: all; margin-right: 12px; padding: 12px 28px; border-radius: 9px;
 							            font-size: 18px; font-weight: 700; cursor: pointer; background-color: rgba(46,204,113,0.9);"
-							     onclick=@(() => director.JoinQueueRpc())>
+							     onclick=@GetInLine>
 								GET IN LINE
 							</div>
 						}
@@ -461,6 +461,24 @@
 		_pendingCrane = null;
 		_pendingMode = null;
 		_pendingDrill = null;
+	}
+
+	// GET IN LINE: opt into the practice throw queue for one drill round. Queue membership is distinct from
+	// being JOINed to the lane, but getting in line implies you're here — so this joins you to THIS lane (if
+	// you aren't already) and then enqueues, in a single press. Setting Joined on our OWN avatar is
+	// authoritative locally; the director's JoinQueueRpc tolerates the sync not having landed yet.
+	private void GetInLine()
+	{
+		var d = Director;
+		var av = LocalAvatar;
+		var lane = ActiveLane;
+		if ( d is null || av is null || lane is null ) return;
+		if ( !av.Joined || av.JoinedLaneId != lane.GameObject.Id )
+		{
+			av.JoinedLaneId = lane.GameObject.Id;
+			av.Joined = true;
+		}
+		d.JoinQueueRpc();
 	}
 
 	// CLOSE button: hand back to the avatar so it restores look + cursor exactly like pressing E.
