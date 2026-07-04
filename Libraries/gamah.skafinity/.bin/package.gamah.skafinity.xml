@@ -74,7 +74,7 @@
         <member name="P:Skafinity.SkafinityPlayer.RandomEverySong">
             <summary>Shuffle mode: re-randomise every knob (incl. genre) as each new song begins, so the
             sequence keeps reinventing itself. Volumes are left alone (a local mix preference). Off = the
-            seed's vibe stays put.</summary>
+            seed's vibe stays put. ON by default — endless variety out of the box.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.Tag">
             <summary>Seed tag — any string (a name, a word). Empty falls back to "skafinity".</summary>
@@ -87,7 +87,9 @@
             the matching inspector knobs, so a shared vibe reproduces the same voicing on any client.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.PersistProgress">
-            <summary>Persist the current song index across sessions (FileSystem.Data, keyed by <see cref="P:Skafinity.SkafinityPlayer.SaveSlot"/>).</summary>
+            <summary>Persist the player state across sessions (FileSystem.Data, keyed by <see cref="P:Skafinity.SkafinityPlayer.SaveSlot"/>):
+            the seed (tag + song index + vibe) and the listening settings not covered by the seed
+            (shuffle, mute, volume). ON by default so the player picks up where it left off.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.TargetSeconds">
             <summary>Target track length; bar count adapts to tempo to hit this.</summary>
@@ -335,10 +337,13 @@
             in the scene on start.</summary>
         </member>
         <member name="P:Skafinity.SkafinityMusicPanel.IsOpen">
-            <summary>Whether the settings board is showing (toggled by the ♪ button).</summary>
+            <summary>Whether the settings board is showing. Host-driven — set it from your game (or
+            call <see cref="M:Skafinity.SkafinityMusicPanel.Toggle"/>) to wire the board to a hotkey / pause menu / your own button.
+            This component ships no launcher of its own.</summary>
         </member>
         <member name="M:Skafinity.SkafinityMusicPanel.Toggle">
-            <summary>Open/close the settings board.</summary>
+            <summary>Open/close the settings board. Convenience for hosts that want to bind a single
+            action; you can also set <see cref="P:Skafinity.SkafinityMusicPanel.IsOpen"/> directly.</summary>
         </member>
     </members>
 </doc>
