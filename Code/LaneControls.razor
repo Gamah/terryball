@@ -49,89 +49,91 @@
 		{
 			<div style="position: absolute; width: 100%; height: 100%;
 			            flex-direction: column; align-items: center; justify-content: center;">
-				<div style="pointer-events: all; flex-direction: column; width: 1120px;
-				            padding: 26px 30px; border-radius: 18px; background-color: rgba(8,10,16,0.97);
+				<div style="pointer-events: all; flex-direction: column; width: 70%; height: 95%;
+				            padding: 28px 34px; border-radius: 18px; background-color: rgba(8,10,16,0.97);
 				            border-width: 2px; border-color: rgba(120,160,220,0.5);">
 
-					@* Header: title + game state. *@
-					<div style="flex-direction: row; align-items: center; margin-bottom: 16px;">
-						<div style="font-size: 30px; font-weight: 800; flex-grow: 1; letter-spacing: 6px;">
-							LANE <span style="color: #5aa0e6;">@LaneNumber</span> CONTROLS
+					@* Header: title + game state on their own top row, the lane-wide toggles on a second wrapping row.
+					   Every label carries white-space: nowrap + flex-shrink: 0 so a tight panel can't shatter the
+					   words into columns (s&box flex has no inline text flow — see the span-columns gotcha). *@
+					<div style="flex-direction: column; margin-bottom: 18px;">
+						<div style="flex-direction: row; align-items: center; margin-bottom: 14px;">
+							<div style="font-size: 32px; font-weight: 800; flex-grow: 1; letter-spacing: 6px;
+							            white-space: nowrap;">
+								LANE <span style="color: #5aa0e6;">@LaneNumber</span> CONTROLS
+							</div>
+							<div style="font-size: 20px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
+							            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.6)");">
+								@(over ? "GAME OVER"
+								  : (playing
+								     ? (practiceIdle ? "PRACTICE — get in line to bowl" : (UpName + " is up"))
+								     : ("LOBBY — " + JoinedCount + " joined")))
+							</div>
 						</div>
-						@* Throw mode — a lane-wide setting (every bowler on the lane rolls the same way). Shown in the
-						   LOBBY too: there it's a LOCAL pending pick (see ToggleAim) that gets written when you press
-						   START and claim the lane — it never grabs the director off a bare toggle, which is what broke
-						   joining before (commit 7292bf3). Once you run the lane it writes straight through. *@
-						@if ( CanDirect || !playing )
-						{
-							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
-							            font-size: 15px; font-weight: 700; cursor: pointer;
-							            border-width: 1px; border-color: rgba(120,160,220,0.4);
-							            background-color: @(AimOn ? "rgba(155,89,182,0.20)" : "rgba(255,255,255,0.06)");"
-							     onclick=@ToggleAim>
-								Throw: <span style="color: @(AimOn ? "#b07cd6" : "#5aa0e6");">@(AimOn ? "AIM" : "FREE")</span>
-							</div>
-						}
-						@* Ball Crane — same lane-wide setting; shown in the lobby as a local pending pick alongside the
-						   throw toggle, applied on START. *@
-						@if ( CanDirect || !playing )
-						{
-							<div style="pointer-events: all; margin-right: 16px; padding: 8px 16px; border-radius: 8px;
-							            font-size: 15px; font-weight: 700; cursor: pointer;
-							            border-width: 1px; border-color: rgba(120,160,220,0.4);
-							            background-color: @(CraneOn ? "rgba(46,204,113,0.18)" : "rgba(255,255,255,0.06)");"
-							     onclick=@ToggleCrane>
-								Ball Crane: <span style="color: @(CraneOn ? "#2ecc71" : "rgba(255,255,255,0.55)");">@(CraneOn ? "ON" : "OFF")</span>
-							</div>
-						}
-						@* Mode tier — the lane-wide experience (Play = the 10-frame game, Practice = a live queue with
-						   per-turn drills). Same lobby-pending pattern as the throw/crane toggles: a director writes
-						   straight through SetMode, a lobby joiner stashes a local pick (see PickMode) applied on START.
-						   Rendered as a segmented control that iterates the enum, so future modes slot in for free. *@
-						@if ( CanDirect || !playing )
-						{
-							<div style="flex-direction: row; align-items: center; margin-right: 16px; padding: 3px;
-							            border-radius: 8px; border-width: 1px; border-color: rgba(120,160,220,0.4);
-							            background-color: rgba(255,255,255,0.06);">
-								@foreach ( var m in ModeTiers )
-								{
-									var on = ModeOn == m;
-									<div style="pointer-events: all; padding: 5px 12px; border-radius: 6px;
-									            font-size: 15px; font-weight: 700; cursor: pointer;
-									            background-color: @(on ? "rgba(52,152,219,0.28)" : "transparent");
-									            color: @(on ? "#5aa0e6" : "rgba(255,255,255,0.55)");"
-									     onclick=@(() => PickMode( m ))>
-										@ModeLabel( m )
-									</div>
-								}
-							</div>
-						}
-						@* Drill selector — a lane-wide setting for what the rack looks like each practice turn. Only shown
-						   in Practice; same pending pattern (see PickDrill), routed through SetDrill. *@
-						@if ( (CanDirect || !playing) && ModeOn == GameDirector.LaneMode.Practice )
-						{
-							<div style="flex-direction: row; align-items: center; margin-right: 16px; padding: 3px;
-							            border-radius: 8px; border-width: 1px; border-color: rgba(155,89,182,0.4);
-							            background-color: rgba(255,255,255,0.06);">
-								@foreach ( var dr in DrillTiers )
-								{
-									var on = DrillOn == dr;
-									<div style="pointer-events: all; padding: 5px 10px; border-radius: 6px;
-									            font-size: 14px; font-weight: 700; cursor: pointer;
-									            background-color: @(on ? "rgba(155,89,182,0.24)" : "transparent");
-									            color: @(on ? "#b07cd6" : "rgba(255,255,255,0.55)");"
-									     onclick=@(() => PickDrill( dr ))>
-										@dr.ToString()
-									</div>
-								}
-							</div>
-						}
-						<div style="font-size: 18px; font-weight: 700;
-						            color: @(over ? "#f1c40f" : "rgba(255,255,255,0.6)");">
-							@(over ? "GAME OVER"
-							  : (playing
-							     ? (practiceIdle ? "PRACTICE — get in line to bowl" : (UpName + " is up"))
-							     : ("LOBBY — " + JoinedCount + " joined")))
+
+						@* Lane-wide control toggles. Throw / Crane are shown in the lobby too as LOCAL pending picks
+						   (see ToggleAim/ToggleCrane) applied on START — a bare toggle never grabs the director, which
+						   is what broke joining before (commit 7292bf3). Mode tier + Drill selector follow the same
+						   pending pattern (PickMode/PickDrill); Drill only shows in Practice. *@
+						<div style="flex-direction: row; flex-wrap: wrap; align-items: center;">
+							@if ( CanDirect || !playing )
+							{
+								<div style="pointer-events: all; margin-right: 14px; margin-bottom: 8px; padding: 8px 16px;
+								            border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;
+								            white-space: nowrap; flex-shrink: 0;
+								            border-width: 1px; border-color: rgba(120,160,220,0.4);
+								            background-color: @(AimOn ? "rgba(155,89,182,0.20)" : "rgba(255,255,255,0.06)");"
+								     onclick=@ToggleAim>
+									Throw: <span style="color: @(AimOn ? "#b07cd6" : "#5aa0e6");">@(AimOn ? "AIM" : "FREE")</span>
+								</div>
+							}
+							@if ( CanDirect || !playing )
+							{
+								<div style="pointer-events: all; margin-right: 14px; margin-bottom: 8px; padding: 8px 16px;
+								            border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;
+								            white-space: nowrap; flex-shrink: 0;
+								            border-width: 1px; border-color: rgba(120,160,220,0.4);
+								            background-color: @(CraneOn ? "rgba(46,204,113,0.18)" : "rgba(255,255,255,0.06)");"
+								     onclick=@ToggleCrane>
+									Ball Crane: <span style="color: @(CraneOn ? "#2ecc71" : "rgba(255,255,255,0.55)");">@(CraneOn ? "ON" : "OFF")</span>
+								</div>
+							}
+							@if ( CanDirect || !playing )
+							{
+								<div style="flex-direction: row; align-items: center; margin-right: 14px; margin-bottom: 8px;
+								            padding: 3px; flex-shrink: 0; border-radius: 8px; border-width: 1px;
+								            border-color: rgba(120,160,220,0.4); background-color: rgba(255,255,255,0.06);">
+									@foreach ( var m in ModeTiers )
+									{
+										var on = ModeOn == m;
+										<div style="pointer-events: all; padding: 6px 14px; border-radius: 6px;
+										            font-size: 16px; font-weight: 700; cursor: pointer; white-space: nowrap;
+										            background-color: @(on ? "rgba(52,152,219,0.28)" : "transparent");
+										            color: @(on ? "#5aa0e6" : "rgba(255,255,255,0.55)");"
+										     onclick=@(() => PickMode( m ))>
+											@ModeLabel( m )
+										</div>
+									}
+								</div>
+							}
+							@if ( (CanDirect || !playing) && ModeOn == GameDirector.LaneMode.Practice )
+							{
+								<div style="flex-direction: row; align-items: center; margin-right: 14px; margin-bottom: 8px;
+								            padding: 3px; flex-shrink: 0; border-radius: 8px; border-width: 1px;
+								            border-color: rgba(155,89,182,0.4); background-color: rgba(255,255,255,0.06);">
+									@foreach ( var dr in DrillTiers )
+									{
+										var on = DrillOn == dr;
+										<div style="pointer-events: all; padding: 6px 12px; border-radius: 6px;
+										            font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap;
+										            background-color: @(on ? "rgba(155,89,182,0.24)" : "transparent");
+										            color: @(on ? "#b07cd6" : "rgba(255,255,255,0.55)");"
+										     onclick=@(() => PickDrill( dr ))>
+											@dr.ToString()
+										</div>
+									}
+								</div>
+							}
 						</div>
 					</div>
 
@@ -239,9 +241,13 @@
 					</div>
 					}
 
+					@* Flexible spacer: fills the now-tall panel so the action buttons sit pinned at the bottom
+					   instead of floating right under the scoreboard. *@
+					<div style="flex-grow: 1; min-height: 16px;"></div>
+
 					@* Buttons. Game actions (START / STOP / RESET) on the LEFT; JOIN/LEAVE sits on the RIGHT next
 					   to CLOSE. *@
-					<div style="flex-direction: row; align-items: center;">
+					<div style="flex-direction: row; align-items: center; flex-shrink: 0;">
 						@* START: any player at the lobby can begin a game — it CLAIMS this lane's director so
 						   they run it. STOP/RESET: only the player who claimed the lane (its director-owner). *@
 						@if ( !playing )
