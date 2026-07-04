@@ -92,33 +92,30 @@ def wood(name, seed, c_light, c_dark, c_seam, planks=6, rough_lo=0.18, rough_hi=
     # Planks run along X; seams are periodic in Y.
     plank_v = (Y * planks) % 1.0
     plank_id = np.floor(Y * planks).astype(int)
-    # Full organic 2D wood grain (the original rich look): a few soft grain lines plus
-    # a low-freq base tone. On its own this BANDS when tiled down the lane — the same
-    # blotches recur at every repeat AND line up across every board at once, reading as
-    # a stripe across the whole lane. Fix: slide EACH plank along its length by its own
-    # amount, so the dark features stagger board-to-board and never form a coherent band
-    # (each board keeps its full grain). A per-LANE offset can't do this — it shifts
-    # every board the same, so they stay aligned. Everything wraps, so the tile stays
-    # seamless; the per-plank roll's row-to-row jump is hidden under the seam groove.
-    base_tone = fbm(rng, octaves=4, base=3)
-    warp = fbm(rng, octaves=4, base=5) - 0.5          # flowing wander, ~[-.5, .5]
-    lines = 18                                        # grain lines across a whole tile
-    ripple = np.sin((Y * lines + warp * 3.0) * 2 * np.pi) * 0.5 + 0.5
-    grain = norm01(base_tone * 0.6 + ripple * 0.22)
-    grain = 0.32 + 0.55 * grain                       # compress tonal range -> soft contrast
-    # Per-plank lengthwise roll (columns = X = lane length): shift each plank's whole
-    # grain block by a random column offset, so neighbouring boards don't share the
-    # same lengthwise features. plank_id is constant along a row, so this is a per-row
-    # column roll.
-    row_plank = plank_id[:, 0] % planks
-    plank_off = (rng.random(planks) * N).astype(int)
-    cols = (np.arange(N)[None, :] - plank_off[row_plank][:, None]) % N
-    grain = grain[np.arange(N)[:, None], cols]
-    # Per-plank tone offset so neighbours differ. Periodic over `planks` (3 is coprime
-    # to 5 and 7) so the first/last plank tones match and the tile wraps in Y too.
-    tone = (np.sin(2 * np.pi * 3 * plank_id.astype(np.float32) / planks) * 0.5 + 0.5)
+    # A lane is quarter-sawn maple: boards run the FULL length with straight grain and
+    # no lengthwise change. So this texture is INVARIANT along the lane length (X) and
+    # varies only ACROSS the boards (Y). The lane tiles it ~24x down its 60ft length, so
+    # anything that varies along X repeats at that period and reads as a BAND every few
+    # feet — and a single tiled texture can only shift each board's PHASE, never its
+    # PERIOD, so per-board staggering can't remove the band (every board re-aligns each
+    # tile). Being invariant along X makes tiling down the lane literally seamless
+    # (identical columns): no band, by construction. Wood character therefore comes
+    # entirely from cross-board richness. Every field below is a column broadcast along X.
+    col1d = lambda f: np.broadcast_to(np.asarray(f)[:, :1], (N, N))
+
+    # Fine straight grain lines running the length (quarter-sawn look). Their spacing
+    # across the boards is domain-warped so they're organically uneven, not ruler-pitched.
+    warp = col1d(fbm(rng, octaves=4, base=6)) - 0.5
+    lines = 46                                         # dense fine grain across the tile
+    gl = np.abs(np.sin((Y * lines + warp * 4.0) * np.pi))  # 0 at each grain line, 1 between
+    grainline = gl ** 0.5                              # sharpen the darker line cores
+    figure = col1d(fbm(rng, octaves=4, base=9))        # soft within-board figure (Y only)
+    grain = np.clip(0.5 + 0.34 * grainline + (figure - 0.5) * 0.28, 0, 1)
+    # Per-board maple shade: each board its own tone (some lighter, some darker) so the
+    # boards read distinct. Constant along X within a board (plank_id doesn't vary in X).
+    shade = rng.random(planks).astype(np.float32)[plank_id % planks]
     col = lerp(c_dark, c_light, grain)                 # (N,N,3)
-    col = col * (0.82 + 0.18 * tone)[..., None]
+    col = col * (0.78 + 0.30 * shade)[..., None]
     # Dark seam grooves between planks.
     seam = np.exp(-(plank_v ** 2) / (2 * 0.006 ** 2))
     seam += np.exp(-((plank_v - 1.0) ** 2) / (2 * 0.006 ** 2))
