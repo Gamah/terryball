@@ -118,10 +118,10 @@ public sealed class TerryAvatar : Component
 	{
 		if ( IsProxy || !Network.Active ) return;
 		var dir = Director;
-		if ( !_designSendLogged )
+		if ( !_designSendLogged && dir is not null )
 		{
-			Log.Info( $"[terryball][skin] avatar SEND design pat={BallPatternId} p={BallPrimaryHue:0} a={BallAccentHue:0} -> dir={(dir is null ? "NULL" : "ok")} (lane={JoinedLaneId})" );
-			_designSendLogged = dir is not null; // log until we actually have a director to send to
+			_designSendLogged = true;
+			Log.Info( $"[terryball][skin] avatar SEND design pat={BallPatternId} p={BallPrimaryHue:0} a={BallAccentHue:0} -> dir=ok (lane={JoinedLaneId})" );
 		}
 		dir?.SetBallDesignRpc( BallPatternId, BallPrimaryHue, BallAccentHue );
 	}

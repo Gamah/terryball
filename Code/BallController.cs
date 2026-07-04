@@ -324,8 +324,16 @@ public sealed class BallController : Component, Component.ICollisionListener
 	// fields reliably reach late joiners, so a spectator connecting mid-turn skins the same as everyone else
 	// (the avatar's own design fields did not — see the note on GameDirector.ActiveBallPatternId). Regenerates
 	// the colour map only when the design actually changes — live designer edits update it, otherwise idle.
+	private float _skinDbgAt; // TEMP diag throttle
 	private void SkinToBowler()
 	{
+		if ( Time.Now >= _skinDbgAt )
+		{
+			_skinDbgAt = Time.Now + 1f;
+			var dir = Director;
+			Log.Info( $"[terryball][skin] ball TICK built={_built} proxy={Network.IsProxy} laneOf={(Lane.Of( this )?.GameObject.Name ?? "NULL")} dir={(dir is null ? "NULL" : "ok")} active={dir?.ActiveBowlerId} design={(dir is null ? "?" : $"{dir.ActiveBallPatternId}/{dir.ActiveBallPrimaryHue:0}/{dir.ActiveBallAccentHue:0}")}" );
+		}
+
 		if ( Director is null ) return;
 
 		var design = Director.ActiveBallDesign;
@@ -656,6 +664,12 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// Lazy build: stay an empty, cheap networked object until this lane is in use, then build once.
 		if ( !_built )
 		{
+			if ( Time.Now >= _skinDbgAt )
+			{
+				_skinDbgAt = Time.Now + 1f;
+				var dir = Director;
+				Log.Info( $"[terryball][skin] ball PREBUILD shouldBuild={ShouldBuild} proxy={Network.IsProxy} laneOf={(Lane.Of( this )?.GameObject.Name ?? "NULL")} dir={(dir is null ? "NULL" : "ok")} laneActive={dir?.LaneActive} active={dir?.ActiveBowlerId}" );
+			}
 			if ( !ShouldBuild ) return;
 			EnsureBuilt();
 		}
