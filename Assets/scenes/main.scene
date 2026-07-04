@@ -29,7 +29,7 @@
           "__type": "Terryball.AlleyReverb",
           "__guid": "b0000001-0003-4000-8000-000000000003",
           "__enabled": true,
-          "Preset": "room.diffuse.huge",
+          "Preset": "concrete.small",
           "MixerName": "Game",
           "Wet": 1
         }
