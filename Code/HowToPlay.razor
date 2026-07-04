@@ -7,8 +7,9 @@
 @*
 	The how-to-play screen. Walking up to the HELP podium on the settee and pressing E opens this
 	(TerryAvatar runs the engage / cursor-free, the same as the other two podiums). Read-only text —
-	joining/starting at the lane controls (incl. the ball-crane toggle), the ball designer, and the
-	actual bowling controls. Pointer-events: none except the modal, like LaneControls/BallDesigner.
+	joining/starting at the lane controls (incl. the Throw-style and ball-crane toggles), the ball
+	designer, and the two bowling styles (FREE ride / guided AIM). Pointer-events: none except the
+	modal, like LaneControls/BallDesigner.
 *@
 
 <root style="position: absolute; width: 100%; height: 100%; pointer-events: none;
@@ -48,9 +49,10 @@
 					<div style="font-size: 17px; font-weight: 800; color: #5aa0e6; margin-bottom: 6px;">1 — JOIN &amp; START (the LANE podium)</div>
 					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 16px;">
 						Walk up to the LANE podium and press E to open the lane controls. Hit JOIN to get on the
-						roster (LEAVE to drop back out); the host presses START when everyone's in. The host can
-						also toggle the Ball Crane there — ON and the crane flies out to scoop each bowler into
-						the ball; OFF and you're placed straight in.
+						roster (LEAVE to drop back out); press START when everyone's in. Two lane-wide settings sit
+						up top — the Throw style (FREE or AIM, see step 3) and the Ball Crane (ON, the crane flies
+						out to scoop each bowler into the ball; OFF, you're placed straight in). Pick both in the
+						lobby before you press START.
 					</div>
 
 					<div style="font-size: 17px; font-weight: 800; color: #b07de6; margin-bottom: 6px;">2 — DESIGN YOUR BALL (the BALL podium)</div>
@@ -66,10 +68,22 @@
 					   text flow, so mixed spans shatter the paragraph into columns. Plain text lines only. *@
 					<div style="flex-direction: column; margin-bottom: 20px;">
 						<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 8px;">
-							When it's your turn you ride INSIDE the ball. Steer with WASD (mouse to look) — you have
-							full control all the way down the approach, right up until the blue THROW line. Crossing
-							it commits the throw and hands the ball to physics, so line it up and give it some pace.
-							Knock down all ten! (New throw styles coming soon.)
+							Your turn plays one of two ways, set by the Throw toggle at the LANE podium. Knock down all ten!
+						</div>
+						<div style="font-size: 15px; font-weight: 700; color: #6fd3ff; margin-bottom: 2px;">FREE — ride the ball</div>
+						<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 8px;">
+							You ride INSIDE the ball. Steer with WASD (mouse to look) — full control all the way down
+							the approach, right up to the blue THROW line. Crossing it commits the throw and hands the
+							ball to physics, so line it up and give it some pace.
+						</div>
+						<div style="font-size: 15px; font-weight: 700; color: #b07de6; margin-bottom: 2px;">AIM — guided throw</div>
+						<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 8px;">
+							The ball parks behind the foul line and you line the shot up in four steps — LINE, AIM,
+							POWER, SPIN. Slide each left/right with the mouse (or A/D) and lock it with click or Space;
+							right-click (or Backspace) steps back to redo one. POWER and SPIN have a sweet spot around
+							80% — maxing them out overcooks the shot. The curved aim arrow previews the hook: the ball
+							skids straight through the oiled front of the lane, then breaks toward the pocket over the
+							dry back end, so spin curves it LATE instead of flinging it off the line.
 						</div>
 						<div style="font-size: 15px; color: rgba(255,255,255,0.85);">
 							G bails you out of the ball; R respawns you on the settee if you get stuck walking around.
