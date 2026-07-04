@@ -332,6 +332,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		if ( _skinnedAny && design.Equals( _skinnedDesign ) ) return;
 		_skinnedDesign = design;
 		_skinnedAny = true;
+		Log.Info( $"[terryball][skin] ball SKIN pat={(int)design.Pattern} p={design.PrimaryHue:0} a={design.AccentHue:0} (active={Director.ActiveBowlerId})" );
 
 		_designMap?.Dispose();
 		_designMap = design.BuildColorMap();
