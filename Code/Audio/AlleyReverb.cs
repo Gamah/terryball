@@ -15,15 +15,19 @@ namespace Terryball;
 /// local audio DSP, and the mixer graph is per-client global, so ONE of these (on the World object) reverbs
 /// that client's whole SFX bus; each client runs its own.
 ///
-/// <see cref="Preset"/> is a <see cref="Sound.DspNames"/> name. Bowling-alley candidates, roughly
-/// small→huge: "brite.large", "concrete.large", "room.diffuse.huge", "chamber.large", "cavern.large".
+/// <see cref="Preset"/> is a <see cref="Sound.DspNames"/> name. For a big BOOMY, SPACY wash with NO
+/// discrete/repeated echoes, use a diffuse reverb-only preset — "room.diffuse.huge" (dark 1.6 kHz
+/// cutoff, long 0.97 feedback, 12 diffuse lines) is the sweet spot; "room.empty.huge" / "concrete.large"
+/// are a touch brighter/tighter. AVOID the "cavern.*" and "outside.*" presets: they layer a feedback
+/// DELAY line on top, which is the source of the fluttery repeated echoes.
 /// <see cref="Wet"/> is the dry/wet blend (1 = fully wet). Tune both live in the inspector.
 /// </summary>
 [Icon( "graphic_eq" )]
 public sealed class AlleyReverb : Component
 {
-	/// <summary>DSP reverb preset name (see <see cref="Sound.DspNames"/>). Default is intentionally big.</summary>
-	[Property] public string Preset { get; set; } = "cavern.large";
+	/// <summary>DSP reverb preset name (see <see cref="Sound.DspNames"/>). Diffuse + no delay line = a
+	/// smooth boomy tail with no repeated echoes.</summary>
+	[Property] public string Preset { get; set; } = "room.diffuse.huge";
 
 	/// <summary>Mixer the reverb inserts on. "Game" is the SFX bus (pins/ball/announcer); "Music" is separate.</summary>
 	[Property] public string MixerName { get; set; } = "Game";
