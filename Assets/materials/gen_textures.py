@@ -92,18 +92,25 @@ def wood(name, seed, c_light, c_dark, c_seam, planks=6, rough_lo=0.18, rough_hi=
     # Planks run along X; seams are periodic in Y.
     plank_v = (Y * planks) % 1.0
     plank_id = np.floor(Y * planks).astype(int)
-    # Grain: a FEW soft grain lines running down the plank (along X). Their across-
-    # board position (Y) is domain-warped by a flowing low-freq field, so the lines
-    # WANDER with irregular spacing instead of running ruler-straight and evenly
-    # pitched (which read as "stiff"), and there are few of them at low contrast so
-    # the surface reads as calm wood rather than busy corduroy. base_tone, warp and
-    # Y*lines are all periodic, so the tile still wraps seamlessly.
-    base_tone = fbm(rng, octaves=4, base=3)
-    warp = fbm(rng, octaves=4, base=5) - 0.5          # flowing wander, ~[-.5, .5]
-    lines = 18                                        # grain lines across a whole tile
-    ripple = np.sin((Y * lines + warp * 3.0) * 2 * np.pi) * 0.5 + 0.5
-    grain = norm01(base_tone * 0.6 + ripple * 0.22)
-    grain = 0.32 + 0.55 * grain                       # compress tonal range -> soft contrast
+    # Grain runs ALONG the boards (X). The grain-line coordinate is across-board (Y),
+    # domain-warped so the streaks wander: a strong across-board component (Y) sets
+    # irregular line spacing, and a gentle lengthwise component (X) makes each streak
+    # WAVER down the board so it reads as organic wood, not a ruler-straight groove.
+    #
+    # The lane tiles this many times down its 60ft length, so the KEY rule is: no
+    # low-frequency tone variation along X. A big 2D tone field (what we had first)
+    # reproduces the same dark blotches every repeat and reads as a BAND across the
+    # lane; killing X-variation entirely (what we had next) looked like flat plastic.
+    # So lengthwise character comes ONLY from HIGH-frequency, LOW-contrast fibre — the
+    # repeat then reads as wood grain rather than a stripe. Everything wraps, so the
+    # tile is still seamless.
+    warp_y = fbm(rng, octaves=4, base=5) - 0.5        # across-board wander (line spacing)
+    warp_x = fbm(rng, octaves=5, base=8) - 0.5        # gentle lengthwise waver of each streak
+    lines = 20                                        # grain lines across a whole tile
+    ring = Y * lines + warp_y * 3.0 + warp_x * 0.6
+    ripple = np.sin(ring * 2 * np.pi) * 0.5 + 0.5
+    fibre = fbm(rng, octaves=6, base=13)              # fine lengthwise fibre — HIGH freq, kept low contrast
+    grain = np.clip(0.30 + 0.5 * ripple + (fibre - 0.5) * 0.24, 0, 1)
     # Per-plank tone offset so neighbours differ. Periodic over `planks` (3 is coprime
     # to 5 and 7) so the first/last plank tones match and the tile wraps in Y too.
     tone = (np.sin(2 * np.pi * 3 * plank_id.astype(np.float32) / planks) * 0.5 + 0.5)
