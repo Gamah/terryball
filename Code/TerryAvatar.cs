@@ -189,10 +189,12 @@ public sealed class TerryAvatar : Component
 		_renderer = _player.IsValid() ? _player.Renderer : null;
 		_body = _renderer.IsValid() ? _renderer.GameObject : null;
 
-		// Publish our own saved ball design onto the synced fields so the shared ball skins to it when it's
-		// our turn (proxies are other people's avatars — they receive theirs over the network instead).
-		if ( !IsProxy )
-			ApplyDesign( BallDesign.Load(), save: false );
+		// NB: we deliberately DON'T publish our saved ball design here. This avatar is host-spawned with the
+		// DEFAULT design, and a [Sync] write in OnStart lands too early to be sent as an owner change — it just
+		// sets our local field to the real value, leaving the sync baseline equal to it, so no delta ever goes
+		// out and every other client (incl. late joiners, off the host's snapshot) keeps the default skin
+		// forever. Instead we leave the field at its synced default and make the FIRST write happen once
+		// networking is live (OnUpdate), so it's a genuine default→real change that replicates.
 
 		_ = DressAvatar();
 	}
@@ -242,11 +244,10 @@ public sealed class TerryAvatar : Component
 		// Only the local player drives the walk-up controls (proxies are other people's avatars).
 		if ( !IsProxy )
 		{
-			// The one-time design write in OnStart can land BEFORE this avatar is fully networked — it's
-			// host-spawned (AlleyServer) with ownership handed to us — so that lone [Sync] write never goes
-			// out and every spectator keeps the DEFAULT ball skin forever. Re-assert it once networking is
-			// live so the owner→everyone replication actually fires. (Same-value re-writes once it's settled
-			// are cheap no-ops; the sync layer only sends real changes.)
+			// Publish our saved ball design as the FIRST write to these [Sync] fields, now that networking is
+			// live — see the note in OnStart for why this can't be done there. The field was left at its synced
+			// default, so this is a real default→real change: it replicates to the host and every client (and
+			// so into the snapshot late joiners receive), and the shared ball skins to us on all of them.
 			if ( !_designPublished && Network.Active )
 			{
 				ApplyDesign( BallDesign.Load(), save: false );
