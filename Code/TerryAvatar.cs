@@ -162,6 +162,7 @@ public sealed class TerryAvatar : Component
 	private bool _nearDesigner;  // (local) standing in the design table's range (show the prompt)
 	private bool _helpOpen;      // (local) the how-to-play screen is up (cursor freed)
 	private bool _nearHelp;      // (local) standing in the help podium's range (show the prompt)
+	private bool _helpSticky;    // (local) help opened programmatically (first-run) — stays up away from the podium
 	private bool _teleportOpen;  // (local) the lane-teleport screen is up (cursor freed)
 	private bool _nearTeleport;  // (local) standing in the teleport podium's range (show the prompt)
 
@@ -396,7 +397,7 @@ public sealed class TerryAvatar : Component
 		// A panel that's already open owns input until it's closed (E again / Esc / walking out of range).
 		if ( _controlsOpen ) { ServiceOpen( NearestStation( out _ ) is not null, CloseControls ); UpdateEngagedLane(); return; }
 		if ( _designerOpen ) { ServiceOpen( NearestDesigner( out _ ) is not null, CloseDesigner ); return; }
-		if ( _helpOpen ) { ServiceOpen( NearestHelp( out _ ) is not null, CloseHelp ); return; }
+		if ( _helpOpen ) { ServiceOpen( _helpSticky || NearestHelp( out _ ) is not null, CloseHelp ); return; }
 		if ( _teleportOpen ) { ServiceOpen( NearestTeleport( out _ ) is not null, CloseTeleport ); return; }
 
 		// Nothing open: pick the nearest of the podiums; it owns the prompt + the E press.
@@ -605,8 +606,19 @@ public sealed class TerryAvatar : Component
 	private void CloseHelp()
 	{
 		_helpOpen = false;
+		_helpSticky = false; // E / Esc / CLOSE always dismisses, even a first-run sticky open
 		if ( _player.IsValid() ) _player.UseLookControls = true;
 		Mouse.Visibility = MouseVisibility.Auto;
+	}
+
+	/// <summary>Force the how-to-play screen open regardless of standing at the HELP podium — used for the
+	/// first-run pop-up (see <see cref="VoiceScreen"/>). Marks it "sticky" so UpdateControlsStation won't
+	/// force-close it out of the podium's range; E / Esc / CLOSE still dismiss it. No-op while bowling.</summary>
+	public void RequestOpenHelp()
+	{
+		if ( Bowling || _helpOpen ) return;
+		OpenHelp();
+		_helpSticky = true;
 	}
 
 	// Lane-teleport screen: same cursor/look handling as the other podiums.
