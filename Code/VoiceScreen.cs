@@ -9,8 +9,10 @@ namespace Terryball;
 /// Lives on the <see cref="LocalHud"/> GO (never networked). Each frame it pushes the local player's
 /// transmit config onto their own <see cref="TerryVoice"/> and reads the V / B keys:
 ///
-///   V — toggle the master voice switch (<see cref="VoicePrefs.VoiceEnabled"/>). OFF = neither send nor
+///   G — toggle the master voice switch (<see cref="VoicePrefs.VoiceEnabled"/>). OFF = neither send nor
 ///       hear; ON = transmit (subject to the player's own s&amp;box voice mode) + hear un-muted players.
+///       Only read while walking — G doubles as the bowler's Exit-ball key mid-throw (GameDirector), so we
+///       stand down while Bowling. (V is the engine's default push-to-talk key, so it can't be ours.)
 ///   B — open/close a keyboard-navigable mute roster: ↑/↓ move the selection over everyone but yourself,
 ///       Enter/Space toggles mute on the highlighted player, Esc/B closes. No mouse — the cursor stays
 ///       captured so mouselook is never interrupted.
@@ -90,9 +92,10 @@ public sealed class VoiceScreen : Component
 			return;
 		}
 
-		// V — master voice toggle. Only read while the roster is closed; while it's open B/↑/↓/Enter own the
-		// keyboard (ServiceRoster returned above).
-		if ( Input.Keyboard.Pressed( "V" ) )
+		// G — master voice toggle. Only read while the roster is closed (while it's open B/↑/↓/Enter own the
+		// keyboard — ServiceRoster returned above) AND while walking, since G is the bowler's Exit-ball key
+		// mid-throw. Voice is disabled during a throw anyway, so there's nothing to toggle then.
+		if ( Input.Keyboard.Pressed( "G" ) && !LocalIsBowling() )
 			VoicePrefs.VoiceEnabled = !VoicePrefs.VoiceEnabled;
 
 		// B — open the mute roster.
@@ -163,4 +166,11 @@ public sealed class VoiceScreen : Component
 
 	private TerryAvatar LocalAvatar()
 		=> Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
+
+	// True while our local player is riding the ball — G means Exit-ball then, not voice-toggle.
+	private bool LocalIsBowling()
+	{
+		var me = LocalAvatar();
+		return me.IsValid() && me.Bowling;
+	}
 }

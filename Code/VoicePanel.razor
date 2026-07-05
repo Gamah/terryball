@@ -23,12 +23,20 @@
 	@{
 		var screen = Driver;
 		var enabled = VoicePrefs.VoiceEnabled;
+		var mutedCount = VoicePrefs.MutedCount;
 	}
 
-	@* Always-visible mic chip. *@
-	<div class="voice-chip @( enabled ? "on" : "off" )">
-		<div class="key">V</div>
-		<div class="label">@ChipLabel</div>
+	@* Always-visible key hints — G (voice) over B (mute), sat above the respawn chip. Same white
+	   key-cap glyph style as the music (M/N) and respawn (R) hints. *@
+	<div class="voice-hints">
+		<div class="hint @( enabled ? "on" : "off" )">
+			<div class="key">G</div>
+			<div class="label">@ChipLabel</div>
+		</div>
+		<div class="hint @( mutedCount > 0 ? "has-muted" : "" )">
+			<div class="key">B</div>
+			<div class="label">@MuteLabel</div>
+		</div>
 	</div>
 
 	@if ( screen is not null && screen.IsOpen )
@@ -65,10 +73,19 @@
 		font-family: Poppins, sans-serif;
 	}
 
-	.voice-chip {
+	/* Two-row key-hint stack, bottom-left, sat above the R-respawn chip (which lives at bottom: 16px) so
+	   it never draws over it. Matches the music/respawn white key-cap glyph style. */
+	.voice-hints {
 		position: absolute;
 		left: 16px;
-		bottom: 16px;
+		bottom: 44px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		pointer-events: none;
+	}
+
+	.hint {
 		flex-direction: row;
 		align-items: center;
 		gap: 8px;
@@ -77,7 +94,7 @@
 		pointer-events: none;
 	}
 
-	.voice-chip .key {
+	.hint .key {
 		font-size: 13px;
 		font-weight: 700;
 		color: rgba(0, 0, 0, 0.8);
@@ -86,22 +103,27 @@
 		border-radius: 5px;
 	}
 
-	.voice-chip .label {
+	.hint .label {
 		font-weight: 600;
+		color: rgba(255, 255, 255, 0.85);
 	}
 
-	.voice-chip.off .label {
+	.hint.off .label {
 		color: rgba(255, 255, 255, 0.55);
 	}
 
-	.voice-chip.on .label {
+	.hint.on .label {
 		color: rgba(110, 211, 255, 0.95);
+	}
+
+	.hint.has-muted .label {
+		color: rgba(255, 110, 110, 0.95);
 	}
 
 	.roster {
 		position: absolute;
 		left: 16px;
-		bottom: 56px;
+		bottom: 100px;
 		flex-direction: column;
 		width: 320px;
 		padding: 12px 14px;
@@ -178,14 +200,24 @@
 		get
 		{
 			if ( !VoicePrefs.VoiceEnabled )
-				return "VOICE OFF — press V";
+				return "Voice off";
 
 			return Preferences.VoiceMode switch
 			{
-				VoiceMode.OpenMicrophone => "VOICE LIVE (V to mute)",
-				VoiceMode.PushToTalk => $"HOLD {Input.GetButtonOrigin( "voice" )} TO TALK",
-				_ => "voice disabled in s&box settings",
+				VoiceMode.OpenMicrophone => "Voice live",
+				VoiceMode.PushToTalk => $"Voice on — hold {Input.GetButtonOrigin( "voice" )} to talk",
+				_ => "Voice disabled in s&box settings",
 			};
+		}
+	}
+
+	// The B-hint label: prompts to open the roster, or shows how many players are currently muted.
+	private string MuteLabel
+	{
+		get
+		{
+			var n = VoicePrefs.MutedCount;
+			return n > 0 ? $"Muted: {n}" : "Mute players";
 		}
 	}
 
