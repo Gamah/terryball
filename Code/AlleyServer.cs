@@ -79,15 +79,20 @@ public sealed class AlleyServer : Component, Component.INetworkListener
 		avatar.DisplayName = channel.DisplayName;
 
 		// Proximity voice: only the owner records their mic, every other client plays it back in 3D. Starts
-		// silent in Manual mode — the owner's client-local VoiceScreen flips it to AlwaysOn when they press V.
-		// The engine's default 15,000u Distance is far too big for the lane scale, so pull it right in; the
-		// Falloff curve is left at its (already reasonable) default. Renderer drives lip-sync on the Citizen.
+		// silent in Manual mode — the owner's client-local VoiceScreen flips it to AlwaysOn when they press G.
+		// The engine's default 15,000u Distance is too big for the lane scale, but its default Falloff curve
+		// is savagely front-loaded (down to ~4% volume by 20% of range), so voices went near-inaudible just a
+		// couple of Terry-lengths apart. We give it a gentle *linear* falloff and a roomier Distance so a
+		// normal speaking voice carries across a lane / settee group and fades over the neighbouring lanes,
+		// plus a touch of extra Volume for headroom. Renderer drives lip-sync on the Citizen.
 		var voice = go.Components.Create<TerryVoice>();
 		voice.WorldspacePlayback = true;             // 3D / proximity playback at the avatar's position
 		voice.Renderer = renderer;                   // lip-sync visemes on the walking body
 		voice.Mode = Voice.ActivateMode.Manual;      // start silent; VoiceScreen drives transmit state
 		voice.IsListening = false;
-		voice.Distance = 1600f;                      // audible across a lane's width, not the whole alley
+		voice.Distance = 4000f;                      // audible across a lane/settee group, fading over the next
+		voice.Falloff = new Curve( new Curve.Frame( 0f, 1f ), new Curve.Frame( 1f, 0f ) ); // linear, not front-loaded
+		voice.Volume = 2f;                           // headroom — a normal speaking voice shouldn't need a shout
 
 		go.NetworkSpawn( channel );
 	}

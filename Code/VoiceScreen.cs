@@ -43,8 +43,12 @@ public sealed class VoiceScreen : Component
 	// One-shot guard for the first-run help pop-up.
 	private bool _helpFired;
 
-	protected override void OnDisabled() => IsOpen = false;
-	protected override void OnDestroy() => IsOpen = false;
+	// True while we've forced the local walker's movement input off for an open roster, so we know to
+	// hand it back. Kept separate from IsOpen so a disable/destroy mid-roster still restores control.
+	private bool _controlsFrozen;
+
+	protected override void OnDisabled() { IsOpen = false; RestoreControls(); }
+	protected override void OnDestroy() { IsOpen = false; RestoreControls(); }
 
 	protected override void OnUpdate()
 	{
@@ -81,6 +85,11 @@ public sealed class VoiceScreen : Component
 				}
 			}
 		}
+
+		// While the roster's open its Enter/Space (mute) and Esc/B (close) keys overlap gameplay: Enter opens
+		// the built-in chat overlay, Space jumps. Swallow both so navigating the menu never leaks into the
+		// world. Runs every frame the roster's up (and restores on close), independent of the key reads below.
+		ApplyRosterInputGate();
 
 		// Don't eat keys while the chat box has focus.
 		if ( ChatPanel.IsOpen )
@@ -167,10 +176,47 @@ public sealed class VoiceScreen : Component
 	private TerryAvatar LocalAvatar()
 		=> Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
 
+	// The local walker's movement controller, used to freeze WASD/jump while the roster's open.
+	private PlayerController LocalPlayer()
+		=> LocalAvatar()?.GameObject.Components.Get<PlayerController>();
+
 	// True while our local player is riding the ball — G means Exit-ball then, not voice-toggle.
 	private bool LocalIsBowling()
 	{
 		var me = LocalAvatar();
 		return me.IsValid() && me.Bowling;
+	}
+
+	// Keep the open roster from bleeding into the world: clear the chat action (Enter would otherwise open
+	// the built-in chat overlay, which reads it in its later UI tick) and freeze the walker's movement input
+	// (Space would otherwise jump). UseInputControls only gates movement/jump/duck — look + camera stay live,
+	// so mouselook still works while you pick someone to mute. Restored the frame the roster closes.
+	private void ApplyRosterInputGate()
+	{
+		if ( IsOpen )
+		{
+			Input.Clear( "chat" );
+
+			var pc = LocalPlayer();
+			if ( pc.IsValid() )
+			{
+				pc.UseInputControls = false;
+				_controlsFrozen = true;
+			}
+		}
+		else
+		{
+			RestoreControls();
+		}
+	}
+
+	private void RestoreControls()
+	{
+		if ( !_controlsFrozen ) return;
+		_controlsFrozen = false;
+
+		var pc = LocalPlayer();
+		if ( pc.IsValid() )
+			pc.UseInputControls = true;
 	}
 }
