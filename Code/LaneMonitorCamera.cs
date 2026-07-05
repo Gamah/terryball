@@ -41,6 +41,10 @@ public sealed class LaneMonitorCamera : Component
 
 	protected override void OnStart()
 	{
+		// Headless (dedicated server) has no render device — RenderToTexture null-derefs
+		// (CCameraRenderer::RenderToTexture -> ACCESS_VIOLATION 0x0). This feed is client-only visual, so skip it.
+		if ( Application.IsHeadless ) return;
+
 		Feed = Texture.CreateRenderTarget( "lane-feed", ImageFormat.RGBA8888, new Vector2( Width, Height ) );
 
 		var go = new GameObject( true, "MonitorCam" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
