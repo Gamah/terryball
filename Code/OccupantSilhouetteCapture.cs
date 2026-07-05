@@ -44,6 +44,10 @@ public sealed class OccupantSilhouetteCapture : Component
 
 	protected override void OnEnabled()
 	{
+		// Headless (dedicated server) has no render device — RenderToTexture null-derefs
+		// (CCameraRenderer::RenderToTexture -> ACCESS_VIOLATION 0x0). This capture is client-only visual, so skip it.
+		if ( Application.IsHeadless ) return;
+
 		SilhouetteTexture = Texture.CreateRenderTarget()
 			.WithSize( Resolution, Resolution )
 			.WithFormat( ImageFormat.RGBA8888 )
