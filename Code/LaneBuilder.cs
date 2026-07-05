@@ -1112,6 +1112,7 @@ public sealed class LaneBuilder : Component
 			pin.LaneId = laneId; // so the root-spawned pin registers with THIS lane, not just the first one
 
 			go.Network.SetOwnerTransfer( OwnerTransfer.Takeover ); // the bowler grabs the rack for their turn
+			go.Network.SetOrphanedMode( NetworkOrphaned.Host ); // owner disconnect reverts to host, not Destroy
 			go.NetworkSpawn(); // host-owned to start; replicates to every client
 		}
 		PinsSpawned = true;
