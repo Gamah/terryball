@@ -747,11 +747,13 @@ public sealed class GameDirector : Component
 			if ( !_ballNetReady && _ball.GameObject.Network.Active )
 			{
 				_ball.GameObject.Network.SetOwnerTransfer( OwnerTransfer.Takeover );
+				_ball.GameObject.Network.SetOrphanedMode( NetworkOrphaned.Host ); // owner disconnect reverts to host, not Destroy
 				_ballNetReady = true;
 			}
 			if ( !_dirNetReady && GameObject.Network.Active )
 			{
 				GameObject.Network.SetOwnerTransfer( OwnerTransfer.Takeover );
+				GameObject.Network.SetOrphanedMode( NetworkOrphaned.Host ); // owner disconnect reverts to host, not Destroy
 				_dirNetReady = true;
 			}
 		}
