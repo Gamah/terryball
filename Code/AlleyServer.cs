@@ -90,7 +90,7 @@ public sealed class AlleyServer : Component, Component.INetworkListener
 		voice.Renderer = renderer;                   // lip-sync visemes on the walking body
 		voice.Mode = Voice.ActivateMode.Manual;      // start silent; VoiceScreen drives transmit state
 		voice.IsListening = false;
-		voice.Distance = 4000f;                      // audible across a lane/settee group, fading over the next
+		voice.Distance = 3000f;                      // audible across a lane/settee group, fading over the next
 		voice.Falloff = new Curve( new Curve.Frame( 0f, 1f ), new Curve.Frame( 1f, 0f ) ); // linear, not front-loaded
 		voice.Volume = 2f;                           // headroom — a normal speaking voice shouldn't need a shout
 
