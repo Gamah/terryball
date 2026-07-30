@@ -1,0 +1,190 @@
+@using System
+@using System.Linq
+@using Sandbox
+@using Sandbox.UI
+@using Terryball
+@inherits PanelComponent
+
+@*
+	THE keycap hint stack — every "which key does this" affordance in the game, in one bottom-left
+	column, in one style:
+
+	  [Enter] Chat   [M] Mute music   [N] Music   [G] Voice   [B] Mute players   [R] Respawn
+
+	One panel is the point. These were scattered across four: chat drew its own at mid-left, music
+	drew a pair bottom-RIGHT, voice drew two bottom-left, and the respawn chip sat under them at a
+	third offset — every one of them commenting about dodging the others. A stack is a list a player
+	reads top to bottom. The same consolidation now exists in gambit and rotaliate-client, so the
+	three lobbies read alike.
+
+	Ordering is by how often a newcomer needs it, and every keycap that CAN be read from a binding IS
+	(Input.GetButtonOrigin), so a rebind can't make the hint lie. M/N/G/B/R are raw key checks in
+	their drivers, so they are spelled out here — keep them in step with MusicScreen / VoiceScreen /
+	TerryAvatar if those ever move to bound actions.
+
+	Purely an affordance: pointer-events: none throughout, no state of its own. Keys live in
+	MusicScreen (M/N), VoiceScreen (G/B) and TerryAvatar (R); the engine's chat overlay owns chat.
+	Hidden entirely while the music board is up or the lane controls have the cursor — each of those
+	is a real UI that takes over.
+*@
+
+<root>
+	@if ( Show )
+	{
+		<div class="hints">
+			<div class="hint">
+				<div class="key">@ChatKey</div>
+				<div class="label">Chat</div>
+			</div>
+			<div class="hint @( MusicScreen.Muted ? "muted" : "" )">
+				<div class="key">M</div>
+				<div class="label">@( MusicScreen.Muted ? "Music muted" : "Mute music" )</div>
+			</div>
+			<div class="hint">
+				<div class="key">N</div>
+				<div class="label">Music</div>
+			</div>
+			<div class="hint @( VoicePrefs.VoiceEnabled ? "on" : "off" )">
+				<div class="key">G</div>
+				<div class="label">@ChipLabel</div>
+			</div>
+			<div class="hint @( VoicePrefs.MutedCount > 0 ? "has-muted" : "" )">
+				<div class="key">B</div>
+				<div class="label">@MuteLabel</div>
+			</div>
+			@if ( !Bowling )
+			{
+				<div class="hint">
+					<div class="key">R</div>
+					<div class="label">Respawn</div>
+				</div>
+			}
+		</div>
+	}
+</root>
+
+<style>
+	root {
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		font-family: Poppins, sans-serif;
+	}
+
+	/* The stack, bottom-left. VoicePanel's roster opens above it (bottom: 100px+) — keep the two in
+	   step if this ever grows another row. */
+	.hints {
+		position: absolute;
+		left: 16px;
+		bottom: 16px;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		pointer-events: none;
+	}
+
+	/* Every text div: nowrap AND flex-shrink 0 — a shrunk text div in a flex row doesn't ellipsize,
+	   it wraps, and a wrapped line here renders as a few pixels of its middle. */
+	.hint {
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+		text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.8);
+		pointer-events: none;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.hint .key {
+		font-size: 13px;
+		font-weight: 700;
+		color: rgba(0, 0, 0, 0.8);
+		background-color: rgba(255, 255, 255, 0.85);
+		padding: 1px 8px;
+		border-radius: 5px;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.hint .label {
+		font-weight: 600;
+		color: rgba(255, 255, 255, 0.85);
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.hint.off .label {
+		color: rgba(255, 255, 255, 0.55);
+	}
+
+	.hint.on .label {
+		color: rgba(110, 211, 255, 0.95);
+	}
+
+	.hint.muted .label,
+	.hint.has-muted .label {
+		color: rgba(255, 110, 110, 0.95);
+	}
+</style>
+
+@code
+{
+	// The key actually bound to the built-in "Chat" action, so the hint follows the player's own
+	// s&box keybind settings (Enter by default) instead of hardcoding it.
+	private string ChatKey => Input.GetButtonOrigin( "Chat" ) ?? "Enter";
+
+	// Hidden while the lane controls own the cursor (their UI takes over) or the music board is up
+	// (its own controls do). Same gate the chat hint used to carry on its own.
+	private bool Show
+	{
+		get
+		{
+			if ( MusicScreen.IsOpen ) return false;
+			var me = TerryAvatar.Local( Scene );
+			return me.IsValid() && !me.ControlsOpen;
+		}
+	}
+
+	// R is the walking escape hatch; while you're riding the ball, G exits it (BowlerHud's own
+	// top-right chip) and there is nothing to respawn from.
+	private bool Bowling => Lane.ForLocalPlayer( Scene )?.Director?.LocalIsBowling ?? false;
+
+	// The mic hint's text: OFF prompt, or — when enabled — surface the player's real s&box voice
+	// mode, which game code cannot change (it lives in their sound settings).
+	private string ChipLabel
+	{
+		get
+		{
+			if ( !VoicePrefs.VoiceEnabled )
+				return "Voice off";
+
+			return Preferences.VoiceMode switch
+			{
+				VoiceMode.OpenMicrophone => "Voice live",
+				VoiceMode.PushToTalk => $"Voice on — hold {Input.GetButtonOrigin( "Voice" )} to talk",
+				_ => "Voice disabled in s&box settings",
+			};
+		}
+	}
+
+	// The B hint: prompts to open the roster, or shows how many players are currently muted.
+	private string MuteLabel
+	{
+		get
+		{
+			var n = VoicePrefs.MutedCount;
+			return n > 0 ? $"Muted: {n}" : "Mute players";
+		}
+	}
+
+	protected override int BuildHash() =>
+		HashCode.Combine(
+			Show,
+			Bowling,
+			MusicScreen.Muted,
+			VoicePrefs.VoiceEnabled,
+			Preferences.VoiceMode,
+			VoicePrefs.MutedCount,
+			ChatKey );
+}

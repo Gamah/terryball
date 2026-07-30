@@ -6,7 +6,9 @@
 @*
 	The local bowler's on-screen controls while riding the ball. Right now that's just the escape
 	hatch: a button-styled prompt for the G key, which ends your turn (drops you back to the settee)
-	for when the director gets wedged mid-turn.
+	for when the director gets wedged mid-turn. It stays here, top-right, because it is a MODAL
+	prompt for the one thing you can do right now — unlike the persistent keycap hints, which all
+	live in HudHints's bottom-left stack (the R-respawn chip this panel used to draw moved there).
 
 	It's deliberately pointer-events: none — an interactive screen panel flips the engine into UI input
 	mode while you're aiming, which zeroes AnalogLook and freezes the ball camera. So this is a visible
@@ -23,13 +25,6 @@
 		<div class="bail">
 			<div class="key">G</div>
 			<div class="label">Exit ball</div>
-		</div>
-	}
-	else
-	{
-		<div class="respawn">
-			<div class="key">R</div>
-			<div class="label">Respawn</div>
 		</div>
 	}
 </root>
@@ -71,34 +66,8 @@
 		border-radius: 5px;
 	}
 
-	/* Persistent respawn affordance while walking — a quiet chip, bottom-left, out of the way of the
-	   music hints (bottom-right) and the bowling exit chip (top-right). The key itself is handled in
-	   TerryAvatar; this is just the prompt. */
-	.respawn {
-		position: absolute;
-		left: 16px;
-		bottom: 16px;
-		flex-direction: row;
-		align-items: center;
-		gap: 8px;
-		font-size: 14px;
-		color: rgba(255, 165, 0, 0.85);
-		text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.8);
-		pointer-events: none;
-	}
-
-	.respawn .label {
-		font-weight: 600;
-	}
-
-	.respawn .key {
-		font-size: 13px;
-		font-weight: 700;
-		color: rgba(0, 0, 0, 0.8);
-		background-color: rgba(255, 255, 255, 0.85);
-		padding: 1px 8px;
-		border-radius: 5px;
-	}
+	/* The R-respawn chip that used to sit at bottom-left is in HudHints now — this panel draws only
+	   the modal exit prompt. */
 </style>
 
 @code

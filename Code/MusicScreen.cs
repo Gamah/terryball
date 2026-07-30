@@ -22,8 +22,14 @@ namespace Terryball;
 public sealed class MusicScreen : Component
 {
 	/// <summary>True while the music board is showing. Read by <see cref="BallCamera"/> to freeze look
-	/// while the cursor's freed for the panel, the same way it gates on <see cref="ChatPanel.IsOpen"/>.</summary>
+	/// while the cursor's freed for the panel, the same way it gates on <see cref="ChatPanel.IsOpen"/>,
+	/// and by <see cref="HudHints"/>, which hides the whole hint stack under it.</summary>
 	public static bool IsOpen { get; private set; }
+
+	/// <summary>The soundtrack's master switch, published for the M hint in <see cref="HudHints"/>.
+	/// SkafinityPlayer.Enabled is a `new` bool distinct from the component's own Enabled; false =
+	/// muted, matching the panel's own MUTE button.</summary>
+	public static bool Muted { get; private set; }
 
 	private SkafinityPlayer _player;
 	private SkafinityMusicPanel _panel;
@@ -37,6 +43,7 @@ public sealed class MusicScreen : Component
 		// GO including disabled. The player plays on its own and is found scene-wide.
 		_panel ??= Components.Get<SkafinityMusicPanel>( FindMode.EverythingInSelf );
 		_player ??= Scene.GetAllComponents<SkafinityPlayer>().FirstOrDefault();
+		if ( _player != null ) Muted = !_player.Enabled;
 		if ( _panel == null ) return;
 
 		// Don't eat the keys while the chat box has them (it swallows typing anyway, but be explicit).

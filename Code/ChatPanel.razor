@@ -5,46 +5,22 @@
 @inherits PanelComponent
 
 @*
-	Chat AFFORDANCE only. The engine's built-in chat overlay owns everything now — it draws the message
-	feed AND provides the typing box, opened with Enter (the "Chat" input action). We used to roll our
-	own T-to-open TextEntry input here (copied hastily from rotaliate); that duplicated the built-in
-	box, so it's gone. All that's left is the on-screen hint pointing players at the built-in chat.
+	Chat is the ENGINE'S overlay — it draws the message feed AND provides the typing box, opened with
+	the "Chat" action (Enter). We used to roll our own T-to-open TextEntry here (copied hastily from
+	rotaliate); that duplicated the built-in box, so it went. The "which key opens chat" hint went
+	too — it lives in HudHints now, with music's and voice's and the respawn chip's, in one stack.
+
+	So this panel draws NOTHING and survives only for the IsOpen stub below, which the gameplay input
+	gates still compile against.
 *@
 
-<root>
-	@if ( CanOpen )
-	{
-		<div class="chat-hint">
-			<div class="key">@ChatKey</div>
-			<div>Chat</div>
-		</div>
-	}
-</root>
+<root></root>
 
 <style>
 	root {
 		width: 100%;
 		height: 100%;
 		pointer-events: none;
-		z-index: 90;
-	}
-
-	.chat-hint {
-		position: absolute;
-		left: 16px;
-		top: 50%;
-		flex-direction: row;
-		align-items: center;
-		gap: 6px;
-		font-size: 14px;
-		color: rgba(255, 165, 0, 0.7);
-		text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.8);
-		pointer-events: none;
-	}
-
-	.chat-hint .key {
-		color: rgba(255, 165, 0, 1);
-		font-weight: bold;
 	}
 </style>
 
@@ -55,19 +31,5 @@
 	/// itself while you type, so there's no game-side box to be open — this stays false.</summary>
 	public static bool IsOpen => false;
 
-	// The key actually bound to the built-in "Chat" action, so the hint follows the player's own s&box
-	// keybind settings (Enter by default) instead of hardcoding it. Null if the action's unbound/renamed.
-	string ChatKey => Input.GetButtonOrigin( "Chat" ) ?? "Enter";
-
-	// Only show the hint when the player isn't in the lane-controls cursor mode (its own UI takes over).
-	bool CanOpen
-	{
-		get
-		{
-			var me = TerryAvatar.Local( Scene );
-			return me.IsValid() && !me.ControlsOpen;
-		}
-	}
-
-	protected override int BuildHash() => System.HashCode.Combine( CanOpen, ChatKey );
+	protected override int BuildHash() => 0;
 }

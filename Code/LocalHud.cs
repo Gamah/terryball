@@ -54,12 +54,16 @@ public sealed class LocalHud : Component
 		music.MixerName = "Music";
 		Components.Create<Skafinity.SkafinityMusicPanel>( false );
 		Components.Create<MusicScreen>();
-		Components.Create<MusicHud>();
 
 		// Proximity voice: the keyboard driver (V toggles voice, B opens the mute roster) plus its HUD
 		// chip/roster panel. VoiceScreen also fires the first-run how-to-play pop-up. Client-local, like
 		// everything else on this HUD — the mute/enabled state lives in per-user cookies (VoicePrefs).
 		Components.Create<VoiceScreen>();
 		Components.Create<VoicePanel>();
+
+		// Every keycap affordance in the game — chat, music (M/N), voice (G/B), respawn (R) — in one
+		// bottom-left stack. It replaced the four panels that each drew their own in a different
+		// corner while commenting about dodging the other three. See HudHints.
+		Components.Create<HudHints>();
 	}
 }
