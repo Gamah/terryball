@@ -19,7 +19,7 @@
 
 <root style="width: 1200px; height: 675px; flex-direction: column;
              font-family: Poppins, sans-serif; color: white;
-             background-color: rgba(8,10,16,0.96); border-radius: 18px;
+             background-color: @WorldTheme.BgSolid; border-radius: 18px;
              border-width: 4px; border-color: rgba(90,150,220,0.55); padding: 22px 28px;">
 	@{
 		var director = Director;
@@ -34,7 +34,7 @@
 			LANE <span style="color: #5aa0e6;">@LaneNumber</span>
 		</div>
 		<div style="font-size: 16px; font-weight: 700;
-		            color: @(practice ? "#b07cd6" : (over ? "#f1c40f" : "rgba(255,255,255,0.45)"));">
+		            color: @(practice ? "#b07cd6" : (over ? WorldTheme.AccentCss : "rgba(255,255,255,0.45)"));">
 			@(practice ? "PRACTICE" : (over ? "GAME OVER" : "IN PLAY"))
 		</div>
 	</div>
@@ -71,15 +71,15 @@
 				var current = qi == director.CurrentPlayer;
 				<div style="flex-direction: row; align-items: center; margin-bottom: 6px; padding: 8px 16px;
 				            border-radius: 8px;
-				            background-color: @(current ? "rgba(241,196,15,0.14)" : "rgba(255,255,255,0.03)");">
+				            background-color: @(current ? WorldTheme.AccentBg : "rgba(255,255,255,0.03)");">
 					<div style="width: 46px; font-size: 22px; font-weight: 800;
-					            color: @(current ? "#f1c40f" : "rgba(255,255,255,0.45)");">@(qi + 1)</div>
+					            color: @(current ? WorldTheme.AccentCss : "rgba(255,255,255,0.45)");">@(qi + 1)</div>
 					<div style="flex-grow: 1; font-size: 24px; font-weight: 700;
-					            color: @(current ? "#f1c40f" : "white");">@queue[qi]</div>
+					            color: @(current ? WorldTheme.AccentCss : "white");">@queue[qi]</div>
 					@if ( current )
 					{
 						<div style="font-size: 16px; font-weight: 800; letter-spacing: 3px;
-						            color: #f1c40f;">UP</div>
+						            color: @WorldTheme.AccentCss;">UP</div>
 					}
 				</div>
 			}
@@ -126,7 +126,7 @@
 								            align-items: center; justify-content: center; font-size: 15px;
 								            font-weight: 700; color: white;
 								            border-width: @(split ? "2px" : "1px");
-								            border-color: @(split ? "#f1c40f" : "rgba(255,255,255,0.16)");
+								            border-color: @(split ? WorldTheme.AccentCss : "rgba(255,255,255,0.16)");
 								            border-radius: @(split ? "11px" : "0px");">
 									@frame.Balls[bi]
 								</div>
@@ -174,9 +174,10 @@
 	protected override int BuildHash()
 	{
 		var director = Director;
-		if ( director is null ) return 0;
+		if ( director is null ) return WorldTheme.Hash; // still re-render an empty console on a theme change
 
 		var hash = new System.HashCode();
+		hash.Add( WorldTheme.Hash ); // re-render the moment the world theme changes, not on the next score
 		hash.Add( director.GameOver );
 		hash.Add( director.Mode );
 		hash.Add( director.Drill );

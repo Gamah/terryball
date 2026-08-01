@@ -1,0 +1,70 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Terryball;
+@inherits PanelComponent
+
+@*
+	The WORLD pedestal's board on the spawn concourse — a display-only read-out of the local player's
+	world settings, mounted by SpawnAreaBuilder. Editing happens on the screen-space WorldSettings panel:
+	walk up and press E (WorldSettingsStation, the same engage flow as the LANE / BALL / HELP / TELE
+	podiums). No pointer events here — WorldPanels take no pointer input in this repo.
+
+	CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2. This board is
+	built at PanelSize 1600x1100, hence the 800x550 root below. Change both together or it clips.
+
+	Every colour comes from WorldTheme as an inline style — a compiled <style> block is baked at build
+	time and could not follow a theme change at runtime. That is the whole point of the board.
+*@
+
+<root style="width: 800px; height: 550px; flex-direction: column;
+             font-family: Poppins, sans-serif; pointer-events: none;
+             padding: 30px 34px; border-radius: 18px;
+             background-color: @WorldTheme.BgSolid;
+             border-width: 4px; border-color: @WorldTheme.Border;">
+
+	<div style="font-size: 44px; font-weight: 800; letter-spacing: 6px; justify-content: center;
+	            color: @WorldTheme.Text;">WORLD</div>
+
+	<div style="height: 2px; margin: 16px 0px; background-color: @WorldTheme.Divider;"></div>
+
+	<div style="font-size: 22px; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px;
+	            color: @WorldTheme.AccentCss;">THEME COLOUR</div>
+
+	<div style="flex-direction: row; align-items: center; margin-bottom: 22px;">
+		<div style="width: 44px; height: 44px; border-radius: 10px; margin-right: 16px;
+		            background-color: @WorldTheme.AccentCss;"></div>
+		<div style="font-size: 30px; font-weight: 700; color: @WorldTheme.Text;">@ThemeLabel()</div>
+	</div>
+
+	<div style="font-size: 19px; color: @WorldTheme.TextDim;">
+		Tints the alley's panels, signs and read-outs. Yours only — nobody else's alley changes.
+	</div>
+
+	<div style="flex-grow: 1;"></div>
+
+	<div style="font-size: 21px; font-weight: 700; justify-content: center; color: @WorldTheme.TextFaint;">
+		Press E to change
+	</div>
+</root>
+
+@code
+{
+	// The swatch NAME for the current theme, so the board reads "AMBER" rather than "#f1c40f". An
+	// explicit hex that isn't one of the named swatches prints as its hex — that is the honest answer,
+	// and there is no way to reach one from the UI today.
+	private string ThemeLabel()
+	{
+		if ( WorldPrefs.ThemeIsAuto ) return "AUTO";
+
+		var hex = WorldPrefs.ThemeColor;
+		foreach ( var (label, swatch) in WorldPrefs.Swatches )
+		{
+			if ( string.Equals( swatch, hex, System.StringComparison.OrdinalIgnoreCase ) )
+				return label;
+		}
+		return hex.ToUpperInvariant();
+	}
+
+	// Only the theme can change what this board draws, and WorldTheme.Hash moves with it.
+	protected override int BuildHash() => WorldTheme.Hash;
+}

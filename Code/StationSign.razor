@@ -1,20 +1,25 @@
 @using Sandbox
 @using Sandbox.UI
+@using Terryball
 @inherits PanelComponent
 
 @*
-	A small in-world label that floats over a settee podium (LANE / BALL / HELP). Rides a WorldPanel the
-	lane builder places above each podium (LookAtCamera, so it always reads). CRITICAL: a WorldPanel's
-	root has Scale == 2, so the CSS layout area is PanelSize / 2 — sized for that below.
+	A small in-world label that floats over a settee podium (LANE / BALL / HELP / TELE / WORLD). Rides a
+	WorldPanel the lane builder places above each podium (LookAtCamera, so it always reads). CRITICAL: a
+	WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2 — sized for that below.
+
+	The FILL and the TEXT come from WorldTheme, so the signs follow the world theme. The BORDER does not:
+	Accent is the podium's own identity colour (blue LANE, purple BALL, …), which is wayfinding — it has
+	to stay the same colour whatever the theme is, or the signs stop telling podiums apart.
 *@
 
 <root style="width: 100%; height: 100%; align-items: center; justify-content: center;
              font-family: Poppins, sans-serif;">
 	<div style="flex-direction: row; align-items: center; justify-content: center;
 	            padding: 8px 26px; border-radius: 14px;
-	            background-color: rgba(8,10,16,0.9);
+	            background-color: @WorldTheme.Bg;
 	            border-width: 3px; border-color: @Accent;">
-		<div style="font-size: 44px; font-weight: 800; letter-spacing: 2px; color: white;">@Label</div>
+		<div style="font-size: 44px; font-weight: 800; letter-spacing: 2px; color: @WorldTheme.Text;">@Label</div>
 	</div>
 </root>
 
@@ -25,5 +30,5 @@
 	/// <summary>Border/accent colour (CSS), matching the podium's screen theme.</summary>
 	public string Accent { get; set; } = "rgba(120,160,220,0.9)";
 
-	protected override int BuildHash() => System.HashCode.Combine( Label, Accent );
+	protected override int BuildHash() => System.HashCode.Combine( Label, Accent, WorldTheme.Hash );
 }

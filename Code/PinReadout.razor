@@ -15,7 +15,7 @@
 <root style="width: 100%; height: 100%; flex-direction: column; align-items: center;
              justify-content: center; padding: 40px;
              font-family: Poppins, sans-serif; color: white;
-             background-color: rgba(6,8,12,0.92); border-radius: 24px;
+             background-color: @WorldTheme.Bg; border-radius: 24px;
              border-width: 6px; border-color: rgba(90,150,220,0.45);">
 	@{
 		var director = Director;
@@ -58,6 +58,6 @@
 		if ( director is not null )
 			foreach ( var s in director.PinStatuses )
 				if ( s.Down ) mask |= 1 << s.Number;
-		return System.HashCode.Combine( director?.State, mask );
+		return System.HashCode.Combine( director?.State, mask, WorldTheme.Hash );
 	}
 }

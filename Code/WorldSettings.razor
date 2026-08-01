@@ -1,0 +1,138 @@
+@using Sandbox
+@using Sandbox.UI
+@using System.Linq
+@using Terryball
+@inherits PanelComponent
+
+@*
+	The world-settings screen. Walking up to the WORLD podium on the spawn concourse and pressing E opens
+	this (TerryAvatar runs the engage / cursor-free, like the other podiums). Picks the world theme colour,
+	which every in-world panel derives its chrome from (WorldTheme). Client-local and cookie-backed
+	(WorldPrefs) — this changes YOUR alley, never anybody else's.
+
+	This screen is themed from WorldTheme too, so picking a swatch recolours the picker under the cursor —
+	which is the point: you see the theme before you walk away from the podium. Pointer-events: none except
+	the modal + its cells, like LaneControls/TeleportPanel.
+*@
+
+<root style="position: absolute; width: 100%; height: 100%; pointer-events: none;
+             font-family: Poppins, sans-serif; color: white;">
+	@{
+		var me = LocalAvatar;
+	}
+
+	@if ( me is not null )
+	{
+		@* Walk-up prompt: near the world podium but not engaged yet. *@
+		@if ( me.NearWorldSettings && !me.WorldSettingsOpen )
+		{
+			<div style="position: absolute; bottom: 64px; left: 0px; right: 0px;
+			            flex-direction: row; justify-content: center;">
+				<div style="font-size: 22px; font-weight: 700; padding: 10px 24px; border-radius: 10px;
+				            background-color: @WorldTheme.Bg;
+				            border-width: 1px; border-color: @WorldTheme.Border;">
+					Press <span style="color: @WorldTheme.AccentCss; font-weight: 800;">E</span> — World Settings
+				</div>
+			</div>
+		}
+
+		@if ( me.WorldSettingsOpen )
+		{
+			<div style="position: absolute; width: 100%; height: 100%;
+			            flex-direction: column; align-items: center; justify-content: center;">
+				<div style="pointer-events: all; flex-direction: column; width: 620px;
+				            padding: 28px 32px; border-radius: 18px;
+				            background-color: @WorldTheme.BgSolid;
+				            border-width: 2px; border-color: @WorldTheme.Border;">
+
+					<div style="font-size: 28px; font-weight: 800; letter-spacing: 1px; margin-bottom: 6px;
+					            color: @WorldTheme.Text;">
+						WORLD SETTINGS
+					</div>
+					<div style="font-size: 15px; margin-bottom: 20px; color: @WorldTheme.TextFaint;">
+						Yours only — these are saved on this machine and never sent to the other players.
+					</div>
+
+					<div style="font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px;
+					            color: @WorldTheme.AccentCss;">
+						THEME COLOUR
+					</div>
+					<div style="font-size: 14px; margin-bottom: 14px; color: @WorldTheme.TextDim;">
+						Tints the alley's panels, signs and read-outs. AUTO is the house amber.
+					</div>
+
+					@* AUTO + one cell per named swatch. The selected cell wears an accent border. *@
+					<div style="flex-direction: row; flex-wrap: wrap; margin-bottom: 6px;">
+						<div style="pointer-events: all; cursor: pointer;
+						            flex-direction: row; align-items: center;
+						            margin-right: 10px; margin-bottom: 10px;
+						            padding: 10px 18px; border-radius: 10px;
+						            font-size: 16px; font-weight: 700;
+						            background-color: @(WorldPrefs.ThemeIsAuto ? WorldTheme.AccentBg : WorldTheme.Cell);
+						            border-width: 2px;
+						            border-color: @(WorldPrefs.ThemeIsAuto ? WorldTheme.AccentCss : "rgba(255,255,255,0.10)");
+						            color: @WorldTheme.Text;"
+						     onclick=@( () => Pick( "" ) )>
+							AUTO
+						</div>
+
+						@foreach ( var (label, hex) in WorldPrefs.Swatches )
+						{
+							var selected = !WorldPrefs.ThemeIsAuto
+								&& string.Equals( hex, WorldPrefs.ThemeColor, System.StringComparison.OrdinalIgnoreCase );
+
+							<div style="pointer-events: all; cursor: pointer;
+							            flex-direction: row; align-items: center;
+							            margin-right: 10px; margin-bottom: 10px;
+							            padding: 10px 18px; border-radius: 10px;
+							            font-size: 16px; font-weight: 700;
+							            background-color: @(selected ? WorldTheme.AccentBg : WorldTheme.Cell);
+							            border-width: 2px;
+							            border-color: @(selected ? WorldTheme.AccentCss : "rgba(255,255,255,0.10)");
+							            color: @WorldTheme.Text;"
+							     onclick=@( () => Pick( hex ) )>
+								<div style="width: 18px; height: 18px; border-radius: 5px; margin-right: 10px;
+								            background-color: @hex;"></div>
+								@label
+							</div>
+						}
+					</div>
+
+					<div style="height: 2px; margin: 12px 0px; background-color: @WorldTheme.Divider;"></div>
+
+					<div style="flex-direction: row; align-items: center;">
+						<div style="font-size: 14px; color: @WorldTheme.TextFaint;">
+							More world settings will land here as they arrive.
+						</div>
+						<div style="flex-grow: 1;"></div>
+						<div style="pointer-events: all; padding: 12px 26px; border-radius: 9px;
+						            font-size: 17px; font-weight: 700; cursor: pointer;
+						            background-color: rgba(255,255,255,0.12); color: @WorldTheme.Text;"
+						     onclick=@Close>
+							CLOSE (E)
+						</div>
+					</div>
+				</div>
+			</div>
+		}
+	}
+</root>
+
+@code
+{
+	private TerryAvatar LocalAvatar =>
+		Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
+
+	// Write the cookie and let every themed panel re-render off WorldTheme.Hash. There is nothing else to
+	// notify: no panel caches a colour, they all read the static at build time.
+	private void Pick( string hex ) => WorldPrefs.ThemeColor = hex;
+
+	private void Close() => LocalAvatar?.RequestCloseWorldSettings();
+
+	protected override int BuildHash()
+	{
+		var me = LocalAvatar;
+		return System.HashCode.Combine( me?.NearWorldSettings ?? false, me?.WorldSettingsOpen ?? false,
+			WorldTheme.Hash );
+	}
+}

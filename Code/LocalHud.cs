@@ -34,6 +34,9 @@ public sealed class LocalHud : Component
 		Components.Create<BallDesigner>();
 		Components.Create<HowToPlay>();
 		Components.Create<TeleportPanel>();
+		// The WORLD podium's engage screen (theme picker). The pedestal's own board is a WorldPanel out in
+		// the concourse — see SpawnAreaBuilder; this is only the screen-space half.
+		Components.Create<WorldSettings>();
 		Components.Create<ChatPanel>();
 		Components.Create<BowlerHud>();
 		// The guided-throw ("Aim") mode driver — purely client-local, dormant until the player turns the
