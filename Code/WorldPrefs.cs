@@ -87,8 +87,8 @@ public static class WorldPrefs
 	/// swatch from this rather than string-comparing the hex in two places.</summary>
 	public static bool ThemeIsAuto => string.IsNullOrEmpty( ThemeColor );
 
-	/// <summary>The named swatches offered on the settings board, in display order. The label is what the
-	/// board prints; the hex is what lands in the cookie. AUTO is offered separately (empty hex), so no
+	/// <summary>The named swatches offered on the settings screen, in display order. The label is what the
+	/// screen prints; the hex is what lands in the cookie. AUTO is offered separately (empty hex), so no
 	/// entry here may use an empty string.</summary>
 	public static readonly (string Label, string Hex)[] Swatches = new[]
 	{

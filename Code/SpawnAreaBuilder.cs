@@ -11,8 +11,8 @@ namespace Terryball;
 /// ground-level concourse behind all of them, a flight of stairs from the concourse up to EACH lane's
 /// settee, and duplicate BALL (ball-designer) and HELP (how-to-play) podiums on the concourse so players
 /// can set up before picking a lane. Plus two the settees don't have: TELE (jump to a lane) and the SETTINGS
-/// pedestal, whose board reads out this client's world settings — see <see cref="WorldSettingsBoard"/>
-/// and <see cref="WorldTheme"/>.
+/// pedestal, where a player sets the look of their own alley — see <see cref="WorldSettings"/> and
+/// <see cref="WorldTheme"/>.
 ///
 /// Everything is built procedurally in WORLD space from the lanes' own exposed anchors
 /// (<see cref="LaneBuilder.SetteeDeckBackWorldPosition"/> etc.), so it adapts to however many lanes exist
@@ -133,17 +133,19 @@ public sealed class SpawnAreaBuilder : Component
 			TeleportTopColor, "TELE", "rgba(90,200,220,0.95)" );
 		Attach<TeleportStation>( new Vector3( telePodX, yMid, podiumTopZ ), s => s.InteractRange = 160f );
 
-		// SETTINGS pedestal: the world-settings board. On the TELE row (so it's inside the view cone a player
-		// spawns facing — a board nobody ever turns around to see is a board nobody reads) but offset well
-		// clear in +y, past the HELP podium's side, so the two prompts can't fight over the E key. Unlike
-		// the other three this podium carries a READABLE board as well as its label sign — the summary of
-		// what the theme is currently set to, the same display-only-board-plus-engage-screen split
-		// rotaliate-client and gambit use for their settings walls.
+		// SETTINGS pedestal. On the TELE row (so it's inside the view cone a player spawns facing) but offset
+		// well clear in +y, past the HELP podium's side, so the two prompts can't fight over the E key.
+		//
+		// Just a labelled podium, like the other four. rotaliate-client and gambit both hang a display-only
+		// board off their settings station — a wall you read the current values from before you engage — and
+		// this podium carried one too for a moment. It isn't wanted here: those are settings WALLS on a room's
+		// edge that you look at from across the room, where terryball's is a waist-high pedestal in the middle
+		// of an open concourse that you are already stood at by the time you can read anything on it. The
+		// screen behind E is the whole UI.
 		var worldPodY = yMid + PodiumSeparation * 1.3f * cu;
 		BuildPodium( "SpawnWorldPodium", cu, telePodX, worldPodY, podiumTopZ, podiumH,
 			WorldTopColor, "SETTINGS", "rgba(241,196,15,0.95)" );
 		Attach<WorldSettingsStation>( new Vector3( telePodX, worldPodY, podiumTopZ ), s => s.InteractRange = 160f );
-		BuildWorldBoard( cu, telePodX, worldPodY, podiumTopZ + podiumH );
 
 		// ---- Spawn point: BETWEEN the BALL/HELP podiums (same row, centre Y), facing the lanes (-x) so the
 		// TELEPORT podium is straight ahead.
@@ -208,35 +210,6 @@ public sealed class SpawnAreaBuilder : Component
 		var s = sign.Components.Create<StationSign>();
 		s.Label = label;
 		s.Accent = accentHex;
-	}
-
-	/// <summary>The SETTINGS pedestal's read-out board — a <see cref="WorldSettingsBoard"/> on a WorldPanel
-	/// standing above the podium, facing the spawn point. Display-only; editing is the walk-up screen.</summary>
-	private void BuildWorldBoard( float cu, float x, float y, float podiumTopZ )
-	{
-		const float s2w = 0.05f;                            // WorldPanel.ScreenToWorldScale (world units per px @ scale 1)
-		// CRITICAL: a WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2 — the
-		// razor's root is sized 800x550 for this 1600x1100. Change the two together or the board clips.
-		var panelPx = new Vector2( 1600f, 1100f );
-		var worldW = 96f * cu;                              // a bit wider than the podium, readable on approach
-		var scale = worldW / (panelPx.x * s2w);             // GO scale so the panel fills that width (RenderScale stays 1)
-		var boardH = panelPx.y * s2w * scale;
-
-		var go = new GameObject( true, "SpawnWorldBoard" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		// Client-local UI, like the station signs: don't replicate an empty duplicate into the snapshot.
-		go.NetworkMode = NetworkMode.Never;
-		go.WorldPosition = new Vector3( x, y, podiumTopZ + 10f * cu + boardH * 0.5f );
-		go.WorldScale = scale;
-		// An identity WorldPanel faces +x, and the spawn point is at +x of this podium looking -x at it —
-		// so identity is already the right way round here. (The lane boards flip by yaw 180 because they
-		// face the approach, the other direction.) No LookAtCamera: this one is a fixed pedestal board,
-		// not a floating label, so it holds still while you walk around it.
-		var wp = go.Components.Create<WorldPanel>();
-		wp.PanelSize = panelPx;
-		wp.RenderScale = 1f;
-		wp.InteractionRange = 100000f;
-
-		go.Components.Create<WorldSettingsBoard>();
 	}
 
 	// Add an interaction-station component at a world spot (an empty GO — the visual desk is the podium).
