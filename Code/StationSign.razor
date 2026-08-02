@@ -4,9 +4,16 @@
 @inherits PanelComponent
 
 @*
-	A small in-world label that floats over a settee podium (LANE / BALL / HELP / TELE / WORLD). Rides a
+	A small in-world label that floats over a settee podium (LANE / BALL / HELP / TELE / SETTINGS). Rides a
 	WorldPanel the lane builder places above each podium (LookAtCamera, so it always reads). CRITICAL: a
 	WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2 — sized for that below.
+
+	ONE font size for every podium, set by the LONGEST label. SETTINGS is eight characters where LANE is
+	four, so at the old 44px it ran past the panel and wrapped; sizing each sign to its own label instead
+	would have made the words physically different sizes across the concourse, which reads as a mistake.
+	Both numbers below are load-bearing together: at 32px/1px spacing the widest label lays out to roughly
+	205px, inside the 280px the builder's 560px panel gives us. Grow a label past SETTINGS and this has to
+	come down again — nowrap means it would clip rather than wrap, silently.
 
 	The FILL and the TEXT come from WorldTheme, so the signs follow the world theme. The BORDER does not:
 	Accent is the podium's own identity colour (blue LANE, purple BALL, …), which is wayfinding — it has
@@ -16,15 +23,26 @@
 <root style="width: 100%; height: 100%; align-items: center; justify-content: center;
              font-family: Poppins, sans-serif;">
 	<div style="flex-direction: row; align-items: center; justify-content: center;
-	            padding: 8px 26px; border-radius: 14px;
+	            padding: 8px 20px; border-radius: 14px;
 	            background-color: @WorldTheme.Bg;
 	            border-width: 3px; border-color: @Accent;">
-		<div style="font-size: 44px; font-weight: 800; letter-spacing: 2px; color: @WorldTheme.Text;">@Label</div>
+		<div style="font-size: 32px; font-weight: 800; letter-spacing: 1px; white-space: nowrap;
+		            color: @WorldTheme.Text;">@Label</div>
 	</div>
 </root>
 
 @code
 {
+	/// <summary>The WorldPanel size every station sign is built at, and the world width it is scaled to.
+	/// They live here rather than at the two call sites (LaneBuilder and SpawnAreaBuilder each build the
+	/// settee and concourse copies of the same podiums) because the markup above is sized to them: the CSS
+	/// layout area is PanelPixels / 2, and the font size is chosen to fit the longest label inside it. A
+	/// builder that picked its own numbers would clip the label on half the podiums.</summary>
+	public static readonly Vector2 PanelPixels = new( 560f, 180f );
+
+	/// <summary>How wide (world units, before the caller's <c>cu</c> scale) a sign renders.</summary>
+	public const float WorldWidth = 72f;
+
 	/// <summary>The word on the sign — set by the lane builder after Create.</summary>
 	public string Label { get; set; } = "";
 	/// <summary>Border/accent colour (CSS), matching the podium's screen theme.</summary>

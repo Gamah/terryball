@@ -672,7 +672,7 @@ public sealed class TerryAvatar : Component
 		Mouse.Visibility = MouseVisibility.Auto;
 	}
 
-	// World settings (the WORLD podium on the concourse): same cursor/look handling as the other podiums.
+	// World settings (the SETTINGS podium on the concourse): same cursor/look handling as the other podiums.
 	private void OpenWorldSettings()
 	{
 		_worldOpen = true;

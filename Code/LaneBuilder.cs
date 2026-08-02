@@ -728,8 +728,10 @@ public sealed class LaneBuilder : Component
 
 		// A floating label sign above it. Billboarded (LookAtCamera) so it always reads from the settee.
 		const float s2w = 0.05f;                            // WorldPanel.ScreenToWorldScale (world units per px @ scale 1)
-		var panelPx = new Vector2( 400f, 160f );
-		var scale = (55f * cu) / (panelPx.x * s2w);         // make the sign ~55·cu wide
+		// Size and world width come from StationSign — its markup is laid out for exactly these (and the
+		// concourse copies of these podiums build from the same pair). Don't inline them again here.
+		var panelPx = StationSign.PanelPixels;
+		var scale = (StationSign.WorldWidth * cu) / (panelPx.x * s2w);
 		var signH = panelPx.y * s2w * scale;
 		var signZ = baseTopZ + podiumH + 14f * cu + signH * 0.5f;
 

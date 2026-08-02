@@ -5,7 +5,7 @@
 @inherits PanelComponent
 
 @*
-	The world-settings screen. Walking up to the WORLD podium on the spawn concourse and pressing E opens
+	The world-settings screen. Walking up to the SETTINGS podium on the spawn concourse and pressing E opens
 	this (TerryAvatar runs the engage / cursor-free, like the other podiums). Picks the world theme colour,
 	which every in-world panel derives its chrome from (WorldTheme). Client-local and cookie-backed
 	(WorldPrefs) — this changes YOUR alley, never anybody else's.
@@ -100,10 +100,34 @@
 
 					<div style="height: 2px; margin: 12px 0px; background-color: @WorldTheme.Divider;"></div>
 
+					<div style="font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 4px;
+					            color: @WorldTheme.AccentCss;">
+						SKY BRIGHTNESS — @Pct( WorldPrefs.SkyBrightness )%
+					</div>
+					<div style="font-size: 14px; margin-bottom: 8px; color: @WorldTheme.TextDim;">
+						Dims or lifts the daylight over the alley. 100% is the lighting as built.
+					</div>
+					<SliderControl class="wslider" Min="@WorldPrefs.SkyBrightnessMin" Max="@WorldPrefs.SkyBrightnessMax"
+					               Step="@(0.01f)" Value="@WorldPrefs.SkyBrightness" ShowValueTooltip="@(false)"
+					               OnValueChanged="@SetSkyBrightness"></SliderControl>
+
+					<div style="height: 2px; margin: 12px 0px; background-color: @WorldTheme.Divider;"></div>
+
+					<div style="font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 4px;
+					            color: @WorldTheme.AccentCss;">
+						VOICE RANGE — ROAMING — @( $"{WorldPrefs.VoiceRangeRoaming:0}u" )
+					</div>
+					<div style="font-size: 14px; margin-bottom: 8px; color: @WorldTheme.TextDim;">
+						How far you hear other players talk. Your ears only — it doesn't change how far
+						anybody hears you.
+					</div>
+					<SliderControl class="wslider" Min="@WorldPrefs.VoiceRangeMin" Max="@WorldPrefs.VoiceRangeMax"
+					               Step="@(10f)" Value="@WorldPrefs.VoiceRangeRoaming" ShowValueTooltip="@(false)"
+					               OnValueChanged="@SetVoiceRange"></SliderControl>
+
+					<div style="height: 2px; margin: 12px 0px; background-color: @WorldTheme.Divider;"></div>
+
 					<div style="flex-direction: row; align-items: center;">
-						<div style="font-size: 14px; color: @WorldTheme.TextFaint;">
-							More world settings will land here as they arrive.
-						</div>
 						<div style="flex-grow: 1;"></div>
 						<div style="pointer-events: all; padding: 12px 26px; border-radius: 9px;
 						            font-size: 17px; font-weight: 700; cursor: pointer;
@@ -118,6 +142,26 @@
 	}
 </root>
 
+@*
+	The ONLY compiled styles on this screen: the slider's layout. Every colour stays inline above because a
+	compiled block is baked at build time and cannot follow the runtime theme — see WorldTheme. SliderControl
+	brings its own chrome from the engine's base stylesheet, so all it needs here is a size and pointer input.
+*@
+<style>
+	.wslider {
+		width: 100%;
+		height: 24px;
+		margin-bottom: 4px;
+		pointer-events: all;
+	}
+
+	/* Belt and braces with ShowValueTooltip="false": the built-in bubble renders as a bare black box
+	   (hardcoded background in the base scss) and the heading above already prints the value. */
+	.wslider .value-tooltip {
+		display: none;
+	}
+</style>
+
 @code
 {
 	private TerryAvatar LocalAvatar =>
@@ -127,12 +171,20 @@
 	// notify: no panel caches a colour, they all read the static at build time.
 	private void Pick( string hex ) => WorldPrefs.ThemeColor = hex;
 
+	// The sliders write straight through to the cookie on every change — the store is tiny, and a drag's
+	// worth of writes is what gambit's sliders do too. WorldPrefs bumps its Revision on each, which is what
+	// re-renders this screen (so the heading's number tracks the thumb) and what the appliers watch.
+	private void SetSkyBrightness( float v ) => WorldPrefs.SkyBrightness = v;
+	private void SetVoiceRange( float v ) => WorldPrefs.VoiceRangeRoaming = v;
+
+	private static int Pct( float v ) => (int)System.MathF.Round( v * 100f );
+
 	private void Close() => LocalAvatar?.RequestCloseWorldSettings();
 
 	protected override int BuildHash()
 	{
 		var me = LocalAvatar;
 		return System.HashCode.Combine( me?.NearWorldSettings ?? false, me?.WorldSettingsOpen ?? false,
-			WorldTheme.Hash );
+			WorldTheme.Hash, WorldPrefs.Revision );
 	}
 }

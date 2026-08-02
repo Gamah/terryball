@@ -4,7 +4,7 @@ namespace Terryball;
 
 /// <summary>
 /// Runtime palette for terryball's in-world panels, derived from the one world-theme hue the player picks
-/// at the WORLD podium (<see cref="WorldPrefs.ThemeColor"/>). The same idea as rotaliate-client's and
+/// at the SETTINGS podium (<see cref="WorldPrefs.ThemeColor"/>). The same idea as rotaliate-client's and
 /// gambit's <c>WallTheme</c>: everything keys off a single <see cref="Accent"/>, so changing the theme
 /// retints the whole world UI at once, and AUTO falls back to the canonical amber.
 ///

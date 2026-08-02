@@ -10,7 +10,7 @@ namespace Terryball;
 /// lane's settee (with its LANE controls) sits up on a raised backboard deck behind the pins; this lays a
 /// ground-level concourse behind all of them, a flight of stairs from the concourse up to EACH lane's
 /// settee, and duplicate BALL (ball-designer) and HELP (how-to-play) podiums on the concourse so players
-/// can set up before picking a lane. Plus two the settees don't have: TELE (jump to a lane) and the WORLD
+/// can set up before picking a lane. Plus two the settees don't have: TELE (jump to a lane) and the SETTINGS
 /// pedestal, whose board reads out this client's world settings — see <see cref="WorldSettingsBoard"/>
 /// and <see cref="WorldTheme"/>.
 ///
@@ -133,7 +133,7 @@ public sealed class SpawnAreaBuilder : Component
 			TeleportTopColor, "TELE", "rgba(90,200,220,0.95)" );
 		Attach<TeleportStation>( new Vector3( telePodX, yMid, podiumTopZ ), s => s.InteractRange = 160f );
 
-		// WORLD pedestal: the world-settings board. On the TELE row (so it's inside the view cone a player
+		// SETTINGS pedestal: the world-settings board. On the TELE row (so it's inside the view cone a player
 		// spawns facing — a board nobody ever turns around to see is a board nobody reads) but offset well
 		// clear in +y, past the HELP podium's side, so the two prompts can't fight over the E key. Unlike
 		// the other three this podium carries a READABLE board as well as its label sign — the summary of
@@ -141,7 +141,7 @@ public sealed class SpawnAreaBuilder : Component
 		// rotaliate-client and gambit use for their settings walls.
 		var worldPodY = yMid + PodiumSeparation * 1.3f * cu;
 		BuildPodium( "SpawnWorldPodium", cu, telePodX, worldPodY, podiumTopZ, podiumH,
-			WorldTopColor, "WORLD", "rgba(241,196,15,0.95)" );
+			WorldTopColor, "SETTINGS", "rgba(241,196,15,0.95)" );
 		Attach<WorldSettingsStation>( new Vector3( telePodX, worldPodY, podiumTopZ ), s => s.InteractRange = 160f );
 		BuildWorldBoard( cu, telePodX, worldPodY, podiumTopZ + podiumH );
 
@@ -187,8 +187,9 @@ public sealed class SpawnAreaBuilder : Component
 			new Vector3( 20f * cu, 46f * cu, 2f * cu ), topColor );
 
 		const float s2w = 0.05f;
-		var panelPx = new Vector2( 400f, 160f );
-		var scale = (55f * cu) / (panelPx.x * s2w);
+		// Shared with LaneBuilder's settee podiums via StationSign, whose markup is sized to them.
+		var panelPx = StationSign.PanelPixels;
+		var scale = (StationSign.WorldWidth * cu) / (panelPx.x * s2w);
 		var signH = panelPx.y * s2w * scale;
 		var signZ = baseTopZ + podiumH + 14f * cu + signH * 0.5f;
 
@@ -209,7 +210,7 @@ public sealed class SpawnAreaBuilder : Component
 		s.Accent = accentHex;
 	}
 
-	/// <summary>The WORLD pedestal's read-out board — a <see cref="WorldSettingsBoard"/> on a WorldPanel
+	/// <summary>The SETTINGS pedestal's read-out board — a <see cref="WorldSettingsBoard"/> on a WorldPanel
 	/// standing above the podium, facing the spawn point. Display-only; editing is the walk-up screen.</summary>
 	private void BuildWorldBoard( float cu, float x, float y, float podiumTopZ )
 	{

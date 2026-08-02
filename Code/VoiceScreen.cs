@@ -40,6 +40,14 @@ public sealed class VoiceScreen : Component
 	/// <summary>Everyone on the server except us, in a stable order — the roster the panel renders and B navigates.</summary>
 	public IReadOnlyList<Connection> Roster { get; private set; } = System.Array.Empty<Connection>();
 
+	/// <summary>A straight line from full volume at the speaker to silence at <see cref="Voice.Distance"/>.
+	/// The engine's default falloff is front-loaded (0.22 by 5% of the distance, 0.04 by 20%), which turns
+	/// any range we set into "audible only nose-to-nose"; a linear ramp is what makes the range slider mean
+	/// what it says. Same curve gambit and rotaliate-client use. [SOURCE: engine default read from
+	/// Sandbox.Engine VoiceComponent.cs, 2026-08-01 — undocumented, could change.]</summary>
+	private static readonly Curve LinearFalloff =
+		new Curve( new Curve.Frame( 0f, 1f ), new Curve.Frame( 1f, 0f ) );
+
 	// One-shot guard for the first-run help pop-up.
 	private bool _helpFired;
 
@@ -69,6 +77,8 @@ public sealed class VoiceScreen : Component
 				voice.PushToTalkInput = NoVoiceInput; // unbound → never transmits
 			}
 		}
+
+		ApplyHearingRange();
 
 		// First-run help: the moment our avatar exists and we've never seen it, force the how-to-play modal
 		// open (sticky, so it isn't force-closed by not standing at the HELP podium). Fires exactly once.
@@ -110,6 +120,26 @@ public sealed class VoiceScreen : Component
 		// B — open the mute roster.
 		if ( Input.Keyboard.Pressed( "B" ) )
 			OpenRoster();
+	}
+
+	// Push this client's chosen hearing range onto EVERY avatar's voice, ours included. The 3D falloff is
+	// computed on the RECEIVER off the (proxy) Voice component, so writing Distance locally is exactly how
+	// "how far I hear" is controlled — the slider at the SETTINGS pedestal writes the cookie, we read it.
+	// Re-asserted every frame rather than on change alone: an avatar that joins later missed the last write,
+	// and the loop is at most a lobby's worth of components (16 players). Distance early-outs on an unchanged
+	// value; Falloff and Volume don't, so those two do re-push to the sound handle each frame — cheap enough
+	// at this count, and the same thing gambit and rotaliate-client both do.
+	private void ApplyHearingRange()
+	{
+		var range = WorldPrefs.VoiceRangeRoaming;
+
+		foreach ( var v in Scene.GetAllComponents<TerryVoice>() )
+		{
+			if ( !v.IsValid() ) continue;
+			v.Distance = range;
+			v.Falloff = LinearFalloff;
+			v.Volume = 2f; // headroom — a normal speaking voice shouldn't have to be a shout at range
+		}
 	}
 
 	private void OpenRoster()
