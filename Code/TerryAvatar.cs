@@ -167,6 +167,8 @@ public sealed class TerryAvatar : Component
 	private bool _nearTeleport;  // (local) standing in the teleport podium's range (show the prompt)
 	private bool _worldOpen;     // (local) the world-settings screen is up (cursor freed)
 	private bool _nearWorld;     // (local) standing in the world podium's range (show the prompt)
+	private bool _moreOpen;      // (local) the MORE links screen is up (cursor freed)
+	private bool _nearMore;      // (local) standing in the MORE podium's range (show the prompt)
 
 	/// <summary>True while this (local) player has the lane-controls panel open and the cursor freed.</summary>
 	public bool ControlsOpen => _controlsOpen;
@@ -188,6 +190,11 @@ public sealed class TerryAvatar : Component
 	public bool WorldSettingsOpen => _worldOpen;
 	/// <summary>True while this (local) player is standing in a WorldSettingsStation's range.</summary>
 	public bool NearWorldSettings => _nearWorld;
+
+	/// <summary>True while this (local) player has the MORE links screen open.</summary>
+	public bool MoreOpen => _moreOpen;
+	/// <summary>True while this (local) player is standing in a MoreStation's range.</summary>
+	public bool NearMore => _nearMore;
 
 	/// <summary>The lane whose HUD / controls THIS (local) player should see: the lane they've joined if
 	/// any, else the lane of the station they're currently walked up to, else null. The HUD reads this
@@ -397,7 +404,8 @@ public sealed class TerryAvatar : Component
 			if ( _helpOpen ) CloseHelp();
 			if ( _teleportOpen ) CloseTeleport();
 			if ( _worldOpen ) CloseWorldSettings();
-			_nearStation = _nearDesigner = _nearHelp = _nearTeleport = _nearWorld = false;
+			if ( _moreOpen ) CloseMore();
+			_nearStation = _nearDesigner = _nearHelp = _nearTeleport = _nearWorld = _nearMore = false;
 			return;
 		}
 
@@ -407,6 +415,7 @@ public sealed class TerryAvatar : Component
 		if ( _helpOpen ) { ServiceOpen( _helpSticky || NearestHelp( out _ ) is not null, CloseHelp ); return; }
 		if ( _teleportOpen ) { ServiceOpen( NearestTeleport( out _ ) is not null, CloseTeleport ); return; }
 		if ( _worldOpen ) { ServiceOpen( NearestWorldSettings( out _ ) is not null, CloseWorldSettings ); return; }
+		if ( _moreOpen ) { ServiceOpen( NearestMore( out _ ) is not null, CloseMore ); return; }
 
 		// Nothing open: pick the nearest of the podiums; it owns the prompt + the E press.
 		var lane = NearestStation( out var laneDist );
@@ -414,22 +423,25 @@ public sealed class TerryAvatar : Component
 		var help = NearestHelp( out var helpDist );
 		var teleport = NearestTeleport( out var teleportDist );
 		var world = NearestWorldSettings( out var worldDist );
+		var more = NearestMore( out var moreDist );
 		if ( lane is not null ) _engagedLane = Lane.Of( lane ); // keep the HUD on this lane even if another podium wins the prompt
 
-		_nearStation = _nearDesigner = _nearHelp = _nearTeleport = _nearWorld = false;
+		_nearStation = _nearDesigner = _nearHelp = _nearTeleport = _nearWorld = _nearMore = false;
 		var best = float.MaxValue;
-		int kind = 0; // 1 = lane, 2 = designer, 3 = help, 4 = teleport, 5 = world settings
+		int kind = 0; // 1 = lane, 2 = designer, 3 = help, 4 = teleport, 5 = world settings, 6 = more
 		if ( lane is not null && laneDist < best ) { best = laneDist; kind = 1; }
 		if ( designer is not null && designerDist < best ) { best = designerDist; kind = 2; }
 		if ( help is not null && helpDist < best ) { best = helpDist; kind = 3; }
 		if ( teleport is not null && teleportDist < best ) { best = teleportDist; kind = 4; }
 		if ( world is not null && worldDist < best ) { best = worldDist; kind = 5; }
+		if ( more is not null && moreDist < best ) { best = moreDist; kind = 6; }
 
 		_nearStation = kind == 1;
 		_nearDesigner = kind == 2;
 		_nearHelp = kind == 3;
 		_nearTeleport = kind == 4;
 		_nearWorld = kind == 5;
+		_nearMore = kind == 6;
 
 		if ( Input.Pressed( "use" ) )
 		{
@@ -438,6 +450,7 @@ public sealed class TerryAvatar : Component
 			else if ( kind == 3 ) OpenHelp();
 			else if ( kind == 4 ) OpenTeleport();
 			else if ( kind == 5 ) OpenWorldSettings();
+			else if ( kind == 6 ) OpenMore();
 		}
 	}
 
@@ -491,6 +504,12 @@ public sealed class TerryAvatar : Component
 	public void RequestCloseWorldSettings()
 	{
 		if ( _worldOpen ) CloseWorldSettings();
+	}
+
+	/// <summary>Close the MORE links screen from its own CLOSE button (restores look + cursor).</summary>
+	public void RequestCloseMore()
+	{
+		if ( _moreOpen ) CloseMore();
 	}
 
 	/// <summary>Teleport (local player) to a lane's settee — the destination the teleport panel's buttons
@@ -597,6 +616,24 @@ public sealed class TerryAvatar : Component
 		return best;
 	}
 
+	private MoreStation NearestMore( out float bestDist )
+	{
+		MoreStation best = null;
+		bestDist = float.MaxValue;
+		var me = GameObject.WorldPosition;
+		foreach ( var s in Scene.GetAllComponents<MoreStation>() )
+		{
+			if ( !s.IsValid() ) continue;
+			var dist = s.WorldPosition.Distance( me );
+			if ( dist < s.InteractRange && dist < bestDist )
+			{
+				best = s;
+				bestDist = dist;
+			}
+		}
+		return best;
+	}
+
 	// Free the cursor for the screen-space controls. Mouse.Visibility=Visible is what flips the engine's
 	// input context to UI (so the buttons take clicks); UseLookControls=false stops the camera spinning
 	// while the mouse drives the cursor instead of the view.
@@ -687,6 +724,22 @@ public sealed class TerryAvatar : Component
 		Mouse.Visibility = MouseVisibility.Auto;
 	}
 
+	// MORE (the links podium on the concourse): same cursor/look handling as the other podiums.
+	// The cursor matters more here than at most of them — both things on that screen are buttons.
+	private void OpenMore()
+	{
+		_moreOpen = true;
+		if ( _player.IsValid() ) _player.UseLookControls = false;
+		Mouse.Visibility = MouseVisibility.Visible;
+	}
+
+	private void CloseMore()
+	{
+		_moreOpen = false;
+		if ( _player.IsValid() ) _player.UseLookControls = true;
+		Mouse.Visibility = MouseVisibility.Auto;
+	}
+
 	// Never leave the cursor freed / look disabled if our avatar goes away while engaged.
 	protected override void OnDisabled()
 	{
@@ -695,6 +748,7 @@ public sealed class TerryAvatar : Component
 		if ( _helpOpen ) CloseHelp();
 		if ( _teleportOpen ) CloseTeleport();
 		if ( _worldOpen ) CloseWorldSettings();
+		if ( _moreOpen ) CloseMore();
 	}
 
 	protected override void OnDestroy()
@@ -704,6 +758,7 @@ public sealed class TerryAvatar : Component
 		if ( _helpOpen ) CloseHelp();
 		if ( _teleportOpen ) CloseTeleport();
 		if ( _worldOpen ) CloseWorldSettings();
+		if ( _moreOpen ) CloseMore();
 		_dressCts?.Cancel();
 	}
 

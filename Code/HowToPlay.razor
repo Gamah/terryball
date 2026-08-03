@@ -104,13 +104,8 @@
 					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 10px;">
 						Terryball is multiplayer — up to 16 players share the alley, take turns on the roster and
 						watch each other bowl (more lanes coming soon!). Invite friends through the Steam overlay,
-						and come hang out:
-					</div>
-					<div style="pointer-events: all; align-self: flex-start; padding: 10px 22px; border-radius: 9px;
-					            font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 20px;
-					            background-color: rgba(88,101,242,0.85);"
-					     onclick=@CopyDiscord>
-						@DiscordLabel
+						and come hang out on the Discord — the invite is on the MORE podium out on the concourse,
+						next to the teleporter.
 					</div>
 
 					<div style="flex-direction: row;">
@@ -135,22 +130,13 @@
 
 	private void CloseHelp() => LocalAvatar?.RequestCloseHelp();
 
-	// Discord invite (same community as rotaliate) — click to copy, with a brief "copied" confirmation.
-	private const string DiscordUrl = "https://discord.gg/GG8HWUfFpD";
-	private RealTimeSince _sinceCopied = 999f;
-
-	private string DiscordLabel => _sinceCopied < 2f
-		? "✓  Discord invite copied to clipboard"
-		: "Join the Discord  ·  click to copy invite";
-
-	private void CopyDiscord()
-	{
-		try { Clipboard.SetText( DiscordUrl ); _sinceCopied = 0f; } catch { }
-	}
+	// The Discord invite used to be a button here, with the URL inline. It lives on the MORE
+	// podium now (MorePanel, Terryball.DiscordButton) alongside the link to our other games —
+	// one place for "how to reach us" beats a link at the bottom of a how-to-play screen.
 
 	protected override int BuildHash()
 	{
 		var me = LocalAvatar;
-		return System.HashCode.Combine( me?.NearHelp, me?.HelpOpen, _sinceCopied < 2f );
+		return System.HashCode.Combine( me?.NearHelp, me?.HelpOpen );
 	}
 }

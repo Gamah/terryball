@@ -147,6 +147,22 @@ public sealed class SpawnAreaBuilder : Component
 			WorldTopColor, "SETTINGS", "rgba(241,196,15,0.95)" );
 		Attach<WorldSettingsStation>( new Vector3( telePodX, worldPodY, podiumTopZ ), s => s.InteractRange = 160f );
 
+		// MORE pedestal — the Discord invite and our other games, both click-to-copy (MorePanel).
+		// Mirrored across the TELE row from SETTINGS, so the two administrative podiums bracket the
+		// teleporter and neither sits between the player and the lanes.
+		//
+		// It takes the WORLD THEME rather than an identity colour of its own. Every other podium has
+		// one — LANE blue, BALL purple, HELP green, TELE cyan — and those are WAYFINDING: they say
+		// "that is the ball one" from across the concourse, where it matters, because you go to them
+		// mid-play. MORE is a thing you visit once, so there is nothing to navigate back to, and a
+		// sixth hardcoded hue would only add to a palette the settings screen already struggles to
+		// name. Following the theme also means it is the one podium that visibly answers the swatch
+		// you just picked at the podium beside it.
+		var morePodY = yMid - PodiumSeparation * 1.3f * cu;
+		BuildPodium( "SpawnMorePodium", cu, telePodX, morePodY, podiumTopZ, podiumH,
+			WorldTopColor, "MORE", "" );
+		Attach<MoreStation>( new Vector3( telePodX, morePodY, podiumTopZ ), s => s.InteractRange = 160f );
+
 		// ---- Spawn point: BETWEEN the BALL/HELP podiums (same row, centre Y), facing the lanes (-x) so the
 		// TELEPORT podium is straight ahead.
 		if ( SpawnPoint.IsValid() )
