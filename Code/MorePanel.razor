@@ -7,15 +7,15 @@
 @*
 	The MORE screen. Walking up to the MORE podium on the spawn concourse and pressing E opens this
 	(TerryAvatar runs the engage / cursor-free, like the other podiums). It is where every outbound
-	link lives: the Discord invite, and the page listing our other s&box games. The Discord invite
-	used to sit at the bottom of the how-to-play screen, which is not where anyone looks for "how do
-	I reach these people".
+	link lives: the Discord invite, the page listing our other s&box games, and the Skafinity repo
+	(the library that writes the music). The Discord invite used to sit at the bottom of the
+	how-to-play screen, which is not where anyone looks for "how do I reach these people".
 
-	BOTH LINKS PRINT THEIR URL IN FULL and copy on click. There is no documented API to open a URL or
-	the Steam overlay from game code — Clipboard.SetText is the whole toolbox — so a link a player
-	cannot copy is one they have to TYPE, and they can only type what they can read. That is why
-	neither is ever shortened for display: what is on screen and what lands on the clipboard have to
-	be the same characters.
+	EVERY LINK PRINTS ITS URL IN FULL and copies on click. There is no documented API to open a URL
+	or the Steam overlay from game code — Clipboard.SetText is the whole toolbox — so a link a player
+	cannot copy is one they have to TYPE, and they can only type what they can read. That is why none
+	is ever shortened for display: what is on screen and what lands on the clipboard have to be the
+	same characters.
 
 	Themed from WorldTheme like every other panel here, so it follows the SETTINGS podium's swatch.
 	Pointer-events: none except the modal and its buttons, like LaneControls/TeleportPanel.
@@ -97,6 +97,28 @@
 						@GamesLabel
 					</div>
 
+					@* Credit for the soundtrack. Skafinity is its own open-source project that
+					   this game installs as a library — it writes the alley's music live (N for
+					   its board, M to mute) — so it belongs here with the other outbound links. *@
+					<div style="font-size: 17px; font-weight: 800; letter-spacing: 1px; margin-bottom: 6px;
+					            color: @WorldTheme.AccentCss;">
+						MUSIC BY SKAFINITY
+					</div>
+					<div style="font-size: 14px; margin-bottom: 8px; color: @WorldTheme.TextDim;">
+						The soundtrack is written as you play by Skafinity, an open-source s&amp;box library. Press N for its board, M to mute.
+					</div>
+					<div style="font-size: 15px; margin-bottom: 10px; color: @WorldTheme.TextFaint;
+					            white-space: normal; word-break: break-all;">
+						@SkafinityButton.SkafinityUrl
+					</div>
+					<div style="font-size: 18px; font-weight: 700; padding: 12px 20px; border-radius: 10px;
+					            margin-bottom: 22px; justify-content: center; cursor: pointer;
+					            background-color: @WorldTheme.AccentBg; color: @WorldTheme.Text;
+					            border-width: 2px; border-color: @WorldTheme.Border;"
+					     onclick=@CopySkafinity>
+						@SkafinityLabel
+					</div>
+
 					<div style="font-size: 18px; font-weight: 700; padding: 10px 20px; border-radius: 10px;
 					            justify-content: center; cursor: pointer;
 					            background-color: @WorldTheme.Bg; color: @WorldTheme.TextDim;
@@ -126,17 +148,24 @@
 		? "✓  link copied to clipboard"
 		: "Copy the link to our games";
 
+	private string SkafinityLabel => SkafinityButton.SinceCopied < 2f
+		? "✓  link copied to clipboard"
+		: "Copy the link to Skafinity";
+
 	private void CopyDiscord() => DiscordButton.Copy();
 
 	private void CopyGames() => GamesButton.Copy();
+
+	private void CopySkafinity() => SkafinityButton.Copy();
 
 	private void Close() => LocalAvatar?.RequestCloseMore();
 
 	protected override int BuildHash()
 	{
 		var me = LocalAvatar;
-		// Both copy clocks are in the hash, or a label would only flip when something else moved.
+		// Every copy clock is in the hash, or a label would only flip when something else moved.
 		return System.HashCode.Combine( me?.NearMore ?? false, me?.MoreOpen ?? false,
-			WorldTheme.Hash, DiscordButton.SinceCopied < 2f, GamesButton.SinceCopied < 2f );
+			WorldTheme.Hash, DiscordButton.SinceCopied < 2f, GamesButton.SinceCopied < 2f,
+			SkafinityButton.SinceCopied < 2f );
 	}
 }
