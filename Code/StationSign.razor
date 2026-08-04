@@ -15,9 +15,13 @@
 	205px, inside the 280px the builder's 560px panel gives us. Grow a label past SETTINGS and this has to
 	come down again — nowrap means it would clip rather than wrap, silently.
 
-	The FILL and the TEXT come from WorldTheme, so the signs follow the world theme. The BORDER does not:
-	Accent is the podium's own identity colour (blue LANE, purple BALL, …), which is wayfinding — it has
-	to stay the same colour whatever the theme is, or the signs stop telling podiums apart.
+	The FILL and the TEXT come from WorldTheme, so the signs follow the world theme. The BORDER usually
+	does not: Accent is the podium's own identity colour (blue LANE, purple BALL, …), which is wayfinding —
+	it has to stay the same colour whatever the theme is, or the signs stop telling podiums apart.
+
+	A podium with nothing to navigate back to passes an EMPTY Accent and takes the theme instead. MORE is
+	the one that does: you visit it once, so there is no "which one was that" to answer, and a sixth
+	hardcoded hue would only crowd a palette that already has five.
 *@
 
 <root style="width: 100%; height: 100%; align-items: center; justify-content: center;
@@ -25,7 +29,7 @@
 	<div style="flex-direction: row; align-items: center; justify-content: center;
 	            padding: 8px 20px; border-radius: 14px;
 	            background-color: @WorldTheme.Bg;
-	            border-width: 3px; border-color: @Accent;">
+	            border-width: 3px; border-color: @Border;">
 		<div style="font-size: 32px; font-weight: 800; letter-spacing: 1px; white-space: nowrap;
 		            color: @WorldTheme.Text;">@Label</div>
 	</div>
@@ -45,8 +49,16 @@
 
 	/// <summary>The word on the sign — set by the lane builder after Create.</summary>
 	public string Label { get; set; } = "";
-	/// <summary>Border/accent colour (CSS), matching the podium's screen theme.</summary>
+	/// <summary>Border/accent colour (CSS), matching the podium's screen theme. Empty means "no identity
+	/// colour" and the sign follows the world theme instead — see <see cref="Border"/>.</summary>
 	public string Accent { get; set; } = "rgba(120,160,220,0.9)";
+
+	/// <summary>The border actually drawn. An identity colour wins where a podium has one; MORE has none
+	/// and passes empty, so it takes the theme.
+	/// <para>Resolved HERE rather than at the call site on purpose: the builders run once, at scene build,
+	/// so a theme colour baked in there would be a snapshot of whatever swatch was picked at the time and
+	/// would never follow a later change. This panel already rebuilds on <c>WorldTheme.Hash</c>.</para></summary>
+	private string Border => string.IsNullOrEmpty( Accent ) ? WorldTheme.AccentCss : Accent;
 
 	protected override int BuildHash() => System.HashCode.Combine( Label, Accent, WorldTheme.Hash );
 }

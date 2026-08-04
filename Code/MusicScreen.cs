@@ -18,6 +18,10 @@ namespace Terryball;
 /// Lives on the client-local screen-space HUD GO alongside the panel and a <see cref="SkafinityPlayer"/>
 /// (both built in code by <see cref="Terryball.LocalHud"/>). There's no in-world "wall" to walk up
 /// to — the keys work from anywhere, like the built-in chat (Enter).
+///
+/// It is also where the board gets its COLOUR — see <see cref="PushTheme"/>. This component is
+/// enabled all session while the panel is enabled only while open, so it is the one of the two
+/// that can keep the world theme current.
 /// </summary>
 public sealed class MusicScreen : Component
 {
@@ -34,11 +38,50 @@ public sealed class MusicScreen : Component
 	private SkafinityPlayer _player;
 	private SkafinityMusicPanel _panel;
 
+	/// <summary>The world-theme hex last handed to the library, so an unchanged setting costs a
+	/// string compare. Starts null, which never equals the "" of AUTO, so the first frame pushes.</summary>
+	private string _themeHex;
+
 	protected override void OnDisabled() => Close();
 	protected override void OnDestroy() => Close();
 
+	/// <summary>
+	/// The music board wears the WORLD THEME: hand the library the hex the player picked at the
+	/// SETTINGS podium (<see cref="WorldPrefs.ThemeColor"/>, empty = AUTO).
+	/// <see cref="SkafinityTheme"/> derives its whole palette from that one accent, so the board
+	/// stops being the one panel in the alley that ignores the theme.
+	///
+	/// <para>A PUSH rather than the panel reading <see cref="WorldTheme"/>: the library is
+	/// vendored and must not be patched, so it cannot know what a Terryball is — a settable
+	/// static is the seam it offers. It STORES the value while the setting is live, so pushing
+	/// once at startup would leave the board on whatever colour the alley had when the client
+	/// booted. Compared against the hex string rather than <see cref="WorldPrefs.Revision"/> so
+	/// any path that changes the theme reaches the board; the cookie read is cheap and this runs
+	/// only while the component is enabled.</para>
+	///
+	/// <para>This deliberately passes the RAW hex rather than <see cref="WorldTheme.Accent"/>.
+	/// WorldTheme resolves AUTO to terryball's amber, which would make the board amber for a
+	/// player who never picked a theme; the library's own unset state is a neutral gray-on-black,
+	/// which is the right look for "no theme picked". A coloured swatch is therefore the only
+	/// thing that demonstrates this working.</para>
+	///
+	/// <para>Safe while the board is closed, which is the usual case: the panel folds the accent
+	/// into its <c>BuildHash</c>, so it re-renders when it is next enabled.</para>
+	/// </summary>
+	private void PushTheme()
+	{
+		var hex = WorldPrefs.ThemeColor ?? "";
+		if ( hex == _themeHex ) return;
+		_themeHex = hex;
+		// Color.Parse returns null on junk, which lands on the same neutral as AUTO.
+		SkafinityTheme.Accent = string.IsNullOrEmpty( hex ) ? (Color?)null : Color.Parse( hex );
+	}
+
 	protected override void OnUpdate()
 	{
+		PushTheme();
+
+
 		// The panel starts disabled, so the enabled-only Scene scan won't see it — find it on our own
 		// GO including disabled. The player plays on its own and is found scene-wide.
 		_panel ??= Components.Get<SkafinityMusicPanel>( FindMode.EverythingInSelf );

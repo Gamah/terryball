@@ -37,6 +37,9 @@ public sealed class LocalHud : Component
 		// The SETTINGS podium's engage screen (theme, sky brightness, voice range). The podium itself is out
 		// on the concourse (SpawnAreaBuilder) and carries nothing but its label — this screen is the whole UI.
 		Components.Create<WorldSettings>();
+		// The MORE podium's engage screen — the Discord invite and our other games, both
+		// click-to-copy. Same deal: the podium out on the concourse carries only its label.
+		Components.Create<MorePanel>();
 		// …and the applier that turns one of those choices into actual scene lighting. Client-local like the
 		// rest of this HUD: it writes the authored Sun/skybox on THIS client's copy of the scene only.
 		Components.Create<SkyBrightnessApplier>();
