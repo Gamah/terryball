@@ -4,36 +4,108 @@
         <name>package.gamah.skafinity</name>
     </assembly>
     <members>
-        <member name="T:Skafinity.CompFigure">
+        <member name="T:Skafinity.CellClass">
+             <summary>Which cells of a bar a voice is ALLOWED to play on. This is what keeps ska's skank
+             offbeat by RULE rather than by table — the arranger may move an onset, but not off the class
+             the genre's technique lives in, so a skank cannot drift onto the downbeat however loud the
+             accent grid is there.
+            
+             It is the single property that has to survive the whole arranger, and it is the reason the
+             arranger cannot simply write onsets wherever the accent grid is loud. A genre's identity is
+             WHERE it plays; its arrangement is which of those places it uses this time.</summary>
+        </member>
+        <member name="F:Skafinity.CellClass.Sixteenths">
+            <summary>Every sixteenth — metal's gallop, and anything that subdivides freely.</summary>
+        </member>
+        <member name="F:Skafinity.CellClass.Eighths">
+            <summary>Every eighth — the rock riff, the pop pad.</summary>
+        </member>
+        <member name="F:Skafinity.CellClass.Downbeats">
+            <summary>The beats only — punk's downstrokes.</summary>
+        </member>
+        <member name="F:Skafinity.CellClass.Offbeats">
+            <summary>The "and" of each beat only — the ska skank and country's chick.</summary>
+        </member>
+        <member name="T:Skafinity.Skeleton">
              <summary>
-             The comp figures — what rhythm each genre's chordal voices actually play.
+             THE SECTION'S RHYTHMIC SKELETON — what every part is written against.
             
-             This was the loudest remaining duplication in the engine: one <c>KeysOnsets {0,3,4,7}</c>
-             served rock, country and pop, and one rhythm-guitar loop served rock, country and punk off a
-             single <c>country</c> bool. Three genres at a time played the SAME comping rhythm, whatever
-             harmony sat underneath — and the comp is most of what a listener hears as "the band".
+             Before this, every voice picked its figure from its own small authored table and no voice knew
+             what any other was playing. The single exception was the riff-doubling bass, and it was the
+             only lockup in the engine that was not a coincidence: pop's pad landed on the kick 100% of the
+             time and ska's skank 1%, and neither number was decided by anyone.
             
-             A figure is a <see cref="T:Skafinity.Pattern"/>, so it owns its length: the ska horn answer is two bars
-             because it IS a call and response, the rock riff is two bars because a riff is a motif rather
-             than a bar, and punk is one bar because that is the whole idea of punk.
+             The skeleton is deliberately DERIVED, not drawn. The kit is table-driven and its grooves are
+             fitted to a played corpus (see <see cref="T:Skafinity.DrumGroove"/>), so the drums are the measured
+             reference the arranger writes against rather than another client of it — which is why the
+             accent grid comes off the kick and the snare and the genre's own measured accent weights, and
+             why nothing here rolls a die to decide where the section leans.
             
-             CELL VALUES say how the hit is played; <see cref="T:Skafinity.CompStyle"/> says what the voice does with
-             that. <see cref="M:Skafinity.CompFigure.Tone(System.Int32)"/> cells name a single chord tone by index (for arpeggios and
-             alternating figures) instead of the whole voicing.
+             Everything is on the section's own SIXTEENTH grid. Occupancy fills in as each part is placed,
+             so a voice arranged later can see what the ones before it took — that is what "one authority
+             arranges every part at once" amounts to in practice.
              </summary>
         </member>
-        <member name="F:Skafinity.CompFigure.Ring">
-            <summary>Full voicing, allowed to ring into the next hit.</summary>
+        <member name="F:Skafinity.Skeleton.StartTick">
+            <summary>First tick of the section, and how many sixteenth cells long it is.</summary>
         </member>
-        <member name="F:Skafinity.CompFigure.Stab">
-            <summary>Full voicing, short — a stab or a chop.</summary>
+        <member name="F:Skafinity.Skeleton.Cells">
+            <summary>First tick of the section, and how many sixteenth cells long it is.</summary>
         </member>
-        <member name="F:Skafinity.CompFigure.Mute">
-            <summary>Root only, muted — the palm-muted chug between accents.</summary>
+        <member name="F:Skafinity.Skeleton.BarCells">
+            <summary>Cells per bar — the seam and allowed-class tests are per bar.</summary>
         </member>
-        <member name="M:Skafinity.CompFigure.Tone(System.Int32)">
-            <summary>A single chord tone: <c>Tone(0)</c> is the root, <c>Tone(1)</c> the next voice up.
-            Wraps over the voicing, so an arpeggio can just count upward.</summary>
+        <member name="F:Skafinity.Skeleton.Accent">
+            <summary>Where the section leans, 0..1, off the groove's kick and snare and the genre's
+            measured accent weights.</summary>
+        </member>
+        <member name="F:Skafinity.Skeleton.Kick">
+            <summary>Where the kick lands. The bass's lock reads this directly rather than the accent
+            grid — "agrees with the kick" is a different claim from "is loud in the same place".</summary>
+        </member>
+        <member name="F:Skafinity.Skeleton.Seam">
+            <summary>Phrase ends: every four bars, and the section's last bar. Where a band converges.
+            </summary>
+        </member>
+        <member name="F:Skafinity.Skeleton.TuneOn">
+            <summary>Where the tune has an onset, and where it is holding a note through.</summary>
+        </member>
+        <member name="F:Skafinity.Skeleton.TuneHold">
+            <summary>Where the tune has an onset, and where it is holding a note through.</summary>
+        </member>
+        <member name="F:Skafinity.Skeleton.Taken">
+            <summary>What the parts placed so far have taken. Mutated as the arranger works down the
+            voices, which is the whole point of arranging them in one pass.</summary>
+        </member>
+        <member name="M:Skafinity.Skeleton.CellAt(System.Int32)">
+            <summary>The cell a SONG tick falls in, or −1 outside the section.</summary>
+        </member>
+        <member name="M:Skafinity.Skeleton.Allows(Skafinity.CellClass,System.Int32)">
+            <summary>Whether a cell is one this voice's technique may play on.</summary>
+        </member>
+        <member name="T:Skafinity.ArrangeRole">
+            <summary>How a voice arranges itself against the skeleton: where it may play, and what it is
+            pulled toward or pushed away from. The parameters are the genre's (see
+            <see cref="T:Skafinity.GenreProfile"/>) because they say HOW a part behaves, never WHAT it plays — the
+            figure is still the genre's own authored gesture.</summary>
+        </member>
+        <member name="F:Skafinity.ArrangeRole.Kick">
+            <summary>Pull toward cells the kick plays — how hard this voice locks to the drums.</summary>
+        </member>
+        <member name="F:Skafinity.ArrangeRole.Complement">
+            <summary>Push away from cells another part has already taken, and from the tune's landings.
+            </summary>
+        </member>
+        <member name="F:Skafinity.ArrangeRole.Seam">
+            <summary>Pull toward phrase seams, where a band converges.</summary>
+        </member>
+        <member name="F:Skafinity.ArrangeRole.AddValue">
+            <summary>What an ADDED onset plays, where the voice's vocabulary says an addition is one
+            particular thing rather than "another of whatever was before it". The snare is the case: a
+            drummer filling in around a backbeat adds GHOSTS, and copying the previous cell would let a
+            bar acquire a second struck backbeat — which is the one thing about a snare part a listener
+            would notice immediately. <see cref="F:Skafinity.ArrangeRole.NoValue"/> keeps the copy-the-previous default.
+            </summary>
         </member>
         <member name="T:Skafinity.MusicGen">
              <summary>
@@ -65,6 +137,179 @@
              .Generic, System.Text only): no Sandbox.* and no web/Emscripten-isms, which is what lets
              the one source compile to both targets.
              </summary>
+        </member>
+        <member name="F:Skafinity.MusicGen._skeleton">
+            <summary>The current section's skeleton, published in <c>RenderSection</c> alongside
+            <c>_energy</c> / <c>_feel</c> / <c>_keyShift</c> — the same mechanism, so a voice reads it
+            the way it reads those.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.PlanArrangement(Skafinity.Part@,System.Int32,System.Int32,Skafinity.Pattern,System.String)">
+             <summary>Build the section's skeleton, then arrange each part against it in turn.
+            
+             ORDER IS THE DESIGN: the bass goes first because its role is to agree with the kick, which
+             is already decided; the comp then sees the bass and the tune and can complement them; the
+             keys see all three. Arranging them independently against a fixed grid would give every voice
+             the same answer, which is the failure mode this whole phase has to avoid.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.KitAccents(Skafinity.Skeleton)">
+             <summary>The accent grid, off the kit and the genre's own measured weights.
+            
+             WITH NO KIT ON THE GRID YET the cells carry the metre alone — which is the honest reading of
+             "the band writes against seams, metre and tune", and not a floor invented to keep the number
+             non-zero: it is exactly this formula with the kit's occupancy taken as flat.</summary>
+        </member>
+        <member name="F:Skafinity.MusicGen._chorusArranged">
+            <summary>Whether the song's chorus parts have been arranged yet. The chorus is arranged the
+            first time one is rendered and every later chorus reuses that line.</summary>
+        </member>
+        <member name="F:Skafinity.MusicGen._chorusKitArranged">
+            <summary>Whether the song's chorus parts have been arranged yet. The chorus is arranged the
+            first time one is rendered and every later chorus reuses that line.</summary>
+        </member>
+        <member name="F:Skafinity.MusicGen._kitArranged">
+            <summary>Whether the kit's patterns for THIS section are final yet — i.e. whether the accent
+            grid may be built off them.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.ArrangeKit(Skafinity.Skeleton,System.String)">
+             <summary>
+             The kit, arranged. The drums were the one layer left out of the arranger, and the reasoning
+             was good — the grooves are fitted to a played corpus, so they were the measured reference the
+             band wrote against rather than another client of it. The cost was that the groove was drawn
+             ONCE PER SONG and never re-drawn: every bar of every section played the identical kick, snare
+             and cymbal, two or three states per genre and exactly one inside a song.
+            
+             THE CYMBAL IS NOT ARRANGED. It is the pulse, and it is where the corpus pass found the
+             largest mismatch of all (country's hat on the "and", 84% against 36% on the beat) — leaving
+             it alone preserves that by construction rather than by a rule that can be got wrong. What
+             varies about the cymbal is which INSTRUMENT plays it and how sparse a section thins it, both
+             of which already vary per section.
+            
+             EVERY CHORUS AGREES, the same way the band's does and for the same reason: the song's kit is
+             arranged the first time a chorus is rendered and every later chorus replays that line.
+             </summary>
+        </member>
+        <member name="F:Skafinity.MusicGen.KitSpineFrom">
+             <summary>
+             Where a section is quiet enough that the kit plays the SPINE and nothing else — the
+             downbeat kick and the struck backbeat, with every ghost and every pushed kick gone.
+            
+             AND THE FEEL GATE IS THE POINT, not a caveat. Half time is a pattern RATE: it already
+             stretches the groove to half its density, so a breakdown that also thinned to the spine
+             would be two hits a bar and a hole in the arrangement. Every Breakdown in every form here
+             is <c>feel: 0.5f</c>, which is exactly why this fires on the INTRO instead — a kit walking
+             in on the bare bones of its own groove, which is what an intro is.
+             </summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.KitBias(System.Boolean)">
+             <summary>
+             THE KIT'S DENSITY BIAS, −1 (thin) to +1 (fill), and what makes energy an input to what the
+             drummer PLAYS rather than only to how loud it is.
+            
+             It shifts the weight between the DROP and ADD mutations, so a quiet section is likelier to
+             lose an onset and a loud one to gain one. Everything a drummer does with dynamics beyond
+             hitting harder is here: fewer notes, dropped ghosts, a busier bar under a chorus.
+            
+             <c>DrumBusy</c> and <c>DrumTone</c> feed the same decision rather than sitting on top of it
+             as multipliers — that is the whole reason they are here. A bright kit is snare-led, so
+             <c>DrumTone</c> pushes the ghost layer up and the foot down; a dark one does the reverse.
+             </summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.ToSpine(Skafinity.Pattern,System.Boolean[])">
+            <summary>The spine alone — see <see cref="F:Skafinity.MusicGen.KitSpineFrom"/>.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.KickRole">
+             <summary>
+             The kick's role, WITH THE SIGN OF ITS COMPLEMENT DECIDED BY WHO WROTE FIRST — and that sign
+             is the whole difference between the two orderings.
+            
+             <see cref="M:Skafinity.MusicGen.Score(System.Int32,Skafinity.Pattern,Skafinity.Skeleton,Skafinity.ArrangeRole@)"/> reads <c>Complement</c> as a push AWAY from cells the tune and the parts
+             placed so far have taken, which is right for every melodic voice and right for a kick the
+             band has not been written against yet: a leading kit states the beat and the band answers it.
+             A FOLLOWING kick is the opposite gesture. The riff is already on the grid, and a drummer
+             playing to it lands WITH it — that is what "the kick tracks the topline" means in programmed
+             pop and what a riff-led metal foot is doing under a gallop.
+            
+             Ordering with the same sign on both sides is what the split reporting caught: it changed who
+             saw whom and left both modes agreeing to within a point or two, which is a mechanism that
+             costs a draw and buys nothing.
+             </summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.ArrangeDrum(Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,System.Boolean)">
+             <summary>One drum, through the same mutations as everything else — at the kit's own lower
+             rate, with the genre's spine held back, and without writing itself into the occupancy the
+             band reads.
+            
+             The RECOMBINE table is this drum's line from the genre's OTHER grooves, which is the same
+             claim the melodic version makes: the genre's own vocabulary, re-cut, and never a gesture the
+             genre does not have.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.MarkTaken(Skafinity.Skeleton,Skafinity.Pattern)">
+            <summary>Write a figure's onsets into the skeleton's occupancy without changing it — what a
+            quoted part still owes the parts arranged after it.</summary>
+        </member>
+        <member name="F:Skafinity.MusicGen.QuoteWeight">
+            <summary>How often a non-chorus section plays its figure verbatim rather than working on
+            it. The rest of the weight is shared over the four mutations below.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.Arrange(Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,Skafinity.Pattern[])">
+             <summary>
+             Arrange one part: the genre's authored figure, worked on against the section's skeleton.
+            
+             THE TABLES ARE SEED MATERIAL, NOT A CEILING. The authored figures are each genre's
+             characteristic gestures and none of them is deleted — what changes is that a section's part
+             is now figure x mutation x skeleton rather than one entry out of a table of three. That
+             product is where the state count comes from: the whole rhythm section used to have twelve
+             states in punk over five hundred songs, because it was the product of three table sizes and
+             randomness cannot reach past a table size.
+            
+             Every mutation stays inside the genre's allowed cell class, so a skank stays offbeat and a
+             punk downstroke stays on the beat however loud the accent grid is elsewhere.
+             </summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.Arrange(Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,Skafinity.Pattern[],System.Single,System.Boolean[],System.Boolean,System.Single,System.Boolean)">
+            <param name="spine">Onsets the mutations may not reach, index-aligned with
+            <paramref name="fig"/> — the drums' <see cref="M:Skafinity.DrumGroove.SpineOf(Skafinity.Pattern,System.Boolean,System.Int32)"/>. Null for a voice whose
+            whole figure is fair game, which is every melodic one.</param>
+            <param name="marks">Whether the result goes into the skeleton's occupancy. The kit's does
+            not: the kick has its own layer on the grid and the snare is most of the accent grid, so
+            writing it into <c>Taken</c> as well would have the band pushing away from a beat it is
+            supposed to be locking to, and count it twice while doing it.</param>
+            <param name="bias">−1 (thin) to +1 (fill): shifts weight between DROP and ADD without
+            changing how much of the stream the draw costs. Zero for every melodic voice, so their
+            weights are exactly what they always were; the kit reads its section's energy and the
+            vibe's DRUM BUSY through it (see <see cref="M:Skafinity.MusicGen.KitBias(System.Boolean)"/>).</param>
+        </member>
+        <member name="M:Skafinity.MusicGen.Drop(System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Single},Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,System.Boolean[])">
+            <summary>DROP the onset that fights hardest with what is already there — a tune landing the
+            comp is stepping on, most often. Never the figure's first onset: a figure that loses its
+            downbeat is a different figure.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.Add(System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Single},Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,System.Boolean)">
+            <summary>ADD an onset on the best free cell of the genre's allowed class. The new hit takes
+            its VALUE from the onset before it, so it is the same gesture played once more rather than a
+            cell type the figure never used.</summary>
+            <param name="offPulse">Refuse cells on the beat — the other half of the kick's spine law
+            (see <see cref="M:Skafinity.DrumGroove.SpineOf(Skafinity.Pattern,System.Boolean,System.Int32)"/>). A groove's identity is partly where it does NOT
+            play, and a rule about existing onsets cannot say that: the one drop IS the hole on beat 1,
+            and without this it quietly acquires the downbeat it is defined by not having.</param>
+        </member>
+        <member name="M:Skafinity.MusicGen.Displace(System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Single},Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,System.Boolean[],System.Boolean)">
+            <summary>DISPLACE one onset by a cell, staying inside the allowed class — the same figure
+            with one hit pushed or pulled. Not the first onset, for the same reason DROP spares it.
+            </summary>
+            <param name="offPulse">As <see cref="M:Skafinity.MusicGen.Add(System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Single},Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,System.Boolean)"/>'s: a kick may not be moved ONTO a beat either.
+            The same hole a groove is defined by is just as fillable by a displaced push as by an added
+            one — ska's beat 1 still sat 3 points over its baseline once Add alone was stopped. So the
+            kick's on-beat set is frozen entirely: nothing enters it, nothing leaves it, and what
+            arranges is the pushes around it.</param>
+        </member>
+        <member name="M:Skafinity.MusicGen.Recombine(System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Single},Skafinity.Pattern,Skafinity.Rng,Skafinity.Pattern[],System.Boolean[])">
+            <summary>RECOMBINE: take one bar of the phrase from another figure in the same genre's
+            table. The genre's own vocabulary, re-cut — which is why this is the mutation that reaches
+            furthest without ever producing a gesture the genre does not have.</summary>
+            <param name="spine">Kept where the bar is cleared. Recombine is the one mutation that
+            removes onsets it never looked at — it replaces a whole bar — so without this a genre's
+            backbeat would survive Drop and Displace and then vanish anyway one time in six.</param>
         </member>
         <member name="F:Skafinity.MusicGen.RitardAmount">
             <summary>How much slower the song's final bars run than its nominal tempo.</summary>
@@ -198,6 +443,22 @@
         <member name="M:Skafinity.MusicGen.ShapeDensity(Skafinity.FillShape,System.Single,System.Boolean)">
             <summary>How dense the fill is at this point in its span, as a multiplier on the genre's
             target. <paramref name="u"/> is 0 on the fill's first beat and 1 on its last.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.FillAgainst(System.Int32)">
+             <summary>
+             What the rest of the section is doing where this fill cell lands — the one thing a fill did
+             not read, on a grid that was already built for it.
+            
+             A fill is the drummer's bar, but it is not played over silence: the melodic voices play
+             THROUGH a fill (only the kit hands over), so a fill that puts a hit on the note the tune is
+             landing on is two things arriving on the same beat. And the seam is what the fill is FOR —
+             it is crossing one, and leaning on it is the gesture.
+            
+             A multiplier on a probability, so it changes nothing about how much of the stream a fill
+             spends: <see cref="F:Skafinity.MusicGen.FillCells"/>'s rule holds, and the density target still means what it
+             said. Deliberately gentle in both directions — a fill that dodged the tune outright would
+             be a fill written by the melody.
+             </summary>
         </member>
         <member name="M:Skafinity.MusicGen.HitSeed(System.Int32)">
             <summary>A deterministic per-hit stick/round-robin stream. A LOCAL LFSR seeded on the hit's
@@ -432,6 +693,10 @@
             the top, so an arpeggio can keep counting) — the sounding counterpart of
             <see cref="M:Skafinity.MusicGen.ChordDegree(System.Int32,System.Int32)"/>.</summary>
         </member>
+        <member name="P:Skafinity.MusicGen.TunePhraseTicks">
+            <summary>One phrase of the song's tunes, in ticks (diagnostics — see <see cref="T:Skafinity.Melody"/>).
+            </summary>
+        </member>
         <member name="M:Skafinity.MusicGen.TuneFor(Skafinity.Section)">
             <summary>The tune this section sings, or null where the section is not a place for one:
             a solo is where the genre's lead grammar improvises, an intro is a build-in, and the
@@ -442,7 +707,7 @@
             property of the form rather than of a drawn song — which is what lets a form be checked for
             putting its feel changes somewhere the melody can contrast with them.</summary>
         </member>
-        <member name="M:Skafinity.MusicGen.DrawTunes(System.Int32)">
+        <member name="M:Skafinity.MusicGen.DrawTunes(System.Int32,System.Boolean)">
             <summary>Draw the song's tunes — one for choruses, a sparser one for verses. Every genre
             gets both: "riff-led" does not mean melody-free, and metal verses with no tune left four
             and eight bar holes where the lead simply did not play.</summary>
@@ -455,6 +720,11 @@
              pulled to the nearest tone of the bar's chord, while the notes between beats are free to
              pass through. Snapping everything would rewrite the tune chord by chord — which is
              exactly the "no tune, just an improvisation over the changes" this replaces.</summary>
+        </member>
+        <member name="M:Skafinity.MusicGen.BeginPlan(System.String,Skafinity.MusicGen.Config,Skafinity.PlanTrace)">
+            <summary>As <see cref="M:Skafinity.MusicGen.BeginPlan(System.String,Skafinity.MusicGen.Config)"/>, with every voice's onsets recorded as it
+            plays them (see <see cref="T:Skafinity.PlanTrace"/>). The trace has to be attached BEFORE the plan runs,
+            which is the whole reason this overload exists.</summary>
         </member>
         <member name="M:Skafinity.MusicGen.FinishStereo">
             <summary>Master-normalize and interleave to stereo 16-bit PCM. Call after every
@@ -491,6 +761,25 @@
              both triplet rates exact (see Timing), so a triplet ornament is ON the grid and a
              sixteenth-only ruler would flag it as drift.</summary>
              <summary>The genre this plan was composed for (diagnostics).</summary>
+        </member>
+        <member name="P:Skafinity.MusicGen.SongParts">
+            <summary>What the song's CHORUSES play — the draws that are the song's rhythm-section
+            identity. A sweep counts distinct combinations of these, which is the number that says how
+            many different rhythm sections a genre can produce at all: they come out of tables, so it is
+            a table-size ceiling rather than anything randomness can reach.</summary>
+        </member>
+        <member name="P:Skafinity.MusicGen.KitLeads">
+            <summary>Whether this song's band wrote to the kit or the kit to the band. Cohesion is
+            achieved by two different mechanisms depending on the answer, so a sweep that averages the
+            two describes neither.</summary>
+        </member>
+        <member name="P:Skafinity.MusicGen.Tunes">
+            <summary>The song's two tunes (diagnostics — see <see cref="T:Skafinity.Melody"/>).</summary>
+        </member>
+        <member name="P:Skafinity.MusicGen.Form">
+            <summary>THIS SONG's form. One accessor rather than five call sites re-deriving it: a form
+            that varies per song must be the same list everywhere, or the diagnostics' bar rulers
+            disagree with the song that was rendered.</summary>
         </member>
         <member name="M:Skafinity.MusicGen.AudibleNotes">
             <summary>Every audible note as (sample start, frequency), in composition order. The
@@ -553,6 +842,11 @@
             rides" cannot ask for one directly: riding is a per-section roll against a per-song
             preference, so the only way to find one is to plan songs and look.</summary>
         </member>
+        <member name="F:Skafinity.MusicGen.SectionInfo.Groove">
+            <summary>The groove this section drew. Per SECTION now, so it is no more derivable from
+            the genre or the seed's knobs than the cymbal hand is — and it is the other half of the
+            same answer when a listening note is about the drums.</summary>
+        </member>
         <member name="P:Skafinity.MusicGen.AuditionGrooveOpens">
             <summary>Whether this song's groove ever opens the hats. A line about open-and-closed hats
             needs a groove that HAS an open cell — metal's have none at all, so a metal verse is a
@@ -568,6 +862,14 @@
             song plays: the ride and the hats sit on different buses, so comparing them at a made-up
             gain answers nothing.</summary>
         </member>
+        <member name="F:Skafinity.MusicGen.ReverbMin">
+            <summary>The band a song's reverb wet is drawn from. Not 0..1: bone dry and swimming are
+            both reachable there and neither is a thing any of these genres is.</summary>
+        </member>
+        <member name="F:Skafinity.MusicGen.ReverbMax">
+            <summary>The band a song's reverb wet is drawn from. Not 0..1: bone dry and swimming are
+            both reachable there and neither is a thing any of these genres is.</summary>
+        </member>
         <member name="P:Skafinity.MusicGen.RingOutSeconds">
              <summary>How many seconds of ring-out every song reserves past its last bar — the tail the
              final chord and the reverb decay into.
@@ -577,11 +879,33 @@
              chord has even landed, and two songs at two tempos with two downbeats play at once. The
              ritard stretches the last bars, so the tail is scaled to match it (see ComposePlan).</summary>
         </member>
-        <member name="M:Skafinity.MusicGen.BuildStructure(System.Int32)">
-            <summary>The genre's section map — its form, not a shared list. Non-lead voices are seeded
-            by section TYPE so every chorus plays identical backing; the lead folds in the verse index
-            so it evolves; the section-end fill is seeded by absolute index so no two fills repeat.
-            </summary>
+        <member name="M:Skafinity.MusicGen.DrawForm(Skafinity.GenreProfile,Skafinity.Rng)">
+             <summary>
+             THIS SONG's form: one of the genre's authored variants, with its details drawn.
+            
+             It has to be built ONCE and cached (<see cref="F:Skafinity.MusicGen._form"/>), because five places used to
+             re-derive it — the composer, and four diagnostics. That was harmless while the answer was a
+             constant; the moment it varies per song, a diagnostic that re-derives it is a bar ruler
+             disagreeing with the song it is measuring, and `--score` and `--grid` go quietly wrong
+             exactly when they are most needed.
+            
+             Randomising a form outright would be the wrong fix and is not what happens here. A form is
+             genre identity, which is why it lives in <see cref="T:Skafinity.GenreProfile"/>, and punk with a
+             sixteen-bar solo is not punk. Two mechanisms instead: a FAMILY of authored variants, and
+             details drawn over whichever one was chosen.
+            
+             Non-lead voices are seeded by section TYPE so every chorus plays identical backing; the lead
+             folds in the verse index so it evolves; the section-end fill is seeded by absolute index so
+             no two fills repeat.
+             </summary>
+             <remarks>STATIC, and takes its profile: drawing a form needs no song, and the suite's
+             invariants over it are arithmetic. Left as an instance method they cost a composed song
+             each, which put 35 seconds on a 25-second harness for checks that render nothing.</remarks>
+        </member>
+        <member name="M:Skafinity.MusicGen.Optional(Skafinity.Section)">
+            <summary>The sections a song may do without. Which one a genre has is most of what
+            distinguishes the six forms from each other, so dropping one is a song that does without
+            rather than a genre that does.</summary>
         </member>
         <member name="M:Skafinity.MusicGen.SectionKey(Skafinity.Section)">
             <summary>The section's RNG key — what makes every chorus play the same backing.</summary>
@@ -794,6 +1118,37 @@
             <summary>Wrap already-rendered 16-bit samples in a WAV (for export). Mono or
             interleaved stereo per <paramref name="channels"/>.</summary>
         </member>
+        <member name="T:Skafinity.CompFigure">
+             <summary>
+             The comp figures — what rhythm each genre's chordal voices actually play.
+            
+             This was the loudest remaining duplication in the engine: one <c>KeysOnsets {0,3,4,7}</c>
+             served rock, country and pop, and one rhythm-guitar loop served rock, country and punk off a
+             single <c>country</c> bool. Three genres at a time played the SAME comping rhythm, whatever
+             harmony sat underneath — and the comp is most of what a listener hears as "the band".
+            
+             A figure is a <see cref="T:Skafinity.Pattern"/>, so it owns its length: the ska horn answer is two bars
+             because it IS a call and response, the rock riff is two bars because a riff is a motif rather
+             than a bar, and punk is one bar because that is the whole idea of punk.
+            
+             CELL VALUES say how the hit is played; <see cref="T:Skafinity.CompStyle"/> says what the voice does with
+             that. <see cref="M:Skafinity.CompFigure.Tone(System.Int32)"/> cells name a single chord tone by index (for arpeggios and
+             alternating figures) instead of the whole voicing.
+             </summary>
+        </member>
+        <member name="F:Skafinity.CompFigure.Ring">
+            <summary>Full voicing, allowed to ring into the next hit.</summary>
+        </member>
+        <member name="F:Skafinity.CompFigure.Stab">
+            <summary>Full voicing, short — a stab or a chop.</summary>
+        </member>
+        <member name="F:Skafinity.CompFigure.Mute">
+            <summary>Root only, muted — the palm-muted chug between accents.</summary>
+        </member>
+        <member name="M:Skafinity.CompFigure.Tone(System.Int32)">
+            <summary>A single chord tone: <c>Tone(0)</c> is the root, <c>Tone(1)</c> the next voice up.
+            Wraps over the voicing, so an arpeggio can just count upward.</summary>
+        </member>
         <!-- Badly formed XML comment ignored for member "T:Skafinity.DrumGroove" -->
         <member name="F:Skafinity.DrumGroove.Half">
             <summary>Half open: the "sloshy" hat. It is not the midpoint of a switch — see RenderHat's
@@ -811,6 +1166,43 @@
         </member>
         <member name="P:Skafinity.DrumGroove.CrashOnOne">
             <summary>Chance of a crash on the section's first downbeat.</summary>
+        </member>
+        <member name="M:Skafinity.DrumGroove.SpineOf(Skafinity.Pattern,System.Boolean,System.Int32)">
+             <summary>
+             THE SPINE: which of a groove's onsets ARE the genre, and so may not be dropped or moved.
+            
+             This is the drums' answer to <see cref="T:Skafinity.CellClass"/>, and it is what stops arranging the kit
+             from eroding the three measured tells the corpus pass corrected. It is a LAW rather than a
+             per-groove list of ticks, because a list is a table that has to be re-authored every time a
+             groove is added and gets it wrong silently when nobody does:
+            
+               * <b>every STRUCK snare</b>. The backbeat is where a genre puts it — 2 and 4 in most of
+                 them, 3 alone in pop's half-time — and a rule phrased in beat numbers would be wrong for
+                 whichever genre disagrees. The ghosts around it are the density and stay arrangeable,
+                 which is the whole of what punk's snare has to say: strike two, ghost the rest.
+               * <b>every kick ON A BEAT.</b> A KICK ON THE BEAT IS THE PULSE; A KICK OFF IT IS THE PUSH,
+                 and the push is the thing a drummer varies. Protecting the bar's first beat alone was
+                 not enough and the failure was specific rather than general: beat 1 held at 96–97% in
+                 every genre while every OTHER anchor eroded — country's beat 3, half of boom-chick, went
+                 missing in 23% of bars, pop's beat 4 in 24%, rock's beat 3 in 15%. The kick count per
+                 bar barely moved, so nothing about its level or its density said so; what a listener
+                 gets is a kick that flickers where the pulse should be.
+            
+             AND A GROOVE'S IDENTITY IS PARTLY WHERE IT DOES NOT PLAY, which a rule about onsets cannot
+             say on its own. The one drop IS the hole on beat 1, so <see cref="M:Skafinity.MusicGen.Add(System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Single},Skafinity.Pattern,Skafinity.Skeleton,Skafinity.Rng,Skafinity.ArrangeRole@,System.Boolean)"/> may not
+             put a kick on a beat either — same law read the other way round, and without it ska's beat-1
+             occupancy climbed 41% → 45% as one-drop bars quietly acquired the downbeat they are defined
+             by not having. On the beat is the groove; off the beat is the arrangement.
+            
+             The cymbal has no spine here because the cymbal is not arranged at all: it is the pulse, and
+             country's hat on the "and" — the largest mismatch the corpus pass found — is preserved by
+             construction rather than by a rule that could be got wrong.
+             </summary>
+        </member>
+        <member name="M:Skafinity.DrumGroove.IsPulse(System.Int32)">
+            <summary>A tick the kick's spine lives on — see <see cref="M:Skafinity.DrumGroove.SpineOf(Skafinity.Pattern,System.Boolean,System.Int32)"/>. One law, read two
+            ways: an onset here may not be dropped or moved, and an onset may not be ADDED here.
+            </summary>
         </member>
         <member name="T:Skafinity.FillShape">
             <summary>The SHAPE of a fill — where its hits sit inside the span. This is the half of a
@@ -1358,6 +1750,39 @@
         <member name="F:Skafinity.EndingStyle.Fall">
             <summary>The figure keeps going and falls away — the pop fade, without the fade-out.</summary>
         </member>
+        <member name="T:Skafinity.TuneVocab">
+             <summary>
+             THE GENRE'S TUNE VOCABULARY — what kind of melody it writes, as opposed to what its lead
+             GUITAR does with one.
+            
+             It is here rather than in a <c>_prof.Lead switch</c> inside <c>DrawTunes</c> because that
+             switch was the <c>if ( _genre == … )</c> smell one level removed: two genres sharing a
+             <see cref="T:Skafinity.LeadStyle"/> got the same tune vocabulary, which is half of why two genres' tunes
+             used to come back byte-identical. A vocabulary belongs to the genre, not to the lead's grammar.
+            
+             EVERY NUMBER BELOW IS AUTHORED, not measured. There is no melodic corpus in this repo the way
+             there is a drum one, so these say what a genre's tunes should be made of and nothing more —
+             unlike the accent weights and the groove placements, which are fitted numbers and say so. Do
+             not write them up as if they were measured.
+             </summary>
+        </member>
+        <member name="F:Skafinity.TuneVocab.LengthWeights">
+            <summary>Weights over <see cref="F:Skafinity.Melody.Lengths"/> — the note lengths this genre sings in.
+            This IS the genre's density: a table that leans on the quarter and the half writes a punk
+            tune, one that leans on the eighth and the sixteenth writes a metal one.</summary>
+        </member>
+        <member name="F:Skafinity.TuneVocab.Rest">
+            <summary>How often a cell is silence rather than a note. A rest is an OMITTED ONSET — the
+            note before it simply holds longer — so this thins the line without needing a rest cell the
+            renderer would have to know about.</summary>
+        </member>
+        <member name="F:Skafinity.TuneVocab.Leap">
+            <summary>How often the line jumps rather than steps.</summary>
+        </member>
+        <member name="F:Skafinity.TuneVocab.AnswerWeights">
+            <summary>Weights over <see cref="F:Skafinity.Melody.Answers"/> — how this genre answers its own call.
+            </summary>
+        </member>
         <member name="T:Skafinity.MixProfile">
             <summary>Per-genre mix trim. Not a knob and not a per-song draw: a genre's records simply
             sound like this. Scaled globally by <c>Config.GenreMix</c> so the house can dial the whole
@@ -1416,27 +1841,26 @@
             swing band. A shuffle is a different feel, not a wider swing: widening the band to reach
             ~0.33 would just make ordinary songs sloppy on the way there. Ska-punk and country only.</summary>
         </member>
+        <member name="F:Skafinity.GenreProfile.ShuffleGrid">
+            <summary>The depth at which a song's feel IS the triplet, read off <see cref="F:Skafinity.Timing.Swing"/>
+            alone. The shuffle/swing decision is made here and only its depth survives into
+            <see cref="T:Skafinity.Timing"/>, so anything downstream that needs to know which of the two it is asks
+            this. It sits above every genre's <see cref="P:Skafinity.GenreProfile.SwingMax"/> and below every
+            <see cref="P:Skafinity.GenreProfile.ShuffleMin"/> — that gap is what makes it a classification rather than a taste,
+            and the engine suite asserts the gap is still there, because a retuned band would otherwise
+            move this line without anything saying so.</summary>
+        </member>
         <member name="P:Skafinity.GenreProfile.BpmMin">
             <summary>The genre's own tempo band, and its uptempo band (drawn when the song rolls
             FAST). One band per genre is the point: metal at country's tempo is not metal.</summary>
         </member>
-        <member name="P:Skafinity.GenreProfile.AlwaysFast">
-            <summary>Always draw from the fast band — the genre has no laid-back mode.</summary>
-        </member>
-        <member name="P:Skafinity.GenreProfile.TempoFloor">
-             <summary>Where the listener's TEMPO knob SATURATES for this genre — the slowest and fastest
-             this music is still itself.
+        <member name="P:Skafinity.GenreProfile.FastChance">
+             <summary>How often a song takes the genre's UPTEMPO band instead of its ordinary one.
             
-             The knob is one global 0.70–1.45 multiplier over whatever the genre drew, and a symmetric
-             range chosen against no band in particular put its ends outside every genre at once: ska
-             268, metal 290 and punk 290 at the top, metal 63 and country 67 at the bottom. None of
-             those are tempos these genres are, so the usable part of the slider was its middle.
-            
-             Narrowing the knob would have been one number, but it takes headroom off punk and ska that
-             they can genuinely use. The band is the genre's and the knob is the preference riding on
-             top — so the knob keeps its full travel in the UI and each genre stops where it stops
-             being itself. These are ceilings for the KNOB: the drawn band must sit inside them, so at
-             neutral nothing is ever clamped.</summary>
+             A genre's, not a listener's, for exactly the reason <see cref="P:Skafinity.GenreProfile.SwingChance"/> is: how often
+             this music runs hot is something it IS, and a global slider over it let a reroll hand any
+             genre a 100% fast bias. It replaces both the TEMPO BIAS knob and the AlwaysFast flag — the
+             flag was a 1.0 that could not be written as one.</summary>
         </member>
         <member name="P:Skafinity.GenreProfile.ChordBars">
             <summary>Bars per chord — the harmonic rhythm. 2 is the reggae/rock norm; 1 makes the
@@ -1449,8 +1873,65 @@
         <member name="P:Skafinity.GenreProfile.HornLead">
             <summary>True if the lead line is the ska horn section rather than a lead guitar.</summary>
         </member>
-        <member name="P:Skafinity.GenreProfile.Form">
-            <summary>The genre's section map (see <see cref="T:Skafinity.SongForm"/>).</summary>
+        <member name="P:Skafinity.GenreProfile.Forms">
+             <summary>The genre's FAMILY of section maps (see <see cref="T:Skafinity.SongForm"/>), drawn per song.
+            
+             A family rather than one map, and AUTHORED rather than randomised: a form is genre identity,
+             which is why it lives here at all, and punk with a sixteen-bar solo is not punk. What varies
+             freely is the details below; what varies between variants is an arc somebody wrote down.
+            
+             The form used to be exactly one map per genre — so over 500 songs the tune had 500 states,
+             punk's whole rhythm section had 12, and the form had ONE. Every ska-punk song was the same
+             nine sections and sixty bars with the hemiola on the second verse and the half-time bridge
+             in the same place, forever, and length varied only with tempo.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.VerseBars">
+             <summary>
+             How long a VERSE runs. Only the verse: a chorus's length is part of what every chorus has to
+             agree about, and the ending is four bars because the hypermeasure says so.
+            
+             IT IS ONE VALUE, AND SHORT IS DELIBERATE. **This is a game, not a record.** The toy streams
+             endlessly while somebody plays, so the song boundary is WHERE THE VARIETY ARRIVES — a
+             listener who gets through twice as many songs hears twice as many keys, tempos, grooves and
+             tunes. Long songs spend that variety on repetition, and they cost memory, since the web
+             player holds several whole songs as decoded PCM.
+            
+             Do not "fix" this against record lengths. Published genre averages put punk near 2:46, pop
+             3:00-3:30, country 3:13-4:00 and thrash close to 5:00, and every genre here runs well under
+             its own figure on purpose. That research is real and it answers a different question — what
+             an album track runs, not what an in-game loop wants.
+            
+             If length ever does want to grow, the musically correct set is { 8, 16 }: over 90% of
+             sections in this music are 8 or 16 bars, 12 is the blues form and belongs to country and
+             blues-rock rather than to pop or metal, and a 4-bar verse is not a verse. The other
+             constraint is the TUNE's length — it is the harmonic cycle, so a 12-bar verse over an 8-bar
+             tune restates it mid-phrase.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.OptionalDropChance">
+             <summary>Chance an OPTIONAL section (pre-chorus, bridge, solo, breakdown) is dropped from
+             this song. Which optional section a genre has is most of what distinguishes the six forms
+             from each other, so this stays low: it is a song that does without, not a genre that does.
+            
+             It is also the direction length variation is allowed to go. With the verse fixed, the drawn
+             details SHORTEN — a dropped section, a cut final verse — so a genre's songs spread down from
+             its own length rather than up from it.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.KeyLiftChance">
+            <summary>Chance the form's key lift actually happens. Country and pop modulated up a tone
+            for the final chorus EVERY SINGLE SONG, which is a device wearing out.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.DoubleFinalChorusChance">
+             <summary>Chance the final chorus comes round twice. It is a repeated SECTION rather than a
+             longer one, so every chorus still agrees about its length — which is the invariant, and
+             doubling the bar count would have broken it.
+            
+             Kept but made rare: the outro chorus is genuinely idiomatic in pop and ska-punk, and it is
+             also the only detail that LENGTHENS a song (see VerseBars on why that is the direction to be
+             sparing with).</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.TruncateFinalVerseChance">
+            <summary>Chance the last verse is cut short by four bars on the way into what follows.
+            </summary>
         </member>
         <member name="P:Skafinity.GenreProfile.Scales">
             <summary>The harmony tables this genre draws from — one weighted draw each, so a genre's
@@ -1531,6 +2012,63 @@
             the bridge the energy. Over 1 means never, which is most genres: a crash-ride is a rock
             and metal gesture and it makes a ska verse sound like a mistake.</summary>
         </member>
+        <member name="P:Skafinity.GenreProfile.BassRole">
+            <summary>The bass's role. Its <see cref="F:Skafinity.ArrangeRole.Kick"/> is how hard this genre's bass
+            locks to the kick — the number that was previously an accident of two tables agreeing.
+            </summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.CompRole">
+            <summary>The main chordal voice's role. Its <see cref="F:Skafinity.ArrangeRole.Complement"/> is how hard
+            it avoids cells the tune and the bass have already taken — a comp is a BED, and a bed that
+            lands on every vocal syllable is a second vocal.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.LoudCompRole">
+            <summary>The role the main chordal voice takes where the section is LOUD enough that the
+            genre changes technique (see <see cref="P:Skafinity.GenreProfile.LoudComp"/>). Null falls back to
+            <see cref="P:Skafinity.GenreProfile.CompRole"/>; a genre whose loud technique lives on different cells than its quiet
+            one has to say so, or its choruses get arranged against the wrong class — third-wave ska's
+            chorus is punk downstrokes on the beat, not a skank, and the chorus is the most recognisable
+            thing in the genre.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.KeysRole">
+            <summary>The second chordal voice's role, where the genre has one. It is arranged last and
+            so sees everything, which is what lets it answer rather than double.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.MutateRate">
+            <summary>How often a NON-CHORUS section works on its figure rather than quoting it. A
+            chorus always quotes: every chorus must agree, which is what makes a chorus a chorus.
+            </summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.KickRole">
+            <summary>The KICK's role. Its <see cref="F:Skafinity.ArrangeRole.Cells"/> is where this genre's foot
+            lives — a gallop is a sixteenth thing and a two-beat country kick is not — and its
+            <see cref="F:Skafinity.ArrangeRole.Complement"/> is which way it reads the tune: pushed away from the
+            melody's landings, or (negative, via a low value against a high Kick pull) content to land
+            with them.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.SnareRole">
+            <summary>The SNARE's role. It holds the backbeat whatever this says — the struck hits are
+            spine and the arranger cannot reach them (see <see cref="M:Skafinity.DrumGroove.SpineOf(Skafinity.Pattern,System.Boolean,System.Int32)"/>) — so what
+            is arranged here is the ghost layer around them.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.KitMutateRate">
+            <summary>How often a non-chorus section works on the kit it drew. DELIBERATELY UNDER
+            <see cref="P:Skafinity.GenreProfile.MutateRate"/> in every genre: a guitar figure is authored, so the worst a mutation
+            can do to it is make it worse, while a drum figure carries a genre's identity in specific
+            measured positions and eroding those converges six genres on one drummer.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.KitLeadsChance">
+            <summary>How often a song has the KIT write first and the band follow it, rather than the
+            other way round. Both are real and they are different mechanisms for the same cohesion: a
+            leading kit is most punk and most rock, a following kit is riff-led metal and a great deal of
+            programmed pop where the drums track the topline. Drawn once per song, like
+            <see cref="P:Skafinity.GenreProfile.RiffBassChance"/>, and for every genre whatever it says.</summary>
+        </member>
+        <member name="P:Skafinity.GenreProfile.Tune">
+            <summary>What kind of TUNE this genre writes (see <see cref="T:Skafinity.TuneVocab"/>). Distinct from
+            <see cref="P:Skafinity.GenreProfile.Lead"/>, which is what the lead instrument does when it improvises instead.
+            </summary>
+        </member>
         <member name="P:Skafinity.GenreProfile.Lead">
             <summary>How the lead phrases.</summary>
         </member>
@@ -1569,16 +2107,14 @@
             so a fast song's "reduced swing" was a straight song wearing a number. A song either swings
             at a depth its genre means or it does not swing.</param>
         </member>
-        <member name="M:Skafinity.GenreProfile.DrawBpm(Skafinity.Rng,System.Boolean,System.Single)">
-             <summary>This song's tempo, drawn from the genre's band (its uptempo band when
-             <paramref name="fast"/>) and then scaled by the listener's TEMPO knob. The band is the
-             genre's; the knob is the preference riding on top, so a song can be pushed or dragged
-             without a country song ever ending up at metal's tempo.
+        <member name="M:Skafinity.GenreProfile.DrawBpm(Skafinity.Rng,System.Boolean)">
+             <summary>This song's tempo, drawn from the genre's band — its uptempo band when
+             <paramref name="fast"/>, and nothing else reaches it.
             
-             The knob SATURATES at the genre's own <see cref="P:Skafinity.GenreProfile.TempoFloor"/>/<see cref="P:Skafinity.GenreProfile.TempoCeil"/>
-             rather than at one shared 40–300. A single symmetric 0.70–1.45 multiplier cannot be right
-             for six bands at once: its ends were ska 268, metal 290 and country 67, so the ends of the
-             slider were unplayable everywhere and only its middle was usable.</summary>
+             THERE IS NOTHING RIDING ON TOP OF IT. A TempoFloor/TempoCeil pair used to sit here bounding
+             the listener's TEMPO knob per genre; with the knob retired they bounded nothing — the drawn
+             band was always inside them by construction — so they were twelve numbers that could only
+             ever be a no-op. The band IS the answer now.</summary>
         </member>
         <member name="M:Skafinity.GenreProfile.DrawGroove(Skafinity.Rng)">
             <summary>This song's groove, drawn from the genre's own table — one weighted draw, never
@@ -1841,16 +2377,251 @@
         <member name="F:Skafinity.Melody.Rest">
             <summary>Cell value for a rest — no onset, the previous note holds.</summary>
         </member>
-        <member name="M:Skafinity.Melody.Draw(Skafinity.Rng,System.Int32,System.Int32,System.Single,System.Single)">
-            <summary>
-            Draw a tune: <paramref name="bars"/> bars of CALL AND ANSWER. The first phrase states a
-            shape and leaves it open; the second repeats that rhythm and resolves it home. That
-            call/answer symmetry is most of what makes a line sound composed rather than generated —
-            a fresh random phrase every two bars never sounds like a tune however good the notes are.
+        <member name="F:Skafinity.Melody.DegreeMin">
+             <summary>The AMBITUS — the range a whole tune is written in, in SCALE DEGREES from the key's
+             tonic: from the sixth below it up to the third above the octave. Twelve degrees, about an
+             octave and a fifth in a major scale, and deliberately lopsided — a melody sits above its
+             tonic and only dips under it, so a symmetric range would spend half of itself where no tune
+             goes.
+            
+             It is an authored bound rather than a measured one: what it is FOR is that a line which
+             wanders further stops being singable, and singable is what makes the thing a tune. The
+             number is a judgement about that and nothing more.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.DegreeMax">
+             <summary>The AMBITUS — the range a whole tune is written in, in SCALE DEGREES from the key's
+             tonic: from the sixth below it up to the third above the octave. Twelve degrees, about an
+             octave and a fifth in a major scale, and deliberately lopsided — a melody sits above its
+             tonic and only dips under it, so a symmetric range would spend half of itself where no tune
+             goes.
+            
+             It is an authored bound rather than a measured one: what it is FOR is that a line which
+             wanders further stops being singable, and singable is what makes the thing a tune. The
+             number is a judgement about that and nothing more.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.PhraseSpan">
+             <summary>How many scale degrees ONE PHRASE may cover — eight, an octave in a major scale,
+             inside the twelve the whole tune may reach.
+            
+             A RANGE AND AN AMBITUS ARE TWO DIFFERENT NUMBERS AND ONE CANNOT DO BOTH JOBS. The ambitus is
+             a whole-song figure — how far the tune goes over all of it — and a tune here is 2–8 bars, so
+             bounding a single phrase with it was measuring one thing and spending it on another. What a
+             phrase actually does is orbit a register: it opens somewhere, moves about an octave around
+             that, and the tune gets its wider reach from the phrases sitting in DIFFERENT places rather
+             than from any one of them wandering.
+            
+             So the window is drawn per phrase and anchored on the note the phrase opens on
+             (<see cref="F:Skafinity.Melody.Opens"/>), which is why the opening degree keeps its weighting instead of being
+             folded into a window drawn first. Inside a phrase this is the bound the walk reflects off
+             and the centre <see cref="F:Skafinity.Melody.Centre"/> pulls toward; the ambitus stays the outer wall.
+            
+             THE WINDOW BOUNDS WHERE A LINE WANDERS, NOT WHERE IT MAY BE PUT. An answer transposes its
+             call bodily (<see cref="F:Skafinity.Melody.AnswerOp.SequenceUp2"/> takes it up two degrees), and that is a
+             deliberate move rather than a walk drifting out of register — so <see cref="M:Skafinity.Melody.Answer(Skafinity.Rng,System.Collections.Generic.List{System.Int32},Skafinity.TuneVocab@,System.Int32)"/>
+             reflects off the ambitus. Folding a sequence back into the call's window would flatten the
+             one gesture in the tune whose whole point is that it goes somewhere else.
+            
+             Authored like everything else here (there is no melodic corpus in this repo). The published
+             pop-melody work that gives whole-song ambitus at around two octaves measures range on a
+             rolling two-bar window for exactly this reason, but its figures are for a different roster
+             and are not borrowed as a number — this is a judgement about a phrase being one gesture in
+             one register, and <c>--stats</c> reports what the engine actually does with it.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.Lengths">
+             <summary>The note lengths a tune may be written in, in ticks: sixteenth, eighth, dotted
+             eighth, quarter, dotted quarter, half. <see cref="F:Skafinity.Timing.TicksPerBeat"/> is 48, so every one
+             of them is exact and <see cref="T:Skafinity.Timing"/> needs nothing — the same clean division the
+             thirty-second work already proved.
+            
+             The line every genre's weights are split on is the QUARTER: the first three are shorter than
+             a beat and the last three are a beat or longer, which is what <c>move</c> leans on to make a
+             verse sparser than its chorus without a second density mechanism.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.LongFrom">
+            <summary>Index of the first length that is a beat or longer.</summary>
+        </member>
+        <member name="T:Skafinity.Melody.AnswerOp">
+            <summary>How a phrase answers itself. The answer used to not be DRAWN at all: it was the
+            call's degrees minus one, every genre, every song, with a forced tonic on the end — so half
+            of every tune in the engine was a mechanical transform of the other half.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.AnswerOp.Transpose">
+            <summary>The call a step lower — the old behaviour, and still the heaviest weight in
+            most genres because it is genuinely the commonest answer in this music.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.AnswerOp.NewTail">
+            <summary>The same line with a different landing: identical degrees, and the last two
+            re-drawn to step home. What a chorus does.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.AnswerOp.SequenceUp">
+            <summary>The call restated a degree higher — a question answered with a bigger question,
+            which still resolves because the last note is the tonic either way.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.AnswerOp.SequenceUp2">
+            <summary>Restated two degrees higher.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.AnswerOp.Invert">
+            <summary>Mirrored about the call's first degree: where the call rose, the answer falls.
             </summary>
-            <param name="density">Notes per bar, roughly — punk and pop sing in long notes, metal
-            and ska fill more of the bar.</param>
-            <param name="leap">How often the line jumps rather than steps.</param>
+        </member>
+        <member name="T:Skafinity.Melody.PeriodShape">
+             <summary>How the CONSEQUENT opens — the one decision that makes a period a period.
+            
+             A period is two call/answer pairs: an antecedent that leaves the line open and a consequent
+             that closes it. Both pairs are built by exactly the machinery below; what varies is how much
+             of the antecedent's call the consequent's call keeps. That is the classical taxonomy and it
+             is also the whole variation budget — the answers repeat their own call's rhythm either way,
+             so if the consequent's call does not move, nothing in the tune's second half is new.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.PeriodShape.Parallel">
+            <summary>PARALLEL — the consequent restates the call note for note and differs only in
+            how it answers. The commonest period in this music, and the one that makes the tune
+            unmistakably one tune; it is also the least new material, which is why it is not the
+            only shape.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.PeriodShape.Varied">
+            <summary>VARIED — the consequent keeps the call's rhythm and sings a fresh contour over
+            it. The rhythm is what a listener remembers, so this reads as the same phrase said again
+            differently rather than as a second idea.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.PeriodShape.Contrasting">
+            <summary>CONTRASTING — the consequent opens with a phrase of its own, rhythm and all.
+            The departure, and the only shape that puts a second rhythm in the tune.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.ShapeWeights">
+            <summary>Authored, not measured — there is no melodic corpus in this repo (see the note on
+            <c>GenreProfile.Tune</c>) and this is a judgement about how much a tune may move under
+            itself. It is one table rather than six because nothing found says a genre has an opinion
+            about it; a genre that turns out to want one puts weights in <see cref="T:Skafinity.TuneVocab"/>, the
+            way <see cref="F:Skafinity.Melody.Answers"/> already does.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.HalfCadence">
+            <summary>Where an ANTECEDENT lands: a chord tone that is not the tonic, which is what leaves
+            the line open. The fifth is the half cadence proper and takes most of the weight; the third
+            is the softer one. Landing home here would close the tune half way through it and make the
+            consequent an appendix rather than an answer.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.MinPhraseBars">
+            <summary>The fewest bars a phrase may be. A period is four phrases, so a tune shorter than
+            four of these is two phrases and no period — a one-bar "phrase" is a fragment, and four of
+            them is a tune that restates itself every bar, which is the defect this exists to fix
+            arriving from the other direction.</summary>
+        </member>
+        <member name="M:Skafinity.Melody.PhraseCount(System.Int32)">
+            <summary>How many phrases a tune of <paramref name="bars"/> bars is written in: four (a
+            period) where they are long enough to be phrases, two (a plain call and answer) otherwise.
+            </summary>
+        </member>
+        <member name="F:Skafinity.Melody.Opens">
+            <summary>Where a tune may open — chord tones only, weighted toward the tonic and the fifth,
+            with the octave reachable.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.Arch">
+             <summary>How far the phrase leans uphill at its start and downhill at its end — the MELODIC
+             ARCH. Phrases in this music (and in every corpus anyone has counted) rise and then fall on
+             average, and a plain random walk does not: it wanders, and the only thing that ever brought
+             it home was the forced tonic on the last note, which is a landing with no approach to it.
+            
+             0 would be the old coin toss; 0.5 would make direction deterministic and turn every tune
+             into the same hill. This is a lean on a draw, not a shape imposed on one.</summary>
+        </member>
+        <member name="F:Skafinity.Melody.Centre">
+             <summary>How hard the line is pulled back toward the middle of its PHRASE WINDOW —
+             TESSITURA, the fact that a melody orbits a central pitch rather than diffusing across
+             everything it is allowed to sing.
+            
+             It is what actually keeps a tune off the range ends. <see cref="M:Skafinity.Melody.Reflect(System.Int32)"/> is a BACKSTOP: it
+             stops a line parking at a boundary, but a walk with no centre still spends its time out
+             there, and the arch makes that worse in the first half of every phrase by leaning uphill
+             whatever the register already is. The two are different jobs and both are needed — this
+             decides where the line lives, reflection decides what happens when it arrives at an edge
+             anyway. The centre it pulls toward is the PHRASE's (<see cref="F:Skafinity.Melody.PhraseSpan"/>), so a phrase
+             orbits its own register rather than the middle of everything the tune may reach.</summary>
+        </member>
+        <member name="M:Skafinity.Melody.Draw(Skafinity.Rng,System.Int32,System.Int32,Skafinity.TuneVocab@,System.Single,System.Boolean)">
+             <summary>
+             Draw a tune: <paramref name="bars"/> bars built as a PERIOD where they are long enough for
+             one, and as a plain call and answer where they are not.
+            
+             A call and answer is a pair of phrases — the first states a shape and leaves it open, the
+             second repeats that rhythm and resolves it home. That symmetry is most of what makes a line
+             sound composed rather than generated, and a fresh random phrase every two bars never sounds
+             like a tune however good the notes are.
+            
+             A PERIOD IS TWO OF THOSE PAIRS AND SITS ABOVE THEM, NOT INSTEAD OF THEM. The antecedent
+             (call, answer) lands on a chord tone that is not the tonic and so leaves the line open; the
+             consequent (call, answer) opens from the antecedent — restating it, varying it, or departing
+             from it (<see cref="T:Skafinity.Melody.PeriodShape"/>) — and resolves home. That is what puts repetition at the
+             whole tune's length and variation at a phrase's, instead of the binary shape the tune had
+             before this: two phrases, one rhythm between them, looped to fill the section and repeated
+             identically at every chorus.
+            
+             THE RHYTHM REPEAT STAYS, WITHIN A PAIR. Varying an answer's rhythm stops its two phrases
+             being heard as a question and an answer at all; the only rhythmic freedom an answer gets is
+             where its last notes land, and that arrives through <see cref="F:Skafinity.Melody.AnswerOp.NewTail"/> rather
+             than through a second rhythm draw. A new rhythm enters a tune at the CONSEQUENT'S CALL or
+             nowhere. The 100%-tonic ending stays too — that is not a defect to be varied away, it is
+             what makes the thing a tune.
+             </summary>
+             <param name="v">The genre's vocabulary — the note lengths it sings in, how often it rests,
+             how often it leaps, and how it answers itself.</param>
+             <param name="move">How much this line moves relative to the genre's own table: 1 for a
+             chorus, less for the sparser verse tune. It leans the length draw toward the long end rather
+             than being a second density knob sitting beside the weights.</param>
+             <param name="swung">True where the song swings or shuffles. THE SIXTEENTH COMES OUT OF THE
+             MENU: under a shuffle the beat's own subdivision IS the triplet, and Timing's warp puts a
+             straight sixteenth at a third of the beat while the band's eighth-based figures sit on the
+             beat and at two thirds. That is not syncopation, it is two grids at once, and it reads as
+             the lead pushing against a band it does not line up with. A shuffled genre's melody moves in
+             eighths and the shuffle does the subdividing.</param>
+        </member>
+        <member name="M:Skafinity.Melody.Emit(System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32},System.Int32,System.Collections.Generic.List{System.Int32},System.Collections.Generic.List{System.Int32})">
+            <summary>Append one phrase's onsets (offset to <paramref name="at"/>) and its degrees.
+            </summary>
+        </member>
+        <member name="M:Skafinity.Melody.DrawRhythm(Skafinity.Rng,System.Int32,System.Int32[],Skafinity.TuneVocab@)">
+             <summary>One phrase's RHYTHM — the onsets, in ticks from the phrase's own start.
+            
+             Rhythm first, and separately from the pitches: a melody's rhythm is what gets remembered,
+             and drawing it on its own is what lets an answer repeat it exactly.
+            
+             A REST IS AN OMITTED ONSET, not a cell. Leaving the tick out means the previous note's
+             SpanTicks simply grows to cover the gap, and RenderTune's two-beat length cap turns the
+             remainder into real silence — so rests cost the renderer nothing. A Melody.Rest CELL
+             would be read as a DEGREE by RenderTune, which has no rest arm, and sung.</summary>
+        </member>
+        <member name="M:Skafinity.Melody.DrawContour(Skafinity.Rng,System.Int32,Skafinity.TuneVocab@)">
+             <summary>One phrase's CONTOUR — <paramref name="notes"/> degrees relative to the key's tonic.
+            
+             Three things shape it and none of them is a random walk: the arch (see <see cref="F:Skafinity.Melody.Arch"/>),
+             post-skip reversal (below), and reflection off the range ends instead of a clamp.
+            
+             A phrase opens on a CHORD TONE — a melody that opens on the second or the seventh is a
+             melody that starts by needing to resolve — weighted toward the tonic and the fifth, where
+             far more tunes actually start, with the octave reachable. A uniform draw over three values
+             is the sort of thing that shows up in a sweep as 33/33/33 and in a listen as "they all start
+             the same way".</summary>
+        </member>
+        <member name="M:Skafinity.Melody.Answer(Skafinity.Rng,System.Collections.Generic.List{System.Int32},Skafinity.TuneVocab@,System.Int32)">
+            <summary>ANSWER a call: the same rhythm, the call's degrees put through one of the genre's
+            <see cref="T:Skafinity.Melody.AnswerOp"/>s, landing on <paramref name="last"/> — the tonic where this phrase
+            closes the tune, an open chord tone where it is an antecedent handing over to a consequent.
+            Every operator answers the same question and every one of them lands in the same place.
+            </summary>
+        </member>
+        <member name="M:Skafinity.Melody.Reflect(System.Int32)">
+             <summary>Fold a degree back inside the singable range by REFLECTING off its ends.
+            
+             A clamp is sticky: a line that reaches a boundary and keeps stepping outward parks there,
+             which is where 10–18% of every tune's notes sat and where most of its repeated adjacent
+             notes came from — the two are the same defect seen from either side. Reflection keeps the
+             range (that is what makes a tune singable) and turns the wall into a turn.
+            
+             Off the AMBITUS — the outer wall, which is what a transposed answer folds against.</summary>
+        </member>
+        <member name="M:Skafinity.Melody.Reflect(System.Int32,System.Int32,System.Int32)">
+            <summary>Fold a degree back inside an arbitrary window by reflecting off its ends — the
+            walk inside one phrase uses its own (<see cref="F:Skafinity.Melody.PhraseSpan"/>).</summary>
         </member>
         <member name="T:Skafinity.Hit">
             <summary>One onset from a <see cref="T:Skafinity.Pattern"/>, mapped onto the song's own tick line.</summary>
@@ -1941,6 +2712,55 @@
              listen; see the note in <see cref="T:Skafinity.SongForm"/>.
              </summary>
         </member>
+        <member name="T:Skafinity.TraceVoice">
+            <summary>Which part an onset belongs to. Only the voices whose PLACEMENT is a composed
+            decision are here — the busy layer's ghosts and the kick-sync stray are per-bar rolls on top
+            of a groove rather than a part anyone wrote, and counting them would put a knob's setting into
+            a measurement of what the genre plays.</summary>
+        </member>
+        <member name="T:Skafinity.PlanTrace">
+             <summary>
+             Every onset a song composed, per voice, in TICKS.
+            
+             This exists so a sweep over hundreds of songs can ask what the parts actually played without
+             re-deriving it. The alternative — walking the structure a second time and slicing the same
+             patterns — is a SECOND IMPLEMENTATION of every precedence rule in the composer (which figure a
+             bar plays: hemiola, then the loud figure, then the flourish, then the section's own; whether
+             the bass reads the riff; whether a section sings a tune at all), and two implementations of
+             that drift. When they drift the tool starts lying with a straight face, which is worse than
+             not having it — so the onsets are recorded by the voices themselves, at the moment they play,
+             and there is exactly one answer to what a bar played.
+            
+             Attach one with <see cref="F:Skafinity.MusicGen.Trace"/> before composing. Null (the default) costs a
+             null check per bar per voice and nothing else.
+             </summary>
+        </member>
+        <member name="T:Skafinity.PlanTrace.SectionSpan">
+            <summary>One section, as the composer laid it out. Recorded rather than re-derived for the
+            same reason the onsets are: a sweep that walked the form itself would be a second bar ruler,
+            and it would be wrong exactly when the form varies per song — which it now does.</summary>
+        </member>
+        <member name="F:Skafinity.PlanTrace.SectionSpan.Groove">
+            <summary>The groove the section drew, and the kit patterns it will actually play — which
+            are the drawn ones worked on, so the two are no longer the same thing. This is the kit's
+            PLAN; what the trace's onsets carry is the realisation, and the ghost roll and the fill
+            sit between them.</summary>
+        </member>
+        <member name="F:Skafinity.PlanTrace.Sections">
+            <summary>The song's sections in order. What makes a per-SECTION question askable at all —
+            the onsets below are one flat list per voice and carry no boundaries of their own.</summary>
+        </member>
+        <member name="M:Skafinity.PlanTrace.Of(Skafinity.TraceVoice)">
+            <summary>The onsets one voice played, in composition order (which is bar order).</summary>
+        </member>
+        <member name="M:Skafinity.PlanTrace.Add(Skafinity.TraceVoice,System.Int32,System.Boolean)">
+            <summary>An onset that is a STRUCK hit rather than a ghost. Ghosts are half of what a snare
+            plays in three of these genres, so a count that does not separate them says "punk plays a
+            lot of snare" where the tell is "punk STRIKES two of them and ghosts the rest".</summary>
+        </member>
+        <member name="M:Skafinity.PlanTrace.Add(Skafinity.TraceVoice,System.Collections.Generic.List{Skafinity.Hit})">
+            <summary>Record a bar's worth of sliced hits.</summary>
+        </member>
         <member name="T:Skafinity.Reverb">
              <summary>
              Master room reverb — a Schroeder/Freeverb-style bank: several parallel damped comb filters
@@ -1993,13 +2813,113 @@
         <member name="M:Skafinity.Rng.Int(System.Int32)">
             <summary>A value in [0, n). Clamped, so it is always a safe table index.</summary>
         </member>
-        <member name="M:Skafinity.Rng.PickWeighted``1(``0[],System.Int32[])">
+        <member name="M:Skafinity.Rng.WeightedIndex(System.Int32[])">
              <summary>A weighted draw — ONE <see cref="M:Skafinity.Rng.Next"/> whatever the weights are.
             
              The tables used to bias a draw by listing an entry twice, which quietly tied "how likely"
              to "how many entries" (and to the no-two-genres-share-more-than-one cap the engine test
              enforces). A real weighted draw separates them, and costs the same single value out of
              the song stream, so a genre's draw count still cannot depend on its tables.</summary>
+             <summary>The INDEX of a weighted draw — one <see cref="M:Skafinity.Rng.Next"/>, like
+             <see cref="M:Skafinity.Rng.PickWeighted``1(``0[],System.Int32[])"/>, for callers whose table is a parallel array rather than the
+             thing being picked (the melody's note lengths against a genre's weights over them).</summary>
+        </member>
+        <member name="T:Skafinity.SeedCodec">
+             <summary>
+             The seed STRING — what a whole song is, and the only thing that has to travel between two
+             people for them to hear the same thing.
+            
+               <c>tag:n[:genre][:vibe]</c>
+            
+             * <c>tag</c> — the station: <c>[A-Za-z0-9_-]</c> only. Anything else (a colon, a space, a
+               slash) is a parse ERROR, never a coerced string, because a seed that quietly becomes a
+               different seed is worse than one that is refused.
+             * <c>n</c> — the song index in that station's endless line, and it keeps the job it has always
+               had: Prev/Next are n±1, the look-ahead queue walks an ordered timeline of them, and n is what
+               lets you go back to a song fifty ago that nothing anywhere remembers. Optional in the string
+               (a bare <c>tag</c> is song 0 of that station), because typing a station name is how you go
+               somewhere new.
+             * <c>genre</c> and <c>vibe</c> — both optional, both hex, and ORDER-FREE: they are told apart
+               by length. One char is a genre; <see cref="F:Skafinity.VibeCodec.VibeLength"/> chars is a vibe. Any other
+               length is an error rather than a guess.
+            
+             ABSENT MEANS ROLLED. An omitted genre or vibe is derived deterministically from (tag, n), so it
+             changes with every song and the station stays a station. Present means PINNED. The two roll
+             from separate streams, so pinning one does not move the other: pin a vibe and let genres roll,
+             pin a genre and let vibes roll, pin both and move only n.
+            
+             That is why the vibe is genre-independent and full width (see <see cref="T:Skafinity.VibeCodec"/>) — a
+             pinned vibe has to mean the same thing under a genre that rolled out from under it.
+             </summary>
+        </member>
+        <member name="F:Skafinity.SeedCodec.RolledGenre">
+            <summary>No genre pinned — roll it from (tag, n).</summary>
+        </member>
+        <member name="T:Skafinity.SeedCodec.Seed">
+            <summary>A parsed seed. <see cref="F:Skafinity.SeedCodec.Seed.Genre"/> is <see cref="F:Skafinity.SeedCodec.RolledGenre"/> and
+            <see cref="F:Skafinity.SeedCodec.Seed.Vibe"/> is null where the string pinned nothing.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.Station(System.String)">
+            <summary>The station a tag names: trimmed and lower-cased, so "Gamah" and " gamah " are one
+            station rather than three, with the default for an empty tag.</summary>
+            <remarks>Every stream name in the toy is built from this, on BOTH targets, because the
+            fallback word is load-bearing: it is part of what song a seed with no tag resolves to, and
+            a host that picks its own makes <c>:23</c> a different song there than everywhere else. It
+            has been exactly that — the s&amp;box player spelled the fallback "skafinity" while the
+            engine and the web spelled it "rotaliate".</remarks>
+        </member>
+        <member name="M:Skafinity.SeedCodec.SongSeed(System.String,System.Int32)">
+            <summary>The PRNG stream song <paramref name="n"/> is COMPOSED from — what a host hands
+            <see cref="M:Skafinity.MusicGen.Generate(System.String,Skafinity.MusicGen.Config)"/>/<see cref="M:Skafinity.MusicGen.BeginPlan(System.String,Skafinity.MusicGen.Config)"/> as the tag.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.VibeSeed(System.String,System.Int32)">
+            <summary>The stream song <paramref name="n"/>'s VIBE is rolled from.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.GenreSeed(System.String,System.Int32)">
+            <summary>The stream song <paramref name="n"/>'s GENRE is rolled from. Separate from
+            <see cref="M:Skafinity.SeedCodec.VibeSeed(System.String,System.Int32)"/> on purpose: pinning the vibe must not change which genres a station
+            plays, and pinning the genre must not change which vibes it rolls.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.RollVibeFor(System.String,System.Int32)">
+            <summary>Song <paramref name="n"/>'s rolled vibe — the same string on any machine, in any
+            player, forever. This is what lets an endless line still BE its seed: nothing has to be
+            remembered for Prev to replay exactly what was heard.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.RollGenreFor(System.String,System.Int32)">
+            <summary>Song <paramref name="n"/>'s rolled genre.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.RollTagFor(System.String,System.Int32)">
+             <summary>
+             The station at position <paramref name="p"/> of a SHUFFLED line — a player that answers each
+             "next" with a whole new station rather than the next song of this one.
+            
+             It is DERIVED from the root rather than drawn fresh, and that is the whole design: a random
+             tag per song would make the line unrepeatable, so Prev could only work by remembering every
+             station visited, and a reload would lose the lot. Derived, the shuffled line is still just a
+             seed — walkable in both directions, the same everywhere, and reproducible from one string.
+            
+             Position 0 is the root itself, so a pasted seed plays the song it names before the shuffle
+             takes over.
+             </summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.TryParse(System.String,Skafinity.SeedCodec.Seed@,System.String@)">
+            <summary>Parse a seed string. On failure <paramref name="error"/> is a sentence fit to show
+            a listener under the seed box, and <paramref name="seed"/> is left at its default — there is
+            no partial success, because half a seed is a song nobody asked for.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.Format(Skafinity.SeedCodec.Seed)">
+            <summary>The canonical string for a seed: pinned parts written genre-then-vibe, rolled parts
+            left out. Round-trips through <see cref="M:Skafinity.SeedCodec.TryParse(System.String,Skafinity.SeedCodec.Seed@,System.String@)"/>.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.Resolved(Skafinity.SeedCodec.Seed)">
+            <summary>The same seed with everything it left to chance written down — what "copy this
+            song" hands over, as opposed to "copy this station", which is <see cref="M:Skafinity.SeedCodec.Format(Skafinity.SeedCodec.Seed)"/> of the
+            seed as it stands.</summary>
+        </member>
+        <member name="M:Skafinity.SeedCodec.Apply(Skafinity.SeedCodec.Seed,Skafinity.MusicGen.Config)">
+            <summary>Put a seed's song onto <paramref name="c"/>: its genre and its 36 knobs, pinned or
+            rolled. Per-instrument volumes are NOT touched — they are a local mix preference, so a host
+            overlays its own after this (<see cref="M:Skafinity.VibeCodec.ApplyVolumes(System.Int32,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Single},Skafinity.MusicGen.Config)"/>).</summary>
         </member>
         <member name="T:Skafinity.Section">
             <summary>A section of the arrangement. Appended to, never reordered — the section TYPE is an
@@ -2047,6 +2967,11 @@
         <member name="F:Skafinity.Part.BarBeats">
             <summary>Beats per bar, per bar — null when every bar is the song's meter. A short bar here
             is the "anomalous measure": a 2/4 inside a 4/4 context.</summary>
+        </member>
+        <member name="M:Skafinity.Part.With(System.Int32,System.Int32)">
+            <summary>The same section with a detail changed — what the per-song form draw works with.
+            Everything a form variant AUTHORS (its energy contour, its feel changes, where the hemiola
+            falls) travels through unchanged; only length and the key lift are drawn.</summary>
         </member>
         <member name="T:Skafinity.SongForm">
              <summary>
@@ -2245,45 +3170,43 @@
         </member>
         <member name="T:Skafinity.VibeCodec">
              <summary>
-             Compact, shareable encoding of the "important" <see cref="T:Skafinity.MusicGen.Config"/> knobs — the
-             ones that define a song's vibe (genre, tempo, per-instrument mix/tone/character). Each
-             knob is quantised to one base-36 character (16 discrete levels, i.e. a hex digit) and the genre rides in
-             the first character, so the whole vibe is a short string that travels in the seed as
-             <c>vibe:tag:n</c>.
+             The knob grid, and its compact hex encoding — the "vibe" half of a seed
+             (<c>tag:n[:genre][:vibe]</c>; the string as a whole is <see cref="T:Skafinity.SeedCodec"/>'s).
             
-             WIRE FORMAT (genre-independent envelope, fixed positions):
-               <c>[genre char][global block][instrument grid]</c>
-             where the global block is <see cref="F:Skafinity.VibeCodec.GlobalFields"/> in order, and the instrument grid
-             reserves up to <see cref="F:Skafinity.VibeCodec.MaxInstruments"/> blocks of 4 columns
-             (volume / tone / character / extra). Column <c>c</c> of instrument <c>i</c> always lives
-             at position <c>1 + globals + i*4 + c</c>, so adding a genre, an instrument, or a 5th
-             column never shifts an existing position. APPEND-ONLY now means: append global knobs,
-             append instrument slots (≤ MaxInstruments), and only ever append columns past the 4th.
-             <see cref="M:Skafinity.VibeCodec.Apply(System.String,Skafinity.MusicGen.Config)"/> ignores trailing chars a shorter string lacks, so a vibe from a
-             client with fewer slots still parses (the missing knobs keep their config defaults).
+             WIRE FORMAT — one GLOBAL grid, genre-independent and fixed width:
+               <c>[voice 0 cols 1..4][voice 1 cols 1..4]…</c>, one hex digit per cell,
+               <see cref="P:Skafinity.VibeCodec.VoiceCount"/> × <see cref="F:Skafinity.VibeCodec.WireColumns"/> = <see cref="F:Skafinity.VibeCodec.VibeLength"/> chars.
             
-             RETIRING a knob does not remove its position: the entry becomes a reserved (null) slot that
-             encodes as filler and decodes to nothing. That keeps every later knob at the wire position it
-             has always had, so vibes shared before the retirement still decode correctly, and a future
-             global knob can claim the slot.
+             An instrument sits at the SAME index in every genre, whether or not that genre plays it, and
+             every cell is a fixed (Config field, range) pair — <see cref="!:Cells"/> — that no genre may
+             redefine. That is what makes a vibe portable: pin one, let the genre roll, and each song reads
+             the same 36 numbers through whatever voices it happens to use. A genre chooses which cells it
+             EXPOSES as sliders and what to call them (<see cref="T:Skafinity.VibeCodec.GenreDef"/>), and nothing else.
             
-             Lossy by design (16 levels/knob) but stable: Encode(Decode(s)) == s.
+             The wire carries a NORMALISED level (0..15 over the cell's range), not a raw value, so a
+             genre's character comes from its voice code and <see cref="T:Skafinity.GenreProfile"/> — the places that
+             already hold it — rather than from a per-genre range on the knob.
+            
+             A vibe is EXACTLY <see cref="F:Skafinity.VibeCodec.VibeLength"/> hex chars. Short, long or non-hex is not a vibe;
+             there is no pad-with-defaults degrade, because a half-read grid is a song nobody chose. Growing
+             the grid (a voice, a 5th column) changes that length and invalidates every shared vibe: it is a
+             format break, not an append. Volume never travels — it is column 0, a local mix preference.
+            
+             Lossy by design (16 levels/cell) but stable: Encode(Apply(s)) == s for any valid s.
              </summary>
+        </member>
+        <member name="F:Skafinity.VibeCodec.WireFirstColumn">
+            <summary>First column that travels. Column 0 is VOLUME — a local mix preference
+            (see <see cref="M:Skafinity.VibeCodec.ReadVolumes(System.Int32,Skafinity.MusicGen.Config)"/>), so the whole column is skipped rather than encoded.</summary>
         </member>
         <member name="F:Skafinity.VibeCodec.Field.Choices">
             <summary>Discrete option labels (value = Min + index); null for a continuous knob.</summary>
         </member>
         <member name="F:Skafinity.VibeCodec.Field.Voice">
-            <summary>Instrument row this knob belongs to (null = a GLOBAL knob).</summary>
+            <summary>Instrument row this knob belongs to.</summary>
         </member>
         <member name="F:Skafinity.VibeCodec.Field.Column">
-            <summary>Matrix column: 0 volume, 1 tone, 2 character, 3 extra (ignored for globals).</summary>
-        </member>
-        <member name="F:Skafinity.VibeCodec.Field.InSeed">
-            <summary>Whether this knob travels in the shareable vibe seed. Per-instrument VOLUME knobs
-            set this false: volume is a local mix preference persisted per-voice (see
-            <see cref="M:Skafinity.VibeCodec.ReadVolumes(System.Int32,Skafinity.MusicGen.Config)"/>), not part of the song's identity. The grid slot is still
-            reserved on the wire (filler char) so the other columns keep their fixed positions.</summary>
+            <summary>Matrix column: 0 volume, 1..4 the travelling columns.</summary>
         </member>
         <member name="M:Skafinity.VibeCodec.Field.GetNorm(Skafinity.MusicGen.Config)">
             <summary>Current value as a 0..1 fraction of the range.</summary>
@@ -2294,12 +3217,27 @@
         <member name="M:Skafinity.VibeCodec.Field.Display(Skafinity.MusicGen.Config)">
             <summary>Human-readable current value for the row header.</summary>
         </member>
+        <member name="F:Skafinity.VibeCodec.VibeLength">
+            <summary>Exact length of a vibe string, derived from the grid so nothing restates it.</summary>
+        </member>
+        <member name="M:Skafinity.VibeCodec.Pos(System.Int32,System.Int32)">
+            <summary>The wire position of voice <paramref name="v"/>'s column <paramref name="col"/>.</summary>
+        </member>
+        <member name="M:Skafinity.VibeCodec.HasCell(System.Int32)">
+            <summary>Is there a knob at wire position <paramref name="pos"/>? The grid is rectangular, so
+            some cells are holes — a voice with three columns still reserves its fourth. A hole encodes
+            as '0' and decodes to nothing, and a roll must leave it at '0' too: anything else would
+            re-encode to '0' and make a rolled vibe fail to round-trip.</summary>
+        </member>
         <!-- Badly formed XML comment ignored for member "M:Skafinity.VibeCodec.ApplyAdvanced(System.Collections.Generic.IReadOnlyDictionary{System.String,System.Single},Skafinity.MusicGen.Config)" -->
+        <member name="M:Skafinity.VibeCodec.Labelled(Skafinity.VibeCodec.Field,System.String,System.String)">
+            <summary>A genre's row as the UI shows it: the voice's field, relabelled where the genre
+            says so. The returned Field is a copy — the global cell is never mutated.</summary>
+        </member>
         <member name="M:Skafinity.VibeCodec.Fields(System.Int32)">
-            <summary>Flat list (globals then the genre's instrument grid, row-major, skipping empty
-            cells) — the source the music panel iterates to build its controls. Each field carries
-            its <see cref="F:Skafinity.VibeCodec.Field.Voice"/>/<see cref="F:Skafinity.VibeCodec.Field.Column"/> so the UI can lay out the
-            matrix without a second table.</summary>
+            <summary>Flat list of the sliders <paramref name="genre"/> shows, in display order: each
+            row's volume then its exposed cells. Each field carries its <see cref="F:Skafinity.VibeCodec.Field.Voice"/> /
+            <see cref="F:Skafinity.VibeCodec.Field.Column"/>, so the UI lays the matrix out without a second table.</summary>
         </member>
         <member name="M:Skafinity.VibeCodec.IsVolume(Skafinity.VibeCodec.Field)">
             <summary>True if <paramref name="f"/> is a per-instrument VOLUME knob — column 0 of an
@@ -2307,9 +3245,9 @@
         </member>
         <member name="M:Skafinity.VibeCodec.ReadVolumes(System.Int32,Skafinity.MusicGen.Config)">
             <summary>Read the per-instrument volumes of <paramref name="genre"/> off
-            <paramref name="c"/> as a <c>voice → 0..1 level</c> map. The key is the instrument's voice
-            NAME (not its genre/position), so a voice that appears in several genres (e.g. BASS, DRUMS)
-            shares one persisted level. Merge this into a single store across genres.</summary>
+            <paramref name="c"/> as a <c>voice → 0..1 level</c> map. The key is the label this genre
+            uses, which is what the UI shows; a voice a genre renames (pop's "SYNTH") therefore keeps
+            its own level there. Merge this into a single store across genres.</summary>
         </member>
         <member name="M:Skafinity.VibeCodec.ApplyVolumes(System.Int32,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Single},Skafinity.MusicGen.Config)">
             <summary>Overlay a <c>voice → 0..1 level</c> map (from <see cref="M:Skafinity.VibeCodec.ReadVolumes(System.Int32,Skafinity.MusicGen.Config)"/> / storage)
@@ -2318,62 +3256,40 @@
             rides on top of the seed's voicing.</summary>
         </member>
         <member name="M:Skafinity.VibeCodec.Encode(Skafinity.MusicGen.Config)">
-            <summary>Encode the vibe-defining knobs of <paramref name="c"/> (including its genre)
-            to a base-36 string.</summary>
+            <summary>Encode the whole global grid off <paramref name="c"/>. Genre-independent: the
+            result depends on the knobs and on nothing else, so re-encoding after a genre change hands
+            back the same string.</summary>
+        </member>
+        <member name="M:Skafinity.VibeCodec.IsVibe(System.String)">
+            <summary>True if <paramref name="s"/> is a vibe: exactly <see cref="F:Skafinity.VibeCodec.VibeLength"/> hex
+            chars. There is no near-miss — see the class remarks on why short does not degrade.</summary>
         </member>
         <member name="M:Skafinity.VibeCodec.Apply(System.String,Skafinity.MusicGen.Config)">
-            <summary>Apply a vibe string onto <paramref name="c"/> in place. Reads the genre from the
-            first char, then walks the fixed wire positions. Silently ignores empty/malformed input
-            and any trailing positions the string is too short to cover.</summary>
+            <summary>Apply a vibe string onto <paramref name="c"/> in place. Returns false (touching
+            nothing) if it is not a vibe — callers that need to TELL the listener use
+            <see cref="M:Skafinity.SeedCodec.TryParse(System.String,Skafinity.SeedCodec.Seed@,System.String@)"/>, which is where the message lives.</summary>
         </member>
-        <member name="M:Skafinity.VibeCodec.Roll(Skafinity.MusicGen.Config,System.Func{System.Single},System.Boolean,System.Boolean)">
+        <member name="M:Skafinity.VibeCodec.RollVibe(System.Func{System.Single})">
              <summary>
-             Randomise the vibe knobs of <paramref name="c"/> in place.
+             Roll a whole vibe STRING — every cell of the global grid, genre-independent.
             
              This is the one definition of what "reroll" means, shared by every player, so the two
-             drivers cannot answer the question differently: a fresh genre and every knob of that
-             genre. Per-instrument volumes are excluded by default — they are a local mix preference
-             and never ride in the seed.
+             drivers cannot answer the question differently. It produces a string rather than editing a
+             Config on purpose: a rolled vibe is full width like any other, so it can be pinned into a
+             seed and heard identically under a genre that was rolled separately.
             
              Randomness is the CALLER's: <paramref name="rnd"/> returns values in [0,1). A driver that
              wants a throwaway roll passes a session RNG; one that wants a reproducible roll passes a
-             seeded stream (see <see cref="M:Skafinity.VibeCodec.RollFrom(Skafinity.MusicGen.Config,System.String,System.Boolean,System.Boolean)"/>). The engine stays free of any ambient RNG.
+             seeded stream (see <see cref="M:Skafinity.SeedCodec.RollVibeFor(System.String,System.Int32)"/>). The engine stays free of any
+             ambient RNG.
              </summary>
         </member>
-        <member name="M:Skafinity.VibeCodec.RollFrom(Skafinity.MusicGen.Config,System.String,System.Boolean,System.Boolean)">
-             <summary>
-             <see cref="M:Skafinity.VibeCodec.Roll(Skafinity.MusicGen.Config,System.Func{System.Single},System.Boolean,System.Boolean)"/> driven by a stream seeded on <paramref name="seed"/> — the same string
-             always produces the same vibe, on any machine and in any player.
-            
-             This is what lets an endless shuffled sequence still BE its seed: a player derives song
-             n's vibe from <c>"{tag}:vibe:{n}"</c> rather than from session randomness, so the whole
-             line is reproducible, shareable and survives a reload — and stepping back to an earlier
-             song replays exactly what was heard without anything having to be remembered.
-             </summary>
+        <member name="M:Skafinity.VibeCodec.RollGenre(System.Func{System.Single})">
+            <summary>Roll a genre index from the same kind of caller-owned stream.</summary>
         </member>
-        <member name="M:Skafinity.VibeCodec.Station(System.String)">
-            <summary>The station a tag names: trimmed and lower-cased, so "Gamah" and " gamah " are one
-            station rather than three, with the default for an empty tag.</summary>
-            <remarks>Every stream name in the toy is built from this, on BOTH targets, because the
-            fallback word is load-bearing: it is part of what song a seed with no tag resolves to, and
-            a host that picks its own makes <c>vibe::23</c> a different song there than everywhere
-            else. It has been exactly that — the s&amp;box player spelled the fallback "skafinity"
-            while the engine and the web spelled it "rotaliate".</remarks>
-        </member>
-        <member name="M:Skafinity.VibeCodec.SongSeed(System.String,System.Int32)">
-            <summary>The PRNG stream song <paramref name="n"/> is COMPOSED from — what a host hands
-            <see cref="M:Skafinity.MusicGen.Generate(System.String,Skafinity.MusicGen.Config)"/>/<see cref="M:Skafinity.MusicGen.BeginPlan(System.String,Skafinity.MusicGen.Config)"/> as the tag.</summary>
-        </member>
-        <member name="M:Skafinity.VibeCodec.VibeSeed(System.String,System.Int32)">
-            <summary>The stream name song <paramref name="n"/>'s vibe is rolled from. One definition
-            so every player walks the same line for a given tag.</summary>
-        </member>
-        <member name="M:Skafinity.VibeCodec.LooksLikeVibe(System.String)">
-            <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and long enough
-            that it cannot be a tag. The floor is the whole test — it sits well above an 8-char player
-            tag (and the 9-char default "rotaliate") so the two never collide in <c>vibe:tag:n</c>.
-            There is deliberately no ceiling: the wire grows as genres and instruments are appended,
-            and a bound would silently start rejecting valid seeds.</summary>
+        <member name="M:Skafinity.VibeCodec.RollVolumes(System.Int32,Skafinity.MusicGen.Config,System.Func{System.Single})">
+            <summary>Roll the per-instrument volumes of <paramref name="genre"/> in place — the one
+            thing a vibe string cannot carry, for a driver that wants the mix rolled too.</summary>
         </member>
         <member name="T:Skafinity.Wav">
             <summary>
@@ -2442,7 +3358,7 @@
             that one line.</summary>
         </member>
         <member name="M:Skafinity.SkafinityCommands.PlaySeed(System.String)">
-            <summary>Play a seed: <c>vibe:tag:n</c>, <c>tag:n</c> or a bare <c>tag</c>. Pass
+            <summary>Play a seed: <c>tag:n[:genre][:vibe]</c> (a bare <c>tag</c> is song 0). Pass
             <c>default</c> to go back to the default tag and vibe.</summary>
         </member>
         <member name="M:Skafinity.SkafinityCommands.Next">
@@ -2455,7 +3371,19 @@
             <summary>Switch genre by index. Run it with a junk index to print the roster.</summary>
         </member>
         <member name="M:Skafinity.SkafinityCommands.Reroll">
-            <summary>Reroll the vibe: a new genre and every knob, keeping your per-instrument volumes.</summary>
+            <summary>Reroll the vibe: every knob thrown somewhere new and PINNED there, keeping the genre
+            and your per-instrument volumes. <c>skafinity_station</c> is the other die — a different song
+            rather than a different taste.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityCommands.Station">
+            <summary>A fresh random station at song 0. Anything pinned stays pinned.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityCommands.ToggleShuffle">
+            <summary>Flip shuffle: on, every next song is a whole new station rather than the next song of
+            this one.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityCommands.TogglePause">
+            <summary>Pause or resume, keeping the place in the song.</summary>
         </member>
         <member name="M:Skafinity.SkafinityCommands.Save">
             <summary>Write the playing song to a .wav under the s&amp;box data folder.</summary>
@@ -2483,7 +3411,7 @@
              after a short settle so you can dial in a vibe in play mode.
             
              A whole song is just its seed, so the arrangement is shareable: copy <see cref="P:Skafinity.SkafinityPlayer.CurrentSeed"/>
-             (<c>vibe:tag:n</c>) and anyone who calls <see cref="M:Skafinity.SkafinityPlayer.PlaySeed(System.String)"/> with it hears the same track.
+             (<c>vibe:tag:n</c>) and anyone who calls <see cref="M:Skafinity.SkafinityPlayer.PlaySeed(System.String,System.String@)"/> with it hears the same track.
             
              This is a self-contained extraction of the Rotaliate music engine with no game-specific
              dependencies (no player data, networking, or UI). Persistence of the song index is opt-in
@@ -2502,10 +3430,29 @@
         <member name="P:Skafinity.SkafinityPlayer.AutoPlay">
             <summary>Begin playing automatically in <see cref="M:Skafinity.SkafinityPlayer.OnStart"/>. Off = call <see cref="M:Skafinity.SkafinityPlayer.StartSequence"/> yourself.</summary>
         </member>
-        <member name="P:Skafinity.SkafinityPlayer.RandomEverySong">
-            <summary>Shuffle mode: re-randomise every knob (incl. genre) as each new song begins, so the
-            sequence keeps reinventing itself. Volumes are left alone (a local mix preference). Off = the
-            seed's vibe stays put. ON by default — endless variety out of the box.</summary>
+        <member name="P:Skafinity.SkafinityPlayer.RandomGenreEverySong">
+            <summary>Roll a fresh GENRE for each new song, the way a seed with no genre part does. Off =
+            <see cref="P:Skafinity.SkafinityPlayer.Genre"/> is pinned and every song plays it. ON by default.</summary>
+            <remarks>The genre and the vibe get a switch each because the SEED gives them a part each:
+            <c>tag:n[:genre][:vibe]</c> pins either alone, so one switch over both could not express half
+            the seeds the engine parses (pin a genre and let vibes roll, or the reverse). These two ARE
+            that pinning — <see cref="P:Skafinity.SkafinityPlayer.StationSeed"/> writes down whatever they leave rolling.</remarks>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.RandomVibeEverySong">
+            <summary>Roll a fresh VIBE (every knob but the per-instrument volumes, which are a local mix
+            preference) for each new song. Off = the live knobs / the <see cref="P:Skafinity.SkafinityPlayer.Vibe"/> override are
+            pinned and every song plays them. ON by default — endless variety out of the box.</summary>
+            <inheritdoc cref="P:Skafinity.SkafinityPlayer.RandomGenreEverySong" path="/remarks"/>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.Shuffle">
+            <summary>What NEXT means. Off (the default): walk this station — position p is song p of it,
+            so Prev replays exactly what was heard and a shared link describes the line. On: every next
+            song is a whole NEW station at song 0.</summary>
+            <remarks>Deliberately NOT "a different vibe every song" — that is what a seed with nothing
+            pinned already does, and it needs no switch (see <see cref="P:Skafinity.SkafinityPlayer.RandomVibeEverySong"/>). The
+            stations a shuffled line visits are DERIVED from the root tag
+            (<see cref="M:Skafinity.SeedCodec.RollTagFor(System.String,System.Int32)"/>) rather than drawn fresh, which is what keeps a shuffled
+            line a line: nothing is remembered, and the whole thing still reproduces from one string.</remarks>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.Tag">
             <summary>Seed tag — any string (a name, a word). Empty falls back to "skafinity".</summary>
@@ -2546,7 +3493,7 @@
             default 32 kHz stereo / 80 s, so the ±5 default is ~110 MB resident — dial down on
             constrained targets. The seed ledger (strings only) is never pruned.</summary>
         </member>
-        <member name="P:Skafinity.SkafinityPlayer.MasterReverb">
+        <member name="P:Skafinity.SkafinityPlayer.TrumpetWeight">
             <summary>Master reverb send — the GLOBAL "REVERB" vibe knob's resting value.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.ForceInstrument">
@@ -2561,25 +3508,44 @@
             rather than trusted, so a stale bound only ever costs the inspector its reach.</remarks>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.N">
-            <summary>Currently-playing song index.</summary>
+            <summary>Song index of the playing song WITHIN ITS OWN STATION — what "now playing #12" means
+            and what a seed writes down. Under shuffle every position is its own station at song 0, so
+            this is 0 for every song but the one the seed named; <see cref="P:Skafinity.SkafinityPlayer.Position"/> is the slot on the
+            timeline and is what Prev/Next and the playlist address.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.Position">
+            <summary>Slot on the timeline of the playing song. Equal to <see cref="P:Skafinity.SkafinityPlayer.N"/> with
+            <see cref="P:Skafinity.SkafinityPlayer.Shuffle"/> off, and the thing to pass to <see cref="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32,System.Double)"/> either way.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.CurrentVibe">
             <summary>The effective vibe of the *playing* song: its frozen ledger seed when one exists
             (so a shuffled song reports the vibe you actually hear), else the live knobs/override.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.CurrentSeed">
-            <summary>Shareable seed for the playing song: <c>vibe:tag:n</c>. Accurate even under shuffle —
-            it reproduces the exact song playing, because the vibe is the one frozen for this n.</summary>
+            <summary>Shareable seed for the playing song: <c>tag:n:genre:vibe</c>, FULLY RESOLVED — the
+            genre and vibe are written down even when this player rolled them, so whoever is handed it
+            hears this song rather than whatever their own station rolls at that index.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.StationSeed">
+            <summary>Shareable seed for the STATION: the seed exactly as it stands, so whatever this
+            player left rolling keeps rolling for whoever is handed it. The counterpart to
+            <see cref="P:Skafinity.SkafinityPlayer.CurrentSeed"/>, and the reason there are two copy buttons — "share this" means one
+            of two different things, and neither can be recovered from the other.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.IsPlaying">
             <summary>True once a stream handle is live and audible.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.IsPaused">
+            <summary>Stopped on purpose, holding its place in the song — the ⏸ state, as opposed to the
+            silence of a song still being generated. A resume comes back in where this was taken.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.IsGenerating">
             <summary>True while any synthesis is in flight (foreground seek or background look-ahead fill).</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.IsBuffering">
             <summary>True while playback is stalled waiting on the song you asked to seek to (vs. silent
-            background fill). Pair with <see cref="!:GenerationProgress"/> for a "Generating…" indicator.</summary>
+            background fill). Pair with <see cref="M:Skafinity.SkafinityPlayer.Timeline(System.Int32,System.Int32)"/>'s per-entry progress for a "Generating…"
+            indicator.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.HouseConfigCount">
             <summary>How many house-mix values were read out of <c>skafinity.config.json</c>. Zero means
@@ -2601,7 +3567,18 @@
             <summary>One entry in the navigable timeline (see <see cref="M:Skafinity.SkafinityPlayer.Timeline(System.Int32,System.Int32)"/>).</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.QueueEntry.N">
-            <summary>Song index in the infinite sequence.</summary>
+            <summary>Song index within this entry's OWN station — what the row shows. Under shuffle
+            that is 0 for every row, which is why the row also carries <see cref="P:Skafinity.SkafinityPlayer.QueueEntry.Position"/>.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Position">
+            <summary>Slot on the timeline: what <see cref="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32,System.Double)"/> and the export
+            take. Anything that addresses a song by where it sits in the line uses this, not N.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Tag">
+            <summary>Station tag this entry belongs to. The root tag for every row with shuffle off.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Past">
+            <summary>This entry is behind the playhead — already heard.</summary>
         </member>
         <member name="P:Skafinity.SkafinityPlayer.QueueEntry.Vibe">
             <summary>The frozen vibe seed for this song, or "" if it isn't pinned yet (tracks live knobs).</summary>
@@ -2619,16 +3596,22 @@
             <summary>0..1 synthesis progress if this song is being generated right now, else -1.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.Timeline(System.Int32,System.Int32)">
-            <summary>Snapshot the timeline around the current song: <paramref name="back"/> history entries
-            (n−back…n−1), the current song, and <paramref name="fwd"/> look-ahead entries (n+1…n+fwd). For
-            the queue view; reflects cached-vs-needs-regenerate and in-flight generation state.</summary>
+            <summary>Snapshot the timeline around the playing song: <paramref name="back"/> history entries
+            (p−back…p−1), the current song, and <paramref name="fwd"/> look-ahead entries (p+1…p+fwd). For
+            the playlist view; reflects cached-vs-needs-regenerate and in-flight generation state.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.SongAt(System.Int32)">
+            <summary>The station and song index timeline position <paramref name="p"/> plays.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.ConfigureFlat">
             <summary>Make the stream play as flat 2D (SpacialBlend=0, parented to the camera with
             FollowParent so the listener can't pan/attenuate it). Optionally routes to a named mixer.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.EffectiveConfig">
-            <summary>The config currently in effect (inspector knobs with any <see cref="P:Skafinity.SkafinityPlayer.Vibe"/> applied).</summary>
+            <summary>The config the PLAYING song was synthesised with — what a UI should draw its knobs
+            from. Deliberately the audible song rather than the live knobs: with the vibe left rolling,
+            those two are different configs and a mixer that shows the one you cannot hear is worse than
+            no mixer.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.FillAhead(System.Int32)">
             <summary>Pre-render the forward window (n+1…n+<see cref="P:Skafinity.SkafinityPlayer.ForwardWindow"/>) into the PCM cache,
@@ -2647,64 +3630,326 @@
             scratch. Bumps the sequence token (invalidating any in-flight generation), clears the seed
             ledger AND the PCM cache (this is for seed/genre/base-vibe changes that invalidate the frozen
             line), stops the current handle, then kicks the async start so the caller never blocks. For a
-            navigation that should PRESERVE the timeline (Prev/Next), use <see cref="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32)"/> instead.</summary>
+            navigation that should PRESERVE the timeline (Prev/Next), use <see cref="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32,System.Double)"/> instead.</summary>
         </member>
-        <member name="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32)">
-            <summary>Navigate to song index <paramref name="n"/> while PRESERVING the timeline (ledger +
-            PCM cache). If n's PCM is resident it plays instantly; otherwise playback stalls in a
-            "buffering" state (<see cref="P:Skafinity.SkafinityPlayer.IsBuffering"/>) while it regenerates from n's ledger seed. This
-            is what Prev/Next call — Prev replays the exact earlier songs, Next rolls a fresh genre on
-            demand under shuffle. Restarts the SoundStream (a manual jump breaks the crossfade chain), but
-            does NOT discard the timeline the way <see cref="M:Skafinity.SkafinityPlayer.StartSequence"/> does.</summary>
+        <member name="M:Skafinity.SkafinityPlayer.SeekTo(System.Int32,System.Double)">
+            <summary>Navigate to timeline position <paramref name="p"/> while PRESERVING the timeline
+            (ledger + PCM cache). If p's PCM is resident it plays instantly; otherwise playback stalls in a
+            "buffering" state (<see cref="P:Skafinity.SkafinityPlayer.IsBuffering"/>) while it regenerates from the seed that position
+            derives. This is what Prev/Next and the playlist call — Prev replays the exact earlier songs.
+            Restarts the SoundStream (a manual jump breaks the crossfade chain), but does NOT discard the
+            timeline the way <see cref="M:Skafinity.SkafinityPlayer.StartSequence"/> does.</summary>
+            <param name="offset">Seconds into the song to come in at — a resume or a scrub. Every other
+            caller lands on the downbeat.</param>
+        </member>
+        <member name="T:Skafinity.SkafinityPlayer.SongPosition">
+            <summary>Where the playhead is in the audible song. <see cref="P:Skafinity.SkafinityPlayer.SongPosition.Duration"/> is 0
+            until the song is rendered — an unknown length is reported as unknown rather than assumed, so
+            a bar drawn against it goes inert instead of lying.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.SongPosition.Position">
+            <summary>Timeline position of the song this describes.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.SongPosition.Time">
+            <summary>Seconds into the song.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.SongPosition.Duration">
+            <summary>Length of the song in seconds, or 0 when it has not been rendered.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.SongPosition.Ratio">
+            <summary>Time/Duration, or 0 when the length is unknown.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.SongPosition.Playing">
+            <summary>Audible right now (as opposed to paused or still generating).</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.Playhead">
+            <inheritdoc cref="T:Skafinity.SkafinityPlayer.SongPosition"/>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.Pause">
+            <summary>Stop, holding the place in the song. Nothing is suspended — the stream is torn down,
+            because a SoundStream cannot be paused or rewound — so this remembers how far in it got and
+            <see cref="M:Skafinity.SkafinityPlayer.Resume"/> re-opens the same PCM at that offset.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.Resume">
+            <summary>Come back in where <see cref="M:Skafinity.SkafinityPlayer.Pause"/> left off.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.TogglePlay">
+            <summary>⏯ — pause if playing, resume if paused.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.SeekWithin(System.Double)">
+            <summary>Scrub inside the audible song. The whole song is already in memory, so this costs a
+            stream restart and nothing else. Paused, it only moves where the next play comes in.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.PlaySeed(System.String,System.String@)">
+            <summary>Play a shareable seed — <c>tag:n[:genre][:vibe]</c>, parsed by the engine
+            (<see cref="M:Skafinity.SeedCodec.TryParse(System.String,Skafinity.SeedCodec.Seed@,System.String@)"/>) so this player and the web toy cannot disagree about what
+            a string means. What the seed leaves out keeps rolling; what it pins is pinned. Returns false
+            and changes NOTHING if the string is not a seed — half a seed is a song nobody asked for, so
+            a caller with a UI should show <paramref name="error"/> rather than start playing.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.PlaySeed(System.String)">
-            <summary>Play a shareable seed in any of the forms <c>vibe:tag:n</c>, <c>tag:n</c>, or
-            <c>tag</c>. Missing components are left unchanged; a vibe is only applied when present.
-            Restarts the sequence.</summary>
+            <inheritdoc cref="M:Skafinity.SkafinityPlayer.PlaySeed(System.String,System.String@)"/>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.SetTag(System.String)">
             <summary>Set just the seed tag (empty = the default "skafinity" seed). Restarts.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.SetN(System.Int32)">
-            <summary>Jump to song index n in the sequence (clamped ≥ 0), preserving the timeline. Plays
-            cached PCM instantly when in the window, else buffers while regenerating from n's ledger seed.</summary>
+            <summary>Jump to timeline position p (clamped ≥ 0), preserving the timeline. Plays cached PCM
+            instantly when in the window, else buffers while it regenerates.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.StepN(System.Int32)">
-            <summary>Step the song index by <paramref name="delta"/> (e.g. +1 / -1), preserving the
+            <summary>Step the timeline position by <paramref name="delta"/> (e.g. +1 / -1), preserving the
             timeline so Prev replays the exact earlier songs.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.NextSong">
-            <summary>Skip to the next song in the sequence.</summary>
+            <summary>Skip to the next song in the line.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.PrevSong">
-            <summary>Step back to the previous song in the sequence.</summary>
+            <summary>Step back to the previous song in the line.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.SetVibe(System.Int32,System.Single)">
             <summary>Set vibe field <paramref name="index"/> (see <see cref="M:Skafinity.VibeCodec.Fields(System.Int32)"/>) from
             a 0..1 fraction, store the re-encoded <see cref="P:Skafinity.SkafinityPlayer.Vibe"/>, and restart on a short debounce.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.SetGenre(System.Int32)">
-            <summary>Switch genre (rides in the vibe's first char): re-encode the effective config
-            with the new genre into <see cref="P:Skafinity.SkafinityPlayer.Vibe"/> so it sticks over the inspector knobs, then
-            restart. Use this rather than setting <see cref="P:Skafinity.SkafinityPlayer.Genre"/> directly — an existing
-            <see cref="P:Skafinity.SkafinityPlayer.Vibe"/> override otherwise wins and the change wouldn't take.</summary>
+            <summary>Switch genre and restart, KEEPING the vibe that is playing. The vibe is
+            genre-independent, so this is the same 36 knobs heard through a different band rather than a
+            new song — which is what someone reaching for the genre dropdown mid-song is asking for. The
+            live vibe is pinned on the way through, or the restart would roll a fresh one and the change
+            would sound like a reroll.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.RollGenre">
+            <summary>Hand the genre back to the station: every song rolls its own again. The counterpart
+            to <see cref="M:Skafinity.SkafinityPlayer.SetGenre(System.Int32)"/>, and the reason the genre dropdown needs a "Random" entry — without
+            one there is no way back out of a genre once one has been chosen.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.RollVibe">
+            <summary>Hand the VIBE back to the station: every song rolls its own again. The way out of a
+            dragged knob — and it may well move nothing you can hear, because the song already playing
+            keeps the vibe it resolved to; what changes is what comes NEXT.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.RerollStation">
+            <summary>Reroll the SEED: a fresh random station at song 0. Anything pinned stays pinned,
+            because a pin is a choice and this is a request for a different song, not a different
+            taste.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.RerollVibe(System.Boolean,System.Boolean,System.Boolean)">
-            <summary>Randomize the vibe knobs and restart on a short debounce. By default the
-            per-instrument volumes (and genre) are left alone so a reroll re-voices without upending
-            the mix; pass <paramref name="includeVolumes"/> / <paramref name="includeGenre"/> for a
-            full shuffle. Pass <paramref name="restart"/> = false to re-voice without yanking the
-            playhead — the caller is then responsible for letting the change take effect (e.g. by
-            clearing the look-ahead so upcoming songs regenerate with the new vibe).</summary>
+            <summary>Throw every knob somewhere new and PIN it there — the die over the mixer. It always
+            moves every slider, because it draws a fresh vibe rather than handing the knobs back to the
+            station (that is <see cref="M:Skafinity.SkafinityPlayer.RollVibe"/>, and a die that does nothing when nothing was pinned
+            is a die that looks broken). The per-instrument volumes and the GENRE are left alone by
+            default: a die on a mixer re-voices the band, it does not swap the band — pass
+            <paramref name="includeVolumes"/> / <paramref name="includeGenre"/> for a full shuffle. Pass
+            <paramref name="restart"/> = false to re-voice without yanking the playhead — the caller is
+            then responsible for letting the change take effect (e.g. by clearing the look-ahead so
+            upcoming songs regenerate with the new vibe).</summary>
         </member>
-        <member name="M:Skafinity.SkafinityPlayer.SetRandomEverySong(System.Boolean)">
-            <summary>Turn shuffle on/off and rebuild the forward timeline from the current song so the
-            change takes immediately: ON freezes a fresh rolled vibe+genre per upcoming n, OFF reverts
-            upcoming songs to the live knobs. History already played keeps whatever it was frozen as.</summary>
+        <member name="M:Skafinity.SkafinityPlayer.SetRandomGenreEverySong(System.Boolean)">
+            <summary>Let the GENRE roll per song again, or pin it to <see cref="P:Skafinity.SkafinityPlayer.Genre"/>. Rebuilds the
+            forward timeline so the change takes immediately; history keeps what it was.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.SetRandomVibeEverySong(System.Boolean)">
+            <summary>Let the VIBE roll per song again, or pin the live knobs. Rebuilds the forward
+            timeline so the change takes immediately; history keeps what it was.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.SetShuffle(System.Boolean)">
+            <summary>Flip <see cref="P:Skafinity.SkafinityPlayer.Shuffle"/>: on, every next song is a whole new station rather than the
+            next song of this one. The song PLAYING is carried across the change — the switch is heard as
+            a change of what comes next rather than as a jump — and since the timeline behind every
+            position now describes different songs, it rebuilds rather than keeping a cache that lies.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.GenrePinned">
+            <summary>Is the genre written into the seed rather than rolled? What a UI's "hand it back to
+            the station" control reads, so it can be off when there is nothing to hand back.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.VibePinned">
+            <summary>Is the vibe written into the seed rather than rolled? See <see cref="P:Skafinity.SkafinityPlayer.GenrePinned"/>.</summary>
         </member>
         <member name="M:Skafinity.SkafinityPlayer.SaveCurrentToFile">
-            <summary>Write the playing song's raw loop (no fade) to a WAV under FileSystem.Data.
+            <summary>Write the playing song's raw loop (no fade) to a stereo WAV under FileSystem.Data.
             Returns the filename written, or null on failure.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityPlayer.SaveToFileAsync(System.Int32)">
+            <summary>Write the song at timeline position <paramref name="p"/> to a WAV under
+            FileSystem.Data, rendering it first if it is outside the PCM cache. Returns the filename, or
+            null on failure. What the playlist's per-row save calls.</summary>
+            <remarks>Async because a song outside the cache has to be synthesised, which is seconds of
+            work — doing it on the frame would hitch the game for a save nobody asked to wait for.</remarks>
+        </member>
+        <member name="P:Skafinity.SkafinityPlayer.SavedState.N">
+            <summary>Song INDEX, not timeline position — under shuffle the position is this session's
+            line and reproduces nothing, while the index names a song in a station.</summary>
+        </member>
+        <member name="T:Skafinity.SkafinityBoard">
+             <summary>
+             The board's PRESENTATION RULES, with no widget toolkit in sight: what the controls are called,
+             what they say when they change, how a length or a playlist row is worded, and how the vibe's
+             fields fall into a grid. Everything here is a pure function of engine state.
+             </summary>
+             <remarks>
+             <para>This exists because the same board is drawn twice — once as a Razor panel here, once as
+             <c>web/skafinity-element.js</c> — and the half that drifts between two drawings of one design is
+             never the layout, it is the wording and the small derived decisions: which button is disabled,
+             what a row says when nothing is cached, whether a knob repeats its column's name. Those are
+             written down once, here.</para>
+            
+             <para><b>Framework-free on purpose, and not yet shared.</b> Nothing in this file touches
+             <c>Sandbox.*</c>, so it can move under <c>Code/Engine/</c> — the folder both targets compile —
+             the day the web asks the wasm for it instead of keeping its own copy. It is deliberately NOT
+             there yet: a file under <c>Engine/</c> is a file in the wasm bundle, and adding one costs a full
+             AOT re-stage (see the stale-bundle gate in CLAUDE.md) for code nothing on that side calls yet.
+             Keep it free of engine-target-hostile types so that move stays a move rather than a rewrite.</para>
+             </remarks>
+        </member>
+        <member name="F:Skafinity.SkafinityBoard.ColumnHeaders">
+            <summary>One header per vibe-matrix column. Column 0 (VOLUME) is a local mix preference and
+            never travels; columns 1..4 are the wire. The grid is rectangular, so a voice with nothing in
+            its last column simply leaves that cell empty.</summary>
+        </member>
+        <member name="T:Skafinity.SkafinityBoard.MatrixRow">
+            <summary>One row of the per-instrument mixer: a voice and its cells, one per
+            <see cref="F:Skafinity.SkafinityBoard.ColumnHeaders"/> entry, null where this genre leaves a column empty.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityBoard.MatrixRow.Voice">
+            <summary>Voice name — the row label (BASS, DRUMS, …).</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityBoard.MatrixRow.Cells">
+            <summary>Cells by column index; null = this genre has no knob there.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.Matrix(System.Int32)">
+            <summary>Lay the genre's vibe fields out as the mixer grid: one row per voice, in the
+            library's own display order. Fields with no voice are GLOBAL and come back from
+            <see cref="M:Skafinity.SkafinityBoard.Globals(System.Int32)"/> instead.</summary>
+            <remarks>Driven entirely from the field metadata, so a new genre — or a new knob — is a pure
+            engine change and there is no field table in any UI.</remarks>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.Globals(System.Int32)">
+            <summary>The genre's knobs that belong to no instrument — the GLOBAL strip under the grid.
+            Often empty (the globals have been retired to reserved wire slots), and a heading over an
+            empty grid reads as a panel that failed to draw something, so callers check.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.KnobLabel(Skafinity.VibeCodec.Field,System.Int32)">
+            <summary>What to write above a knob in the grid: nothing when the column header already says
+            it (VOLUME under VOLUME reads as a mistake), the field's own name otherwise.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.FieldIndex(System.Int32,Skafinity.VibeCodec.Field)">
+            <summary>Index of a field within its genre's field list — what
+            <see cref="M:Skafinity.SkafinityPlayer.SetVibe(System.Int32,System.Single)"/> takes.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.ChoiceIndex(Skafinity.VibeCodec.Field,System.Single)">
+            <summary>Which of a choice field's options a 0..1 value selects.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.ChoiceNorm(Skafinity.VibeCodec.Field,System.Int32)">
+            <summary>…and the 0..1 value that selects option <paramref name="k"/>.</summary>
+        </member>
+        <member name="F:Skafinity.SkafinityBoard.NoTime">
+            <summary>Shown where a length would be if there were one. A song that has not been rendered
+            has no length to state, and an honest dash beats 0:00 — which reads as a song of no length.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.Time(System.Double,System.Boolean)">
+            <summary>m:ss, or <see cref="F:Skafinity.SkafinityBoard.NoTime"/> when the length is not known yet.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.Percent(System.Single)">
+            <summary>A 0..1 fraction as a CSS width.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.GenreName(System.Int32)">
+            <summary>Genre name for an id, or "?" — a UI drawing a row for a genre the engine does not
+            have should show that rather than throw.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.RowCaret(Skafinity.SkafinityPlayer.QueueEntry)">
+            <summary>The caret column of a playlist row: on the song you are hearing, nothing otherwise.
+            A column rather than a prefix so every row's number starts at the same x.</summary>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.RowStatus(Skafinity.SkafinityPlayer.QueueEntry)">
+            <summary>What a playlist row says on its right-hand side. Generating rows draw a bar instead
+            and never reach this.</summary>
+        </member>
+        <member name="T:Skafinity.SkafinityBoard.Copy">
+            <summary>Every user-visible string on the board, in one place. The tooltips carry the reason a
+            control exists, which is the part that is genuinely hard to reconstruct — "reroll" and
+            "randomize" are both dice, and only their tooltips say why there are two.</summary>
+        </member>
+        <member name="F:Skafinity.SkafinityBoard.Copy.NowPlaying">
+            <summary>Ends in the hash on purpose — see <see cref="F:Skafinity.SkafinityBoard.Copy.Hash"/>.</summary>
+        </member>
+        <member name="F:Skafinity.SkafinityBoard.Copy.Hash">
+            <summary>A number sign, ALONE, as its own label.</summary>
+            <remarks>A label whose text is LONGER than one character and begins with <c>#</c> is a
+            localisation token: the engine looks the rest up as a phrase and renders what comes back,
+            so <c>#24</c> silently becomes <c>24</c>. That is why no label here is built as "#" plus a
+            number — the hash either ends the text before it, or stands alone in a panel of its own,
+            where the length rule leaves it untouched.</remarks>
+        </member>
+        <member name="M:Skafinity.SkafinityBoard.Copy.Generating(System.Int32)">
+            <summary>Playback is stalled on a song being rendered — as opposed to the silent
+            background look-ahead, which nobody needs to be told about.</summary>
+        </member>
+        <member name="F:Skafinity.SkafinityBoard.Copy.SeedGo">
+            <summary>Typing a seed and being handed a stopped transport is a dead end, so the button
+            says play, because that is what it does.</summary>
+        </member>
+        <member name="T:Skafinity.SkafinitySlider">
+             <summary>
+             A draggable slider, built out of panels this library owns and styled entirely from code.
+             </summary>
+             <remarks>
+             <para><b>Why not <c>Sandbox.UI.SliderControl</c>: in this project it cannot be drawn at all.</b>
+             It is built, and it takes the mouse — dragging one moves its value — but every panel inside it
+             (<c>.inner</c>, <c>.track</c>, <c>.thumb</c>) sits at zero height, and a track with no height
+             paints nothing however it is coloured. Nothing sizes them: the base addon's stylesheet, which is
+             what dresses these parts in a game, does not reach this UI, and a stylesheet here cannot cross
+             into another component's insides to do it instead. Nor can an inline style, which cannot reach a
+             panel we did not create.</para>
+            
+             <para>That is not a guess and it is not slider-specific. A stock <c>SwitchControl</c> — another
+             base component with its own sheet and an unmistakable pill to draw — is equally invisible, and
+             terryball's own settings screen, copied in whole with only its wiring removed, does not draw its
+             sliders either. A panel known to work where it came from does not work here, so the difference is
+             the project rather than anything written in this library. Whether that is a library-vs-game
+             thing is still open; it is being tracked separately.</para>
+            
+             <para>So this owns the whole thing: three child panels, every value set as an INLINE style, and
+             no dependency on a cascade that may not arrive. That also hands the accent back — the theme is a
+             runtime colour, and a panel we build is a panel we can paint, which the stock control could never
+             have been.</para>
+            
+             <para>The drag is <see cref="T:Sandbox.UI.SliderControl"/>'s, because that part of it was never the problem:
+             press anywhere on the track to jump there, and <see cref="P:Sandbox.UI.Panel.HasActive"/> is what keeps a drag
+             alive — the UI system holds it on the pressed panel until release, including a release that
+             happens somewhere else entirely.</para>
+             </remarks>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.Min">
+            <summary>Left end of the range.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.Max">
+            <summary>Right end of the range.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.Step">
+            <summary>Round to this. 0 = continuous; 1 snaps to whole numbers, which is what the vibe's
+            knobs want — the seed encodes one level per base-36 character and a slider should not be able
+            to land between two of them.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.Value">
+            <summary>Where the thumb is. Clamped into the range when drawn.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.OnValueChanged">
+            <summary>Called on every change while dragging — the caller debounces if it needs to.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.Disabled">
+            <summary>Dimmed and inert. What the seek bar is before the song has a length worth drawing
+            against.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.FixedWidth">
+            <summary>Fixed width in pixels. 0 (the default) takes the slack of a row, or the full width of
+            a column.</summary>
+        </member>
+        <member name="F:Skafinity.SkafinitySlider.Height">
+            <summary>Height of the whole control, and of the pointer target with it — the track is a thin
+            line inside it, because a 6px-tall thing is not something anybody can hit.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinitySlider.Fraction">
+            <summary>Where the thumb sits, 0..1 across the range.</summary>
         </member>
         <member name="T:Skafinity.SkafinityTheme">
              <summary>
@@ -2753,6 +3998,13 @@
         </member>
         <member name="P:Skafinity.SkafinityTheme.TextDim">
             <summary>Labels and secondary lines.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityTheme.AccentColor">
+            <summary>The accent itself. What a slider's fill and thumb are painted with.</summary>
+        </member>
+        <member name="P:Skafinity.SkafinityTheme.TrackColor">
+            <summary>A slider's trough — neutral, like the stylesheet's borders, so it reads against any
+            accent a host passes in.</summary>
         </member>
         <member name="P:Skafinity.SkafinityMusicPanel.Player">
             <summary>The player this panel drives. Leave unset to auto-find a <see cref="T:Skafinity.SkafinityPlayer"/>
