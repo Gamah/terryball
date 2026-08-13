@@ -3238,6 +3238,11 @@
             <summary>Flat list of the sliders <paramref name="genre"/> shows, in display order: each
             row's volume then its exposed cells. Each field carries its <see cref="F:Skafinity.VibeCodec.Field.Voice"/> /
             <see cref="F:Skafinity.VibeCodec.Field.Column"/>, so the UI lays the matrix out without a second table.</summary>
+            <remarks>The returned fields are STABLE: the same genre hands back the same objects every
+            call, because a UI identifies a knob by reference to find its wire index. <see cref="M:Skafinity.VibeCodec.Labelled(Skafinity.VibeCodec.Field,System.String,System.String)"/>
+            mints a fresh <see cref="T:Skafinity.VibeCodec.Field"/> for any row its genre renames, so a list rebuilt per call
+            makes those knobs unfindable — they draw and drag and set nothing, and only on the genres that
+            rename a row. Cached per genre for that reason first and for the allocations second.</remarks>
         </member>
         <member name="M:Skafinity.VibeCodec.IsVolume(Skafinity.VibeCodec.Field)">
             <summary>True if <paramref name="f"/> is a per-instrument VOLUME knob — column 0 of an
