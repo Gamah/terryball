@@ -10,8 +10,7 @@
 	lane). It shows THIS lane's scorecard for every player, the way an alley monitor does. Built to be
 	read in 3D off a WorldPanel, so everything here is sized bigger than the corner ScreenPanel scoreboard.
 
-	The layout iterates every player from the director and flags whose turn it is. The control strip
-	along the bottom is inert: its buttons are drawn but not wired to anything.
+	The layout iterates every player from the director and flags whose turn it is.
 *@
 
 <root style="width: 1200px; height: 675px; flex-direction: column;
@@ -142,22 +141,6 @@
 	</div>
 	}
 
-	@* ---- Control strip: inert placeholders ---- *@
-	<div style="flex-direction: row; align-items: center; margin-top: 14px; padding-top: 14px;
-	            border-top-width: 2px; border-color: rgba(255,255,255,0.12);">
-		<div style="font-size: 16px; color: rgba(255,255,255,0.35); flex-grow: 1;">
-			LANE CONTROLS — coming soon
-		</div>
-		@foreach ( var label in new[] { "Settings", "Add Player", "Join", "Leave" } )
-		{
-			<div style="margin-left: 10px; padding: 10px 20px; border-radius: 8px;
-			            background-color: rgba(255,255,255,0.06);
-			            border-width: 1px; border-color: rgba(255,255,255,0.15);
-			            font-size: 18px; font-weight: 600; color: rgba(255,255,255,0.6);">
-				@label
-			</div>
-		}
-	</div>
 </root>
 
 @code
