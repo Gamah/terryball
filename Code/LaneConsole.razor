@@ -7,14 +7,11 @@
 
 @*
 	The in-world lane monitor — the overhead screen at the settee (the seating area behind the
-	lane). It shows THIS lane's scorecard for every player, the way an alley monitor does, and
-	reserves space for the lane controls (settings, players joining/leaving). Built to be read in
-	3D off a WorldPanel, so everything here is sized bigger than the corner ScreenPanel scoreboard.
+	lane). It shows THIS lane's scorecard for every player, the way an alley monitor does. Built to be
+	read in 3D off a WorldPanel, so everything here is sized bigger than the corner ScreenPanel scoreboard.
 
-	Multiplayer note: the layout already iterates ALL players from the director and flags whose turn
-	it is, so seating more bowlers is a data change, not a rewrite. The control strip along the
-	bottom is deliberately INERT for now — buttons are drawn so there's a home for Settings / Join /
-	Leave, but nothing is wired up yet (per the brief: "make room for it").
+	The layout iterates every player from the director and flags whose turn it is. The control strip
+	along the bottom is inert: its buttons are drawn but not wired to anything.
 *@
 
 <root style="width: 1200px; height: 675px; flex-direction: column;
@@ -145,7 +142,7 @@
 	</div>
 	}
 
-	@* ---- Control strip: placeholders only, nothing wired yet ---- *@
+	@* ---- Control strip: inert placeholders ---- *@
 	<div style="flex-direction: row; align-items: center; margin-top: 14px; padding-top: 14px;
 	            border-top-width: 2px; border-color: rgba(255,255,255,0.12);">
 		<div style="font-size: 16px; color: rgba(255,255,255,0.35); flex-grow: 1;">

@@ -6,8 +6,7 @@
 The take is one ~67s recording, each call performed TWICE in a row, in the
 script order below. We split ONLY on the gaps between calls (within-phrase gaps
 like "open frame" / "four bagger" are shorter, so they stay together) and cut
-each segment with a little head/tail padding so word endings aren't clipped (the
-earlier auto-slice trimmed too tight — "four-bagger"/"five-bagger" lost the tail).
+each segment with a little head/tail padding so word endings aren't clipped.
 
 Then run process_fx.py to rebuild fx/ from these.
 

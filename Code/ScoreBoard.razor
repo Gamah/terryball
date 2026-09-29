@@ -6,11 +6,10 @@
 @inherits PanelComponent
 
 @*
-	Top-right ten-frame scoreboard, the way an alley monitor shows it: a row per player (one for
-	now) with each frame's ball marks (X strike, / spare, - miss) in little boxes above its running
-	cumulative total, the 10th frame carrying three boxes for its bonus ball. All the scoring lives
-	in GameDirector.BuildScoreView(); this panel just lays it out. Press P (handled by the director)
-	to start a fresh game.
+	Top-right ten-frame scoreboard, the way an alley monitor shows it: a row per player with each
+	frame's ball marks (X strike, / spare, - miss) in little boxes above its running cumulative
+	total, the 10th frame carrying three boxes for its bonus ball. All the scoring lives in
+	GameDirector.BuildScoreView(); this panel just lays it out.
 *@
 
 <root style="position: absolute; top: 24px; right: 24px; flex-direction: column;

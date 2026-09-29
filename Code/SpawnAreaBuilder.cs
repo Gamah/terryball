@@ -49,7 +49,7 @@ public sealed class SpawnAreaBuilder : Component
 
 	private bool _built;
 	private Material _matFloorDark; // dark terrazzo on the ramps up to the settees
-	private Material _matCarpet;    // retro carpet on the concourse floor (the old settee texture)
+	private Material _matCarpet;    // retro carpet on the concourse floor
 
 	protected override void OnUpdate() => EnsureBuilt();
 
@@ -62,8 +62,8 @@ public sealed class SpawnAreaBuilder : Component
 
 		// The lanes are authored (all present at load), but each publishes its deck-top Z only when its
 		// DEFERRED geometry build finishes — one lane per frame via BuildScheduler. Wait for EVERY lane before
-		// laying the concourse: building off whichever lanes happened to be ready first (often just lane 1) and
-		// then locking (_built) is what left the plaza sized to a single lane instead of spanning all four.
+		// laying the concourse: building off whichever lanes are ready first and then locking (_built) would
+		// size the plaza to those lanes only.
 		var all = Scene.GetAllComponents<Lane>()
 			.Select( l => l.Builder )
 			.Where( b => b.IsValid() )
@@ -101,8 +101,8 @@ public sealed class SpawnAreaBuilder : Component
 		var concMidX = (concFrontX + concBackX) * 0.5f;
 
 		// ---- Concourse floor slab (thin, on the building floor). A raised lip reads it as a defined area.
-		// Dressed in the retro carpet (the settees' old texture), tiled at that same human-scale density so
-		// the motifs read at roughly person size across the plaza.
+		// Dressed in the retro carpet, tiled at a human-scale density so the motifs read at roughly person
+		// size across the plaza.
 		var slabThk = 8f * cu;
 		_matCarpet ??= Material.Load( "materials/carpet.vmat" );
 		_matFloorDark ??= Material.Load( "materials/floordark.vmat" ); // terrazzo on the ramps (below)
@@ -136,12 +136,9 @@ public sealed class SpawnAreaBuilder : Component
 		// SETTINGS pedestal. On the TELE row (so it's inside the view cone a player spawns facing) but offset
 		// well clear in +y, past the HELP podium's side, so the two prompts can't fight over the E key.
 		//
-		// Just a labelled podium, like the other four. rotaliate-client and gambit both hang a display-only
-		// board off their settings station — a wall you read the current values from before you engage — and
-		// this podium carried one too for a moment. It isn't wanted here: those are settings WALLS on a room's
-		// edge that you look at from across the room, where terryball's is a waist-high pedestal in the middle
-		// of an open concourse that you are already stood at by the time you can read anything on it. The
-		// screen behind E is the whole UI.
+		// Just a labelled podium, like the others — no display-only settings board. rotaliate-client and gambit
+		// hang one off a settings WALL read from across the room; this is a waist-high pedestal you are already
+		// stood at by the time you can read it. The screen behind E is the whole UI.
 		var worldPodY = yMid + PodiumSeparation * 1.3f * cu;
 		BuildPodium( "SpawnWorldPodium", cu, telePodX, worldPodY, podiumTopZ, podiumH,
 			WorldTopColor, "SETTINGS", "rgba(241,196,15,0.95)" );
@@ -172,8 +169,8 @@ public sealed class SpawnAreaBuilder : Component
 		}
 	}
 
-	// A plain walkable ramp up to a settee (rises toward the lanes, -x). For now this is just the ramp —
-	// no separate stepped treads — so the surface players walk on is the same one they see.
+	// A plain walkable ramp up to a settee (rises toward the lanes, -x). No separate stepped treads, so the
+	// surface players walk on is the same one they see.
 	private void BuildStairs( float laneY, float halfWidth, float footX, float topX, float topZ )
 	{
 		var run = footX - topX;                 // positive (foot is farther out in +x)
@@ -185,8 +182,7 @@ public sealed class SpawnAreaBuilder : Component
 		var midX = (footX + topX) * 0.5f;
 
 		// A plain sloped RAMP — one solid collider whose top surface runs foot(z=0) → deck(z=topZ), like the
-		// lane approach ramp (mirrored in x since it rises toward -x). This is the walkable surface; the
-		// cosmetic stepped treads are dropped for now (they were collider-less and players fell through).
+		// lane approach ramp (mirrored in x since it rises toward -x). This is the walkable surface.
 		MakeBox( $"StairRamp_{laneY:F0}",
 			new Vector3( midX - MathF.Sin( angle ) * thk * 0.5f, laneY, topZ * 0.5f - MathF.Cos( angle ) * thk * 0.5f ),
 			new Vector3( len, halfWidth * 2f, thk ), StairColor,

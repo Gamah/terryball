@@ -6,9 +6,9 @@
 @inherits PanelComponent
 
 @*
-	The lane controls — a screen-space overlay the director owns (spawned on its HUD). Walking up to the
+	The lane controls — a client-local screen-space overlay (built by LocalHud). Walking up to the
 	settee podium and pressing E opens a CENTERED modal that shows the scoreboard AND the controls
-	(JOIN/LEAVE, host START/STOP, CLOSE). The whole tree is pointer-events: none EXCEPT the modal box and
+	(JOIN/LEAVE, START/STOP/RESET, GET IN LINE, CLOSE). The whole tree is pointer-events: none EXCEPT the modal box and
 	its buttons (pointer-events: all) — that's what lets the freed cursor actually click them (plain
 	ScreenPanel input, the same pattern as rotaliate's settings screen). Engage state + cursor live on
 	the local TerryAvatar.
@@ -72,8 +72,8 @@
 						</div>
 
 						@* Lane-wide control toggles. Throw / Crane are shown in the lobby too as LOCAL pending picks
-						   (see ToggleAim/ToggleCrane) applied on START — a bare toggle never grabs the director, which
-						   is what broke joining before (commit 7292bf3). Mode tier + Drill selector follow the same
+						   (see ToggleAim/ToggleCrane) applied on START — a bare toggle never grabs the director
+						   (see GameDirector.SetAimMode). Mode tier + Drill selector follow the same
 						   pending pattern (PickMode/PickDrill); Drill only shows in Practice. *@
 						<div style="flex-direction: row; flex-wrap: wrap; align-items: center;">
 							@if ( CanDirect || !playing )
@@ -139,7 +139,7 @@
 
 					@* Scoreboard area. In Practice the scorecard is moot: swap the frame grid for a PRACTICE MODE
 					   banner + the live throw queue (front of queue = current bowler, highlighted). Play renders the
-					   grid below unchanged. *@
+					   grid below. *@
 					@if ( ModeOn == GameDirector.LaneMode.Practice )
 					{
 						<div style="flex-direction: column; margin-bottom: 18px;">
@@ -241,7 +241,7 @@
 					</div>
 					}
 
-					@* Flexible spacer: fills the now-tall panel so the action buttons sit pinned at the bottom
+					@* Flexible spacer: fills the panel so the action buttons sit pinned at the bottom
 					   instead of floating right under the scoreboard. *@
 					<div style="flex-grow: 1; min-height: 16px;"></div>
 
@@ -386,7 +386,7 @@
 	}
 
 	// Lobby pre-game picks: in the lobby the host owns the director, so a joiner can't write AimMode/CraneEnabled
-	// (and grabbing ownership off a toggle broke joining). Instead we stash the choice locally and apply it in
+	// (and only START may take ownership — see GameDirector.SetAimMode). Instead we stash the choice locally and apply it in
 	// StartAndApply once START has claimed the lane. Null = "no local override, show the lane's current value".
 	private bool? _pendingAim;
 	private bool? _pendingCrane;

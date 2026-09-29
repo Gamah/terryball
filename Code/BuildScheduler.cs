@@ -9,12 +9,11 @@ namespace Terryball;
 /// Spreads heavy one-off scene construction across frames so a JOINING client isn't blocked long enough on
 /// the main thread to drop the connection.
 ///
-/// The four <see cref="LaneBuilder"/>s used to run their whole procedural build synchronously inside
-/// OnEnabled while the scene loaded — 160+ colliders plus lathed pin meshes, all in the same frame the
-/// scene came up — which pegged a joining client's main thread straight through the network handshake and
-/// timed the join out. Instead each lane now enqueues its build here, and this runs ONE job per frame:
-/// OnEnabled returns immediately, the scene finishes loading, the handshake completes, and the alley streams
-/// in over the next handful of frames while the network keeps ticking.
+/// A <see cref="LaneBuilder"/>'s procedural build (160+ colliders plus lathed pin meshes) run synchronously
+/// during scene load blocks a joining client's main thread through the network handshake long enough to time
+/// the join out. Each lane enqueues its build here instead, and this runs ONE job per frame: OnEnabled returns
+/// immediately, the scene finishes loading, the handshake completes, and the alley streams in over the next
+/// handful of frames while the network keeps ticking.
 ///
 /// Client-local, auto-created, NotSaved — there's nothing to replicate; every client fills its own alley.
 /// </summary>

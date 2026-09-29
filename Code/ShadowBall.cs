@@ -3,7 +3,7 @@ using Sandbox;
 namespace Terryball;
 
 /// <summary>
-/// Marks a GameObject as a ball that casts a colour-projected shadow (see BallShadowTintPP / PLAN.md). The
+/// Marks a GameObject as a ball that casts a colour-projected shadow (see BallShadowTintPP). The
 /// post-process gathers every ShadowBall and projects its <see cref="ColorMap"/> into its real shadow,
 /// sampled per-ray - so a two-tone ball (pokeball) casts a two-tone shadow, and different balls cast
 /// different-coloured shadows. Overlapping shadows mix subtractively.

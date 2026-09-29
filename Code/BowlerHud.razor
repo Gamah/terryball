@@ -4,14 +4,13 @@
 @inherits PanelComponent
 
 @*
-	The local bowler's on-screen controls while riding the ball. Right now that's just the escape
-	hatch: a button-styled prompt for the G key, which ends your turn (drops you back to the settee)
-	for when the director gets wedged mid-turn. It stays here, top-right, because it is a MODAL
-	prompt for the one thing you can do right now — unlike the persistent keycap hints, which all
-	live in HudHints's bottom-left stack (the R-respawn chip this panel used to draw moved there).
+	The local bowler's on-screen escape hatch while riding the ball: a button-styled prompt for the G
+	key, which ends your turn (drops you back to the settee) for when the director gets wedged mid-turn.
+	It sits top-right because it is a MODAL prompt — unlike the persistent keycap hints, which all
+	live in HudHints's bottom-left stack.
 
 	It's deliberately pointer-events: none — an interactive screen panel flips the engine into UI input
-	mode while you're aiming, which zeroes AnalogLook and freezes the ball camera. So this is a visible
+	mode while you're aiming, which zeroes AnalogLook and freezes the ball camera [SOURCE]. So this is a visible
 	affordance and the action lives on the G key (which works while the mouse is captured for aiming).
 *@
 
@@ -65,9 +64,6 @@
 		padding: 1px 8px;
 		border-radius: 5px;
 	}
-
-	/* The R-respawn chip that used to sit at bottom-left is in HudHints now — this panel draws only
-	   the modal exit prompt. */
 </style>
 
 @code

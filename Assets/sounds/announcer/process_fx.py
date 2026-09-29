@@ -4,7 +4,7 @@ Generate the in-game "announcer" effect from the dry VO clips.
 
     dry/*.wav  ->  fx/*.wav   (same filenames, stereo 48 kHz)
 
-Approved recipe ("huge" / variant F): a bright, present, lightly-compressed
+Recipe: a bright, present, lightly-compressed
 voice kept mono-centered and forward, sitting over a big, dark, fast-fading
 convolution-reverb tail (bowling-alley / arena wash).
 
@@ -13,16 +13,16 @@ Cross-platform (Windows build box included) -- only needs ffmpeg on PATH.
 
     python process_fx.py
 
-HARD-WON GOTCHAS (see SOURCES.txt + memory):
+Constraints:
   - The dry/ clips are already highpass+loudnorm'd (and thus 192 kHz). The voice
     loudness is baked in; we add tone + room ON TOP and finish with only a safety
     limiter. Do NOT loudnorm the dry+wet sum (it ducks the voice, kills presence).
-  - This ffmpeg build outputs SILENCE from `afir` if you set wet=/dry=; use bare
+  - ffmpeg's `afir` outputs SILENCE if you set wet=/dry= [SOURCE]; use bare
     `afir` (it emits the pure wet convolution) and set level yourself.
   - afir auto-gains the IR by peak (default gtype), so wet level is predictable
     via the explicit `volume` below. apad gives the tail room to ring out.
   - Reverb is symmetric L/R with the voice mono-centered, so it can never
-    hard-pan to one side (decorrelated-stereo reverb bit us before).
+    hard-pan to one side.
 """
 import glob
 import os

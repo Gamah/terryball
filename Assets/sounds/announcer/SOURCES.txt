@@ -12,8 +12,7 @@ Pipeline:
                   gaps BETWEEN calls (within-phrase gaps like "open frame" stay
                   together) and keeps head/tail padding so word endings aren't
                   clipped. Each clip: mono, highpass 85Hz + loudnorm (-16 LUFS,
-                  -1.5 dBTP). (An earlier auto-slice trimmed too tight and cut the
-                  tails off four-bagger / five-bagger — reslice.py fixed that.)
+                  -1.5 dBTP).
   process_fx.py -> fx/   adds the in-game "announcer over a PA in a big room"
                   effect (bright present voice over a dark, fast convolution-reverb
                   tail). fx/ is the set the GAME plays (AnnouncerAudio).

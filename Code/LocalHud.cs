@@ -7,12 +7,9 @@ namespace Terryball;
 /// <see cref="LocalHudSystem"/> (a purely-local GameObjectSystem) on a runtime <see cref="NetworkMode"/>
 /// .Never root object, with no dependency on any networked object. There is one HUD per player,
 /// independent of how many lanes exist, and it follows whatever lane that player has joined (the panels
-/// resolve their director via <see cref="Lane.ForLocalPlayer"/>).
-///
-/// This replaces the old in-Director HUD, which was built as a child of the networked Director — that
-/// made the whole subtree (music player, scoreboard, chat) part of the Director's network snapshot, so
-/// the host's mute / music / panel state leaked onto every client. Building it off any networked object
-/// keeps it strictly client-local.
+/// resolve their director via <see cref="Lane.ForLocalPlayer"/>). Nothing here may hang off a networked
+/// object, or its state joins that object's snapshot and the host's mute / music / panel state reaches
+/// every client.
 /// </summary>
 public sealed class LocalHud : Component
 {
@@ -58,21 +55,20 @@ public sealed class LocalHud : Component
 		music.Volume = 0.25f; // start quiet — background ambience, not the main event
 		// Route to the "Music" mixer (default routing is the "Game" mixer). The engine only scales a
 		// mixer named "Music" by the sound-options music slider (Preferences.MusicVolume), so without
-		// this the slider does nothing to the soundtrack. NOTE: that scaling is skipped in the editor
-		// (Mixer.FinishMixing gates on !Application.IsEditor) — the slider only bites in a real build.
+		// this the slider does nothing to the soundtrack. That scaling is skipped in the editor
+		// (Mixer.FinishMixing gates on !Application.IsEditor) [SOURCE].
 		music.MixerName = "Music";
 		Components.Create<Skafinity.SkafinityMusicPanel>( false );
 		Components.Create<MusicScreen>();
 
-		// Proximity voice: the keyboard driver (V toggles voice, B opens the mute roster) plus its HUD
+		// Proximity voice: the keyboard driver (G toggles voice, B opens the mute roster) plus its HUD
 		// chip/roster panel. VoiceScreen also fires the first-run how-to-play pop-up. Client-local, like
 		// everything else on this HUD — the mute/enabled state lives in per-user cookies (VoicePrefs).
 		Components.Create<VoiceScreen>();
 		Components.Create<VoicePanel>();
 
 		// Every keycap affordance in the game — chat, music (M/N), voice (G/B), respawn (R) — in one
-		// bottom-left stack. It replaced the four panels that each drew their own in a different
-		// corner while commenting about dodging the other three. See HudHints.
+		// bottom-left stack. See HudHints.
 		Components.Create<HudHints>();
 	}
 }

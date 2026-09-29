@@ -9,10 +9,8 @@ namespace Terryball;
 /// <see cref="VoicePrefs"/> and the same shape: every getter reads its cookie and every setter writes it
 /// straight back, so a choice persists across sessions the moment it's made.
 ///
-/// This is deliberately NOT networked. Rotaliate and gambit split their settings boards into a LOCAL one
-/// (what only you see) and a HOST one (what everybody gets); terryball has only the local half today, so
-/// everything here is "my client's look" and nothing needs an admin check or a snapshot. If a host-wide
-/// setting is ever wanted, it goes on a networked component, not in this file — keep the cookie side pure.
+/// Deliberately NOT networked: everything here is "my client's look", with no admin check or snapshot.
+/// A host-wide setting belongs on a networked component, not in this file.
 /// </summary>
 public static class WorldPrefs
 {
@@ -20,10 +18,9 @@ public static class WorldPrefs
 	private const string SkyKey = "terryball.world.sky_brightness";
 	private const string VoiceRangeKey = "terryball.world.voice_range";
 
-	/// <summary>Bumped by every setter here. Panels fold it into their <c>BuildHash</c> and the appliers
-	/// (<see cref="SkyBrightnessApplier"/>, <see cref="VoiceScreen"/>) compare against it so they only do
-	/// real work when something actually changed — the same job gambit's <c>SettingsVersion</c> does.
-	/// Starts at 0 and an applier's "last applied" starts at -1, so everything applies once on load.</summary>
+	/// <summary>Bumped by every setter here. <see cref="WorldSettings"/> folds it into its <c>BuildHash</c> and
+	/// <see cref="SkyBrightnessApplier"/> compares against it so it only does real work on a change. Starts
+	/// at 0 and the applier's "last applied" starts at -1, so it applies once on load.</summary>
 	public static int Revision { get; private set; }
 
 	/// <summary>The world theme colour as a CSS hex string (<c>#rrggbb</c>), or <c>""</c> for AUTO — the
@@ -48,11 +45,8 @@ public static class WorldPrefs
 
 	/// <summary>How far (world units) THIS client hears other players' proximity voice. Receive-side and
 	/// per-client — the 3D falloff is computed on the receiver — which is why it lives in a cookie and is
-	/// never networked. See <see cref="VoiceScreen"/> for where it lands on the Voice components.
-	///
-	/// <para>gambit splits this in two (SEATED at a chess table, ROAMING everywhere else). Terryball has no
-	/// seated equivalent: a bowler is stood in the same open concourse as everyone else, just further down
-	/// it, so there is one range and it is the roaming one.</para></summary>
+	/// never networked. See <see cref="VoiceScreen"/> for where it lands on the Voice components. There is
+	/// no seated range: bowlers stand in the same open space as everyone else.</summary>
 	public static float VoiceRangeRoaming
 	{
 		get => ClampVoiceRange( Cookie.Get( VoiceRangeKey, DefaultVoiceRange ) );

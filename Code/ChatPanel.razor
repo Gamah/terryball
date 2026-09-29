@@ -6,12 +6,10 @@
 
 @*
 	Chat is the ENGINE'S overlay — it draws the message feed AND provides the typing box, opened with
-	the "Chat" action (Enter). We used to roll our own T-to-open TextEntry here (copied hastily from
-	rotaliate); that duplicated the built-in box, so it went. The "which key opens chat" hint went
-	too — it lives in HudHints now, with music's and voice's and the respawn chip's, in one stack.
+	the "Chat" action (Enter). The "which key opens chat" hint is in HudHints.
 
-	So this panel draws NOTHING and survives only for the IsOpen stub below, which the gameplay input
-	gates still compile against.
+	This panel draws NOTHING and exists only for the IsOpen stub below, which the gameplay input gates
+	compile against.
 *@
 
 <root></root>
@@ -26,9 +24,9 @@
 
 @code
 {
-	/// <summary>Kept for the gameplay input-gates (BallCamera look, MusicScreen keys, GameDirector's G)
-	/// that used to pause while our own chat box had the keys. The built-in chat overlay captures input
-	/// itself while you type, so there's no game-side box to be open — this stays false.</summary>
+	/// <summary>Read by the gameplay input-gates (BallCamera look, MusicScreen keys, GameDirector's G).
+	/// The built-in chat overlay captures input itself while you type, so there's no game-side box to be
+	/// open — this stays false.</summary>
 	public static bool IsOpen => false;
 
 	protected override int BuildHash() => 0;

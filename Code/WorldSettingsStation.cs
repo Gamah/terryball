@@ -5,9 +5,8 @@ namespace Terryball;
 /// <summary>
 /// A walk-up interaction spot at the SETTINGS podium on the spawn concourse: stand within
 /// <see cref="InteractRange"/> and press E to open the world-settings screen (see <see cref="TerryAvatar"/>
-/// for the engage flow). The fifth sibling of <see cref="LaneStation"/>, <see cref="BallDesignerStation"/>,
-/// <see cref="HelpStation"/> and <see cref="TeleportStation"/> — TerryAvatar picks whichever podium is
-/// nearest, so their ranges are kept tight to tell them apart.
+/// for the engage flow). TerryAvatar picks the nearest podium of any kind, so ranges are kept tight to
+/// tell them apart.
 /// </summary>
 public sealed class WorldSettingsStation : Component
 {

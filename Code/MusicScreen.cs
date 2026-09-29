@@ -7,8 +7,8 @@ namespace Terryball;
 /// <summary>
 /// Drives the Skafinity library's drop-in <see cref="SkafinityMusicPanel"/> from the keyboard
 /// instead of its built-in floating ♪ button. Left always-on over the alley that button is an
-/// interactive (pointer-events) element — it would keep the cursor released and kill mouselook
-/// (the same problem Rotaliate's music board had). So the panel is kept <em>disabled</em> while
+/// interactive (pointer-events) element — it would keep the cursor released and kill mouselook.
+/// So the panel is kept <em>disabled</em> while
 /// closed (its button never shows, never steals input); opening it enables + opens it and frees
 /// the cursor, closing it disables it again and hands the cursor back.
 ///
@@ -48,8 +48,7 @@ public sealed class MusicScreen : Component
 	/// <summary>
 	/// The music board wears the WORLD THEME: hand the library the hex the player picked at the
 	/// SETTINGS podium (<see cref="WorldPrefs.ThemeColor"/>, empty = AUTO).
-	/// <see cref="SkafinityTheme"/> derives its whole palette from that one accent, so the board
-	/// stops being the one panel in the alley that ignores the theme.
+	/// <see cref="SkafinityTheme"/> derives its whole palette from that one accent.
 	///
 	/// <para>A PUSH rather than the panel reading <see cref="WorldTheme"/>: the library is
 	/// vendored and must not be patched, so it cannot know what a Terryball is — a settable

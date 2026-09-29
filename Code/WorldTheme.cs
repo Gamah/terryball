@@ -8,27 +8,23 @@ namespace Terryball;
 /// gambit's <c>WallTheme</c>: everything keys off a single <see cref="Accent"/>, so changing the theme
 /// retints the whole world UI at once, and AUTO falls back to the canonical amber.
 ///
-/// <para>AUTO reproduces the old hardcoded ACCENT exactly (#f1c40f) but not the old fill: the near-black
-/// gets a few percent of accent lifted into it (see <see cref="Bg"/>), so on AUTO the panels sit at
-/// rgba(22,21,16) rather than the rgba(8,10,16) they used to. That is deliberate — it is what makes a
-/// theme visible on the panel body and not just its trim — but it does mean AUTO is a hair warmer than
-/// what shipped before this type existed. Set the lift to 0 to get the old fill back exactly.</para>
+/// <para>The near-black fill gets a few percent of the accent lifted into it (see <see cref="Bg"/>), which
+/// is what makes a theme visible on the panel body and not just its trim.</para>
 ///
 /// <para>WHY A C# STATIC AND NOT A STYLESHEET: these panels bind the values as inline <c>style=</c>
 /// attributes, which re-render when the value changes. A compiled <c>&lt;style&gt;</c> block (or an .scss
 /// variable) is baked at build time and cannot take a runtime colour — that is the whole reason the theme
 /// lives here. Only static tokens (fonts, radii, sizes) belong in markup.</para>
 ///
-/// <para>WHAT THIS DOES NOT OWN: the per-station identity colours. A LANE podium is blue, BALL purple,
-/// HELP green, TELE cyan, and those say "which podium is this" — they are wayfinding, not decoration, so
+/// <para>WHAT THIS DOES NOT OWN: the per-station identity colours. Those say "which podium is this" —
+/// they are wayfinding, not decoration, so
 /// they stay hardcoded at their call sites and are passed in (see <see cref="StationSign.Accent"/>). This
 /// type owns the CHROME every panel shares: the near-black fill, the borders and dividers, the text ramp,
 /// and the fallback accent for panels that don't have an identity of their own.</para>
 /// </summary>
 public static class WorldTheme
 {
-	/// <summary>The canonical terryball amber — the accent that was hardcoded across the world panels
-	/// before the theme existed, so AUTO keeps the original accent.</summary>
+	/// <summary>The canonical terryball amber — the accent on AUTO.</summary>
 	public static readonly Color DefaultAccent = Color.Parse( "#f1c40f" ) ?? Color.White;
 
 	/// <summary>The hue everything derives from: the player's world-theme colour, or the default amber on
@@ -43,7 +39,7 @@ public static class WorldTheme
 	}
 
 	// The near-black panel fill is terryball's, not the accent's: the alley's panels sit against bright
-	// lane wood and coloured shadows, so a fill that took the accent's hue (as rotaliate's does) turned
+	// lane wood and coloured shadows, so a fill that took the accent's hue (as rotaliate's does) reads
 	// muddy against them. The accent gets a faint lift into the fill instead, which reads as "themed" at
 	// a glance without moving the fill off the house colour.
 	private static readonly Color BaseFill = new( 8f / 255f, 10f / 255f, 16f / 255f );
@@ -79,8 +75,7 @@ public static class WorldTheme
 	public static string Cell => Rgba( Mix( BaseFill, Accent, 0.1f ), 0.85f );
 
 	/// <summary>The accent as a plain <c>#rrggbb</c> — for anywhere a hex is wanted rather than a
-	/// <c>rgb()</c> string (and for handing the theme to a library that takes a colour, e.g. the vendored
-	/// skafinity music panel once it accepts one — see Gamah/skafinity#27).</summary>
+	/// <c>rgb()</c> string.</summary>
 	public static string AccentHex => $"#{To255( Accent.r ):x2}{To255( Accent.g ):x2}{To255( Accent.b ):x2}";
 
 	/// <summary>Changes whenever the theme changes — panels fold this into their <c>BuildHash</c> so a

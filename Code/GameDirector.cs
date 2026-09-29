@@ -11,37 +11,38 @@ namespace Terryball;
 /// from vertical OR shoved off its spot by more than <see cref="DisplacementThresholdInches"/> — a
 /// pin merely nudged but still standing on its spot stays UP.
 ///
-/// Flow:
+/// Flow (on the active bowler's client):
 ///   Rolling  — the player drives the ball normally.
 ///   (ball centre crosses the lane's throw line, a few feet short of the pins)
 ///   Watching — the ball's input AND braking are cut so it coasts on momentum into the pins, and
-///              the camera pulls back/up for an overview of the hit. Held for <see cref="WatchSeconds"/>.
-///   (reset)  — pins are re-racked on their spots, the ball is teleported back to the run-up and
-///              handed back to the player, and we return to Rolling.
+///              the camera pulls back/up for an overview of the hit, until the rack settles or
+///              <see cref="WatchSeconds"/> elapses.
+///   Craning  — the ball is flown back to the run-up for the next ball, or to the bowler's seat
+///              when their turn ends.
+///   Spent    — the turn is booked; idle until the director hands out the next turn.
 ///
-/// <see cref="PinStatuses"/> and <see cref="State"/> are read live by the top-left overlay panel.
+/// <see cref="PinStatuses"/> and <see cref="State"/> are read live by the pin panels.
 /// </summary>
 public sealed class GameDirector : Component
 {
 	// --- Director ownership (claimable per-lane authority) ------------------------------
-	// The director used to be host-authoritative. Now each lane's director is a CLAIMABLE, network-owned
-	// authority: the player who presses START takes ownership of this (networked) director object and runs
-	// the whole game for the lane — scoring, turn rotation, racking — on their machine; the synced fields
-	// below (plain [Sync], owner→everyone) mirror it to every client. Ownership is relinquished back to the
-	// host at the end of the game (STOP / game complete), so the lane returns to the lobby free to be
-	// claimed again. Until claimed the host owns it (it runs the lobby), so solo/host play is unchanged.
+	// Each lane's director is a CLAIMABLE, network-owned authority: the player who presses START takes
+	// ownership of this (networked) director object and runs the whole game for the lane — scoring, turn
+	// rotation, racking — on their machine; the synced fields below (plain [Sync], owner→everyone) mirror it
+	// to every client. STOP hands ownership back to the host, so the lane returns to the lobby free to be
+	// claimed again. Unclaimed, the host owns it and runs the lobby.
 	//
 	// "Am I the authority for this lane?" — true if I own the director object (or there's no live session,
-	// e.g. the editor). Everything that used to gate on Networking.IsHost now gates on this instead.
+	// e.g. the editor). Lane game logic gates on this, not on Networking.IsHost.
 	public bool IsDirector => !Networking.IsActive || !GameObject.Network.Active || GameObject.Network.IsOwner;
 
 	/// <summary>UI-facing alias: does the LOCAL client run this lane's game (show STOP / crane toggle)?</summary>
 	public bool LocalIsDirector => IsDirector;
 
 	/// <summary>Set the lane's throw mode (<see cref="AimMode"/>) from the lane controls. Director-only: only the
-	/// player who runs this lane (has claimed it via START) can change the style, so this never takes ownership
-	/// of the director on its own — grabbing authority off a mere lobby toggle disturbed the session's
-	/// ownership handshake and broke joining. No-op if the local client isn't this lane's director.</summary>
+	/// player who runs this lane (has claimed it via START) can change the style. Never takes ownership of the
+	/// director: only START claims, because taking ownership off a lobby toggle interferes with players
+	/// joining the session. No-op if the local client isn't this lane's director.</summary>
 	public void SetAimMode( bool on )
 	{
 		if ( !IsDirector ) return;
@@ -58,8 +59,7 @@ public sealed class GameDirector : Component
 	}
 
 	/// <summary>Set the lane's experience (<see cref="Mode"/>) from the lane controls. Director-only, same as
-	/// <see cref="SetAimMode"/> — it never claims the lane on its own (a lobby toggle can't break joining).
-	/// No-op if the local client isn't this lane's director.</summary>
+	/// <see cref="SetAimMode"/> — it never claims the lane on its own. No-op if the local client isn't this lane's director.</summary>
 	public void SetMode( LaneMode m )
 	{
 		if ( !IsDirector ) return;
@@ -85,7 +85,7 @@ public sealed class GameDirector : Component
 			GameObject.Network.TakeOwnership();
 	}
 
-	// Hand the director back to the host at the end of a game, so the lane's lobby is host-run again and
+	// Hand the director back to the host on STOP, so the lane's lobby is host-run again and
 	// the next player can claim it. Host keeps its own directors (nothing to drop).
 	private void RelinquishDirector()
 	{
@@ -116,10 +116,10 @@ public sealed class GameDirector : Component
 	[Property, Group( "Players" )] public int MaxPlayers { get; set; } = 6;
 
 	/// <summary>Physics substeps for the world. Re-asserted every frame because the engine replaces
-	/// the PhysicsWorld after OnStart, so setting it once didn't stick (the probe was reading 1).
+	/// the PhysicsWorld after OnStart [SOURCE], so a one-time set does not stick.
 	/// Resolves the fast 10-pin cascade instead of smearing the ball through it in coarse steps.
-	/// With the physics tick now at 120 Hz (Physics.config FixedUpdateFrequency), 3 substeps already
-	/// gives ~360 solve steps/s — keep it low here or you'll multiply into thousands per second.</summary>
+	/// At the 120 Hz physics tick (Physics.config FixedUpdateFrequency), 3 substeps gives ~360 solve
+	/// steps/s — keep it low here or you'll multiply into thousands per second.</summary>
 	[Property] public int PhysicsSubSteps { get; set; } = 3;
 
 	/// <summary>Spew the per-throw pin-crash diagnostics to the console (impact/exit speeds, the physics
@@ -174,24 +174,21 @@ public sealed class GameDirector : Component
 	[Property, Group( "Crane" )] public float CraneArcHeight { get; set; } = 260f;
 
 	// --- Multiplayer ownership ----------------------------------------------------------
-	// The director is host-authoritative. Exactly one connected player is "up" at a time; the host
-	// publishes their connection id here and every client compares it against its own to decide
+	// Exactly one connected player per lane is "up" at a time; the director publishes their connection id here and every client compares it against its own to decide
 	// whether IT drives the ball + ball camera (vs. walking its Terry around the settee). Empty =
 	// nobody up (lobby / between turns), so the ball sits parked and everyone just walks.
 	[Sync] public Guid ActiveBowlerId { get; set; }
 
-	/// <summary>Bumped by the host every time a turn is (re)assigned — including when the SAME bowler is
+	/// <summary>Bumped by the director every time a turn is (re)assigned — including when the SAME bowler is
 	/// up again (solo play, or two turns in a row). The bowler client begins a fresh turn whenever this
 	/// changes, so back-to-back turns by one player still re-rack and re-roll instead of hanging on the
 	/// parked ball. (Watching ActiveBowlerId alone can't catch a same-bowler hand-back — it never edges.)</summary>
 	[Sync] public int TurnSerial { get; set; }
 
 	// --- Active ball design (the skin the shared ball wears) -----------------------------------
-	// The ball reads its look from HERE, not off the bowler's avatar. The avatar's own [Sync] design
-	// fields proved unreliable for late joiners — a host-spawned avatar's one-time owner write can miss
-	// the join snapshot, so spectators who connect mid-turn keep the default skin forever. The director,
-	// by contrast, is a stable per-lane networked object whose [Sync] fields (ActiveBowlerId, roster)
-	// reliably reach late joiners. So each client PUSHES its chosen design to this lane's director via
+	// The ball reads its look from HERE, not off the bowler's avatar: a host-spawned avatar's one-time
+	// owner write can miss the join snapshot [SOURCE], while the director's [Sync] fields (ActiveBowlerId,
+	// roster) reach late joiners. So each client PUSHES its chosen design to this lane's director via
 	// SetBallDesignRpc (an owner RPC, like EndTurnRpc), the director stashes it per-connection, and
 	// mirrors the CURRENT bowler's design onto these three synced fields — which every client, joining
 	// early or late, resolves the same way. Stored as three primitives to keep the sync trivial.
@@ -281,18 +278,17 @@ public sealed class GameDirector : Component
 	/// someone to get in line. Drives the "waiting for bowlers" header/banner instead of an "X is up".</summary>
 	public bool PracticeIdle => Mode == LaneMode.Practice && Phase == GamePhase.Playing && ActiveBowlerId == Guid.Empty;
 
-	// --- Shared, host-authoritative game state (synced to every client) -----------------
-	// The host runs all the scoring (against its _players + pins); these mirror just enough for any
+	// --- Shared, director-authoritative game state (synced to every client) -------------
+	// The director runs all the scoring (against its _players); these mirror just enough for any
 	// client's scoreboard/console to render the same thing. Strings keep it simple: the per-player
 	// frame data is encoded "balls,balls;balls;…" and decoded back in BuildScoreView.
 
 	public enum GamePhase { Lobby, Playing }
-	/// <summary>Lobby = players join/leave; Playing = a game is on (START pressed). Host-set.</summary>
+	/// <summary>Lobby = players join/leave; Playing = a game is on (START pressed). Director-set.</summary>
 	[Sync] public GamePhase Phase { get; set; } = GamePhase.Lobby;
 
 	/// <summary>What experience this lane runs. <see cref="LaneMode.Play"/> is the standard 10-frame game
-	/// (today's behaviour, the default); <see cref="LaneMode.Practice"/> is the live-queue drill mode. A tier
-	/// so future modes (vs-lane, Baker, …) can slot in.</summary>
+	/// (the default); <see cref="LaneMode.Practice"/> is the live-queue drill mode.</summary>
 	public enum LaneMode { Play, Practice }
 	/// <summary>The Practice-mode rack drill (lane-wide): <see cref="PracticeDrill.Regular"/> full rack / 2 throws,
 	/// <see cref="PracticeDrill.Strike"/> full rack / 1 throw, <see cref="PracticeDrill.Spare"/> a random non-split
@@ -315,16 +311,16 @@ public sealed class GameDirector : Component
 				.Any( a => a.IsValid() && a.Joined && a.JoinedLaneId == laneId );
 		}
 	}
-	/// <summary>Host toggle (lane controls): when off, the ball is teleported between spots instead of
+	/// <summary>Director toggle (lane controls): when off, the ball is teleported between spots instead of
 	/// flying the choreographed claw animation — the scoop/drop body↔ball swaps and the roll still
-	/// happen, just instantly. Synced so the active bowler (who runs the crane) reads the host's choice.</summary>
+	/// happen, just instantly. Synced so the active bowler (who runs the crane) reads the director's choice.</summary>
 	[Sync] public bool CraneEnabled { get; set; } = true;
 	/// <summary>Throw mode for this lane (director toggle, synced so every bowler on the lane rolls the same
 	/// way). false = the free hamster-ball drive; true = the guided "Aim" line-up (see <see cref="ThrowAimer"/>).
 	/// A lane-wide setting, not per-player — whoever runs the lane picks the style for it.</summary>
 	[Sync] public bool AimMode { get; set; }
-	/// <summary>This lane's experience (director toggle, synced). Default <see cref="LaneMode.Play"/> preserves
-	/// the standard 10-frame game byte-for-byte; <see cref="LaneMode.Practice"/> switches to the drill/queue branch.</summary>
+	/// <summary>This lane's experience (director toggle, synced). Default <see cref="LaneMode.Play"/> is the
+	/// standard 10-frame game; <see cref="LaneMode.Practice"/> switches to the drill/queue branch.</summary>
 	[Sync] public LaneMode Mode { get; set; } = LaneMode.Play;
 	/// <summary>The Practice-mode rack drill (director toggle, synced, lane-wide). Ignored in <see cref="LaneMode.Play"/>.</summary>
 	[Sync] public PracticeDrill Drill { get; set; } = PracticeDrill.Regular;
@@ -396,7 +392,7 @@ public sealed class GameDirector : Component
 	private BallController _ball;
 	private BallCamera _camera;
 
-	// --- Approach-B throw networking (the active bowler is authoritative for their own turn) -------
+	// --- Throw networking (the active bowler is authoritative for their own turn) ----------------
 	private readonly List<int> _localBalls = new(); // bowler-side: the balls thrown THIS frame, for the rules
 	private int _servedTurn = -1;    // the TurnSerial we last began a turn for (-1 = none yet this client)
 	private bool _ballNetReady;      // host: have we tagged the networked ball Takeover yet?
@@ -426,7 +422,7 @@ public sealed class GameDirector : Component
 		Scoop,   // instant: body → ball
 		Drop,    // instant: ball → body at the seat
 		Roll,    // instant: end the trip, restore physics, roll
-		EndDrop, // instant: end the trip parked frozen at the seat, hand off to the host
+		EndDrop, // instant: end the trip parked frozen at the seat, hand off to the director
 	}
 	private struct CraneStep
 	{
@@ -461,10 +457,10 @@ public sealed class GameDirector : Component
 	private float _peakPinVel;  // peak pin linear speed seen this throw (u/s)
 
 	// --- Game / frame state -------------------------------------------------------------
-	// A bowling game is 10 frames of 1–2 balls (the 10th gets a 3rd on a strike/spare). The host
+	// A bowling game is 10 frames of 1–2 balls (the 10th gets a 3rd on a strike/spare). The director
 	// keeps one authoritative PlayerScore per bowler in the roster; bowlers alternate within a
 	// shared frame (P1 frame1, P2 frame1, … then everyone steps to frame2). AdvanceTurn rotates the
-	// active bowler and steps the frame once the last bowler is done. This state is host-only and
+	// active bowler and steps the frame once the last bowler is done. This state is director-local and
 	// mirrored to clients through the synced Roster* fields (see PublishScores).
 
 	/// <summary>One player's scratch: the pin counts knocked on each ball, grouped by frame.</summary>
@@ -473,7 +469,7 @@ public sealed class GameDirector : Component
 		public string Name { get; set; }
 		/// <summary>Ten frames; each holds the pins felled per ball (1–2 balls, or 3 in the 10th).</summary>
 		public readonly List<List<int>> Frames = new();
-		/// <summary>Which (frame, ball-index) leaves were splits — host-side, published via RosterSplits.</summary>
+		/// <summary>Which (frame, ball-index) leaves were splits — director-side, published via RosterSplits.</summary>
 		public readonly HashSet<(int frame, int ball)> Splits = new();
 		public PlayerScore( string name )
 		{
@@ -482,8 +478,8 @@ public sealed class GameDirector : Component
 		}
 	}
 
-	private readonly List<PlayerScore> _players = new();   // host-authoritative scoring state
-	private readonly List<Guid> _rosterIds = new();        // host: roster slot -> owning connection id
+	private readonly List<PlayerScore> _players = new();   // director-authoritative scoring state
+	private readonly List<Guid> _rosterIds = new();        // director: roster slot -> owning connection id
 	private int _current;            // whose turn (index into _players)
 	private int _frame;              // current frame 0..9 (shared; players alternate within it)
 	private int _ballStartDown;      // pins already down entering the current ball (swept from earlier balls this frame)
@@ -506,13 +502,13 @@ public sealed class GameDirector : Component
 		_ball = lane?.Ball;
 		_camera = lane?.Camera;
 
-		// Capture the ball's run-up "home" (the crane's return target). Deferred: the lane's build is now
+		// Capture the ball's run-up "home" (the crane's return target). Deferred: the lane's build is
 		// frame-spread by BuildScheduler, so RunUpWorldPosition is still zero here on the first frame —
 		// TryInitBallHome retries from OnUpdate until the lane has actually built. See _ballHomeReady.
 		TryInitBallHome();
 
-		// Start in the LOBBY: no roster yet. Players walk up and Join from the lane controls; the
-		// host presses START to lock the roster in and begin frame 1. (Host publishes the empty
+		// Start in the LOBBY: no roster yet. Players walk up and Join from the lane controls; any of
+		// them presses START to lock the roster in and begin frame 1. (The director publishes the empty
 		// state so joining clients render a clean board.)
 		_players.Clear();
 		_rosterIds.Clear();
@@ -531,21 +527,20 @@ public sealed class GameDirector : Component
 	// The on-screen HUD is built by LocalHudSystem (a purely-local GameObjectSystem), not here — it's a
 	// client-local, non-networked thing that belongs to the player, not to any director.
 	//
-	// Avatar spawn/despawn is NOT here any more — with N lanes, N directors would each spawn a Terry per
-	// joiner. It's a single server-level responsibility now: see AlleyServer (one INetworkListener on the
-	// scene root that spawns exactly one walking Terry per connection).
+	// Avatar spawn/despawn is not here: with N lanes, N directors would each spawn a Terry per joiner.
+	// AlleyServer (one INetworkListener on the scene root) spawns exactly one walking Terry per connection.
 
 	// --- Lobby controls (driven by the lane controls panel) -----------------------------
 	// Join/Leave is each client toggling its OWN avatar's (owner-controlled) Joined flag directly — no RPC.
 	// START claims this lane's director (takes ownership) and runs the game on the presser's machine; STOP
 	// relinquishes it back to the host. Both are called straight on the director from the local controls
-	// panel, so there's no instance-RPC — the presser IS the new authority.
+	// panel, so there's no RPC — the presser IS the new authority.
 
 	/// <summary>Claim this lane and lock the joined players into a fresh scorecard, tipping off frame 1.
 	/// Any player at the lobby can press START — it takes ownership of the director so THEY run the game.</summary>
 	// Lobby picks (mode/drill/aim/crane) are applied AFTER we claim the director but BEFORE we tip off — the
-	// tip-off branches on Mode and racks for Drill, so setting them post-tip-off (as the picks used to) would
-	// open a Practice pick as a Play game. Nulls mean "leave the lane's current value".
+	// tip-off branches on Mode and racks for Drill, so setting them post-tip-off would open a Practice pick
+	// as a Play game. Nulls mean "leave the lane's current value".
 	public void StartGame( LaneMode? mode = null, PracticeDrill? drill = null, bool? aim = null, bool? crane = null )
 	{
 		if ( Phase == GamePhase.Playing ) return;
@@ -618,7 +613,7 @@ public sealed class GameDirector : Component
 		_gameOver = false;
 		Phase = GamePhase.Playing;
 
-		// Host owns the rack in the gap: present a clean, settled deck BEFORE spotlighting the first
+		// The director owns the rack in the gap: present a clean, settled deck BEFORE spotlighting the first
 		// bowler, so they grab an already-good rack (no contested respot). They roll on their own machine
 		// (BeginTurn) the moment their spotlight (ActiveBowlerId) lands. Snap it (instant) — the game's just
 		// starting, there's no throw to watch the rack glide in from.
@@ -758,7 +753,7 @@ public sealed class GameDirector : Component
 			}
 		}
 
-		// Host keyboard P was a quick START/STOP toggle for solo testing. Commented out for now.
+		// Disabled: host keyboard P as a START/STOP toggle for solo testing.
 		// if ( Networking.IsHost && Input.Keyboard.Pressed( "P" ) )
 		// {
 		// 	if ( Phase == GamePhase.Playing ) StopGame(); else StartGame();
@@ -787,8 +782,8 @@ public sealed class GameDirector : Component
 			}
 
 			// If the bowler who's UP has left the session, their orphaned rack would sit forever. Advance
-			// the turn so we reclaim the ball + rack and the next bowler is up. (This used to live in the
-			// host's OnDisconnected; the director may not be the host now, so it's polled here instead.)
+			// the turn so we reclaim the ball + rack and the next bowler is up. Polled here rather than in
+			// OnDisconnected because the director need not be the host.
 			if ( ActiveBowlerId != Guid.Empty && !GameComplete
 				&& !Networking.Connections.Any( c => c.Id == ActiveBowlerId ) )
 			{
@@ -803,12 +798,12 @@ public sealed class GameDirector : Component
 		var bowling = LocalIsBowling;
 
 		// Escape hatch: G lets the bowler bail out of the ball (the HUD shows a button too). Works even
-		// if the turn's wedged — it RPCs the host to end our turn. Skip while the chat box has the keys.
+		// if the turn's wedged — it RPCs the director to end our turn. Skip while the chat box has the keys.
 		if ( bowling && !ChatPanel.IsOpen && Input.Keyboard.Pressed( "G" ) )
 			LocalAvatar?.RequestLeaveBall();
 
-		// Begin a fresh turn whenever the host hands US a NEW turn serial (covers the first turn AND a
-		// same-bowler hand-back, which the old become-bowler edge silently missed — that was the hang).
+		// Begin a fresh turn whenever the director hands US a NEW turn serial (covers the first turn AND a
+		// same-bowler hand-back, which an ActiveBowlerId edge would miss).
 		if ( bowling && _servedTurn != TurnSerial )
 		{
 			_servedTurn = TurnSerial;
@@ -967,8 +962,7 @@ public sealed class GameDirector : Component
 
 	// DEBUG: after the rack has settled (end of watch), dump each pin's final state so we can see the
 	// leave pattern AND why each "down" pin is down — actually fell over (tilt) vs merely shoved off
-	// its spot while still upright (disp). Distinguishes a too-efficient cascade from over-lenient
-	// scoring before we change anything.
+	// its spot while still upright (disp).
 	private void LogLeave()
 	{
 		if ( !LogPinCrash ) return;
@@ -990,8 +984,8 @@ public sealed class GameDirector : Component
 	}
 
 	// The watch has ended and the pins have settled (BOWLER side). Count what this ball knocked from
-	// our authoritative local pins, report it to the host for the scorecard, and apply the bowling
-	// rules locally to either respot for our next ball or end our turn (the host then rotates).
+	// our authoritative local pins, report it to the director for the scorecard, and apply the bowling
+	// rules locally to either respot for our next ball or end our turn (the director then rotates).
 	private void ProcessSettledBall()
 	{
 		LogLeave();
@@ -1003,12 +997,12 @@ public sealed class GameDirector : Component
 
 		var pocket = _ball?.PocketHit ?? false; // did this ball drive the pocket (touched 1 + 2/3)?
 		var turnDone = DecideLocal();
-		LocalAvatar?.ReportBall( knocked, PinDownBits, pocket ); // host books it onto the card right away
+		LocalAvatar?.ReportBall( knocked, PinDownBits, pocket ); // the director books it onto the card right away
 		_ball?.ResetContacts(); // next ball starts with a clean contact set
 
 		if ( turnDone )
 		{
-			// Solo: stay in the ball frame after frame — no settee round-trip. Just end the turn; the host
+			// Solo: stay in the ball frame after frame — no settee round-trip. Just end the turn; the director
 			// rotates (same player, next frame) and our next BeginTurn flies us back up out of the pit to
 			// roll. Multiplayer: the next bowler is always someone else, so crane us back to our seat and
 			// set us down (FinishDrop then sends EndTurn).
@@ -1026,8 +1020,8 @@ public sealed class GameDirector : Component
 	}
 
 	// Bowling's flow control for OUR turn, on OUR local ball list. Returns true if the turn is over
-	// (host rotates to the next bowler); otherwise it has already set up our next ball. Uses the
-	// synced CurrentFrame so the 10th-frame rules apply even when the bowler isn't the host.
+	// (the director rotates to the next bowler); otherwise it has already set up our next ball. Uses the
+	// synced CurrentFrame so the 10th-frame rules apply even when the bowler isn't the director.
 	private bool DecideLocal()
 	{
 		// Practice ignores frames / the 10th-frame rules entirely. Single-ball drills (Strike/Spare/Split)
@@ -1071,9 +1065,9 @@ public sealed class GameDirector : Component
 		return true; // third ball thrown — our tenth is done
 	}
 
-	// HOST bookkeeping. One bowler's frame is done: rotate to the next bowler at the SAME frame; once
+	// DIRECTOR bookkeeping. One bowler's frame is done: rotate to the next bowler at the SAME frame; once
 	// the last bowler finishes, step everyone to the next frame; after the last bowler's frame 10 the
-	// game's over. The host racks a clean deck (it owns the rack in the gap) before spotlighting the next
+	// game's over. The director racks a clean deck (it owns the rack in the gap) before spotlighting the next
 	// bowler, who then just grabs it and rolls on their own machine (BeginTurn) when ActiveBowlerId arrives.
 	private void AdvanceTurn()
 	{
@@ -1095,7 +1089,7 @@ public sealed class GameDirector : Component
 			}
 		}
 
-		// Reclaim the rack from the bowler who just finished and present a fresh, settled deck on the host
+		// Reclaim the rack from the bowler who just finished and present a fresh, settled deck on the director
 		// BEFORE the next bowler is spotlighted — this is what clears the previous bowler's downed pins,
 		// authoritatively and with no bowler→bowler ownership handoff to race the respot.
 		HostRackForNextBowler();
@@ -1134,7 +1128,7 @@ public sealed class GameDirector : Component
 
 		_current = 0; // the front of the queue is always the one up
 
-		// Queue drained: the lane stays open and IDLE (live but nobody bowling). Host reclaims the ball + rack
+		// Queue drained: the lane stays open and IDLE (live but nobody bowling). The director reclaims the ball + rack
 		// from the bowler who just left and presents a clean deck; the spotlight clears until someone gets in
 		// line. The Play-only self-heal is gated off for practice, so this idle state persists until STOP.
 		if ( _rosterIds.Count == 0 )
@@ -1498,7 +1492,7 @@ public sealed class GameDirector : Component
 	}
 
 	// A dropoff flight that ends at the bowler's seat: leave the ball frozen-kinematic right there (the next
-	// bowler's pickup flies it on — no reset to the start) and tell the host our turn's over.
+	// bowler's pickup flies it on — no reset to the start) and tell the director our turn's over.
 	private void FinishDrop()
 	{
 		_craneJob = CraneJob.None;     // _ballCraned stays true: the ball is parked frozen at the seat
@@ -1508,7 +1502,7 @@ public sealed class GameDirector : Component
 	}
 
 	// STOP / disconnect / game-end interrupted a crane (or left the ball parked frozen after a dropoff):
-	// restore the ball's physics so it isn't stuck collider-off (the host then reclaims + parks it).
+	// restore the ball's physics so it isn't stuck collider-off (the director then reclaims + parks it).
 	private void AbortCrane()
 	{
 		_craneJob = CraneJob.None;
@@ -1520,11 +1514,11 @@ public sealed class GameDirector : Component
 		if ( State == RoundState.Craning ) State = RoundState.Rolling;
 	}
 
-	// --- Approach-B throw: the active bowler runs the whole turn on its own physics ----------------
+	// --- Throw: the active bowler runs the whole turn on its own physics ---------------------------
 
-	// We just became the active bowler: grab the shared ball + rack and roll. The host already racked a
-	// clean, settled deck while it held ownership in the gap (HostRackForNextBowler), so we just take it
-	// over and start — no respot here, which is what used to race the previous bowler's handoff.
+	// We just became the active bowler: grab the shared ball + rack and roll. The director already racked
+	// a clean, settled deck while it held ownership in the gap (HostRackForNextBowler), so we just take it
+	// over and start. No respot here: it would race the ownership handoff.
 	private void BeginTurn()
 	{
 		_localBalls.Clear();
@@ -1859,8 +1853,7 @@ public sealed class GameDirector : Component
 	/// <summary>Capture the ball's run-up "home" — the crane's return target — once, when it's actually known.
 	/// The lane build is frame-spread (BuildScheduler), so <see cref="LaneBuilder.RunUpWorldPosition"/> is still
 	/// zero (the world origin, which sits BETWEEN the lanes) during OnStart. Retried from OnUpdate until the
-	/// lane has published its geometry, then it places the ball there and latches. Without the retry the crane
-	/// returned the ball to the origin instead of this lane's approach.</summary>
+	/// lane has published its geometry, then it places the ball there and latches.</summary>
 	private void TryInitBallHome()
 	{
 		if ( _ballHomeReady || !_ball.IsValid() ) return;
@@ -1938,17 +1931,17 @@ public sealed class GameDirector : Component
 		public bool Active { get; init; }
 	}
 
-	/// <summary>Build the scoreboard model for every player from the SYNCED state, so the host and
-	/// every client render an identical board (the host publishes its authoritative scoring into
+	/// <summary>Build the scoreboard model for every player from the SYNCED state, so every client
+	/// renders an identical board (the director publishes its authoritative scoring into
 	/// RosterNames/RosterScores; this just reads it back). Cheap; called on each panel rebuild.</summary>
 	public List<PlayerView> BuildScoreView()
 	{
 		var views = new List<PlayerView>();
 
 		// Lobby: there's no locked roster yet (RosterNames is published on START), so show who has
-		// JOINED right now — read straight off the synced per-avatar Joined/DisplayName so the host and
-		// every client list the same bowlers, ordered by owner id for a stable order. Empty cards; the
-		// real scorecard takes over once the host presses START.
+		// JOINED right now — read straight off the synced per-avatar Joined/DisplayName so every client
+		// lists the same bowlers, ordered by owner id for a stable order. Empty cards; the real scorecard
+		// takes over on START.
 		if ( Phase != GamePhase.Playing )
 		{
 			// Only players who joined THIS lane — each lane runs its own game, so a bowler joined to (or
@@ -2099,8 +2092,8 @@ public sealed class GameDirector : Component
 
 	/// <summary>Broadcast: an announcer call fired for this lane. On every client, play the clip (only
 	/// if this is the LOCAL player's lane, so it can't carry across lanes) and pop the call-out banner
-	/// (always — the banner is physically on this lane). Plain Broadcast now — the director owner (which
-	/// may not be the host) is the caller.</summary>
+	/// (always — the banner is physically on this lane). Called by the director owner, which need not be
+	/// the host.</summary>
 	[Rpc.Broadcast]
 	public void Announce( string callId )
 	{
@@ -2145,7 +2138,7 @@ public sealed class GameDirector : Component
 	private static readonly string[] NumberWords =
 		{ "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
 
-	/// <summary>HOST: classify the just-booked ball on <paramref name="player"/>'s <paramref name="frameIdx"/>
+	/// <summary>DIRECTOR: classify the just-booked ball on <paramref name="player"/>'s <paramref name="frameIdx"/>
 	/// into one announcer call id, using the per-client <paramref name="downMask"/> for the leave pattern.
 	/// Sets <paramref name="isSplit"/> when the leave is a split (so it gets circled on the scoreboard).</summary>
 	private string ClassifyCall( PlayerScore player, int frameIdx, int downMask, bool pocket, out bool isSplit )

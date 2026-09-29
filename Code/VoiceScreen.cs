@@ -7,7 +7,7 @@ namespace Terryball;
 /// <summary>
 /// Client-local keyboard driver for proximity voice — the voice counterpart to <see cref="MusicScreen"/>.
 /// Lives on the <see cref="LocalHud"/> GO (never networked). Each frame it pushes the local player's
-/// transmit config onto their own <see cref="TerryVoice"/> and reads the V / B keys:
+/// transmit config onto their own <see cref="TerryVoice"/> and reads the G / B keys:
 ///
 ///   G — toggle the master voice switch (<see cref="VoicePrefs.VoiceEnabled"/>). OFF = neither send nor
 ///       hear; ON = transmit (subject to the player's own s&amp;box voice mode) + hear un-muted players.
@@ -44,7 +44,7 @@ public sealed class VoiceScreen : Component
 	/// The engine's default falloff is front-loaded (0.22 by 5% of the distance, 0.04 by 20%), which turns
 	/// any range we set into "audible only nose-to-nose"; a linear ramp is what makes the range slider mean
 	/// what it says. Same curve gambit and rotaliate-client use. [SOURCE: engine default read from
-	/// Sandbox.Engine VoiceComponent.cs, 2026-08-01 — undocumented, could change.]</summary>
+	/// Sandbox.Engine VoiceComponent.cs — undocumented.]</summary>
 	private static readonly Curve LinearFalloff =
 		new Curve( new Curve.Frame( 0f, 1f ), new Curve.Frame( 1f, 0f ) );
 

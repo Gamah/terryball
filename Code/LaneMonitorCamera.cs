@@ -5,7 +5,7 @@ using System.Linq;
 namespace Terryball;
 
 /// <summary>
-/// Drives the settee's right-hand "camera feed" screen. It spawns a second camera that chases the
+/// Drives the settee's "camera feed" screen. It spawns a second camera that chases the
 /// active ball down-lane and renders to <see cref="Feed"/> (a render-target texture); the
 /// <c>MonitorFeed</c> panel paints that texture onto the in-world screen.
 ///
@@ -21,8 +21,8 @@ public sealed class LaneMonitorCamera : Component
 	[Property] public float Back { get; set; } = 700f;  // how far behind the ball the cam sits (units)
 	[Property] public float Up { get; set; } = 260f;    // and how far above
 	[Property] public float Fov { get; set; } = 70f;
-	/// <summary>Far clip for the feed camera. The default CameraComponent ZFar (~10000) cut off the
-	/// back of the lane on the settee screen; match the main camera's reach so the whole lane renders.</summary>
+	/// <summary>Far clip for the feed camera. The default CameraComponent ZFar (~10000) doesn't reach the
+	/// back of the lane; match the main camera's reach so the whole lane renders.</summary>
 	[Property] public float ZFar { get; set; } = 60000f;
 
 	/// <summary>How fast the feed eases toward its target each second. Smooths the stepped network values
@@ -41,18 +41,17 @@ public sealed class LaneMonitorCamera : Component
 
 	protected override void OnStart()
 	{
-		// Headless (dedicated server) has no render device — RenderToTexture null-derefs
-		// (CCameraRenderer::RenderToTexture -> ACCESS_VIOLATION 0x0). This feed is client-only visual, so skip it.
+		// Headless (dedicated server) has no render device and RenderToTexture crashes there [SOURCE].
+		// This feed is client-only visual, so skip it.
 		if ( Application.IsHeadless ) return;
 
 		Feed = Texture.CreateRenderTarget( "lane-feed", ImageFormat.RGBA8888, new Vector2( Width, Height ) );
 
 		var go = new GameObject( true, "MonitorCam" ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
 		// CRITICAL: a DISABLED camera driven by on-demand RenderToTexture, NOT a live/enabled one. An enabled
-		// runtime CameraComponent joins the screen render list (OnEnabled -> UpdateMainCamera) and can HIJACK
-		// the main screen — with N lanes there are N of these, and a hijacked view shows a lane's ball feed
-		// instead of the player's own camera (see OccupantSilhouetteCapture for the same fix). Disabled: it
-		// never enters the screen path, yet RenderToTexture still renders it each frame.
+		// runtime CameraComponent joins the screen render list (OnEnabled -> UpdateMainCamera) and can take
+		// over the main screen [SOURCE] (OccupantSilhouetteCapture does the same). Disabled: it never enters
+		// the screen path, yet RenderToTexture still renders it each frame.
 		_cam = go.Components.Create<CameraComponent>( false ); // startEnabled: false => out of the main render path
 		_cam.IsMainCamera = false;
 		_cam.FieldOfView = Fov;
