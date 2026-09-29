@@ -64,7 +64,6 @@ fact.
 | `docs/rendering.md` | Engine shadow facts, the coloured ball shadow (`ShadowBall`, `BallShadowTintPP`, the shader), sky brightness. |
 | `docs/ui.md` | The local HUD, podiums and what each opens, station signs, `WorldPrefs`, `WorldTheme`, hints, chat. |
 | `docs/audio.md` | Ball and pin audio, the reverb bus, the announcer and regenerating its clips, skafinity music, voice. |
-| `PLAN.md` | The ranked table of work to start. Nothing else in the repo may cite it. |
 
 Design decisions are ours to make, and a settled one is written into the `docs/` file that owns
 it so the next session builds on it instead of re-deciding.
