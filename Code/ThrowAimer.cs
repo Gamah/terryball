@@ -411,7 +411,8 @@ public sealed class ThrowAimer : Component
 		var vb = new VertexBuffer();
 		vb.Init( true );
 		var n = Vector3.Up;
-		Vertex V( Vector3 p ) => new Vertex( p, n, Vector3.Zero, new Vector4( 0f, 0f, 0f, 0f ) );
+		// Needs a real tangent: a zero one shades black [SOURCE]. fwd is perpendicular to the up normal.
+		Vertex V( Vector3 p ) => new Vertex( p, n, fwd, new Vector4( 0f, 0f, 0f, 0f ) );
 
 		// Shaft: a filled ribbon — a strip of cross-section pairs. Both windings are emitted so it's never culled.
 		const int segs = 14;

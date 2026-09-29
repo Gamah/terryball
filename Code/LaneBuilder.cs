@@ -1021,9 +1021,9 @@ public sealed class LaneBuilder : Component
 		var apex = new Vector3( len, 0f, 0f );
 		var baseL = new Vector3( 0f, -wid * 0.5f, 0f );
 		var baseR = new Vector3( 0f, wid * 0.5f, 0f );
-		vb.Add( new Vertex( apex, Vector3.Up, Vector3.Zero, new Vector4( 0f, 0.5f, 0f, 0f ) ) );
-		vb.Add( new Vertex( baseL, Vector3.Up, Vector3.Zero, new Vector4( 1f, 0f, 0f, 0f ) ) );
-		vb.Add( new Vertex( baseR, Vector3.Up, Vector3.Zero, new Vector4( 1f, 1f, 0f, 0f ) ) );
+		vb.Add( new Vertex( apex, Vector3.Up, Vector3.Forward, new Vector4( 0f, 0.5f, 0f, 0f ) ) );
+		vb.Add( new Vertex( baseL, Vector3.Up, Vector3.Forward, new Vector4( 1f, 0f, 0f, 0f ) ) );
+		vb.Add( new Vertex( baseR, Vector3.Up, Vector3.Forward, new Vector4( 1f, 1f, 0f, 0f ) ) );
 		vb.AddRawIndex( 0 ); vb.AddRawIndex( 1 ); vb.AddRawIndex( 2 ); // up-facing
 		vb.AddRawIndex( 0 ); vb.AddRawIndex( 2 ); vb.AddRawIndex( 1 ); // and back so it's never culled
 
