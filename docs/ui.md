@@ -9,6 +9,10 @@ board, voice, and `HudHints`. Nothing on it replicates, so mute, music, theme an
 are per client. A panel that needs a lane resolves it with `Lane.ForLocalPlayer`, so the HUD
 follows the player between lanes.
 
+Panels alpha-blend in sRGB space, like a browser (`sbox-public` `12b791d8`), so a translucent dark
+backdrop reads darker than its alpha suggests. The black and near-black backdrops are authored as
+`a = 1 − (1 − a₀)^(1/2.2)`, which lands where alpha `a₀` would under linear blending.
+
 ## Podiums
 
 Each podium is a component carrying only an `InteractRange`; the UI is a panel on the local HUD.

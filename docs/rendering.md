@@ -63,6 +63,8 @@ Contracts between the C# and the shader:
 - Four unrolled ball slots (`ShadowBallA/T/R/Tex0..3`); `MaxBalls` must match. An empty slot has radius 0.
 - `struct ShadowLight` (two `float4`: position + range, colour) must match `ShadowLightData`.
 - `DebugMode` values match the shader's `g_nDebugMode` branches (6 = final).
+- The shader reads `ColorBuffer` with `SrgbRead( false )`: at `AfterOpaque` it is linear HDR, and the pass writes
+  every pixel back, so an sRGB decode darkens the whole frame.
 - The shader source must be ASCII with balanced section braces, or the vfx parser fails to load it [SOURCE].
 - The occupant capture frames `centre ± radius` with feet at the bottom; the shader assumes the same frame.
 

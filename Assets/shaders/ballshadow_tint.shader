@@ -66,7 +66,8 @@ PS
     #include "common/classes/Depth.hlsl"
     #include "common/Shadow.hlsl"
 
-    Texture2D g_tColorBuffer < Attribute( "ColorBuffer" ); SrgbRead( true ); >;
+    // The AfterOpaque colour buffer is linear HDR, as tonemapping.shader and glass.shader read it: no sRGB decode.
+    Texture2D g_tColorBuffer < Attribute( "ColorBuffer" ); SrgbRead( false ); >;
 
     // Per-ball colour maps (equirectangular). The ball's shadow is a per-ray projection of these.
     Texture2D g_tBall0 < Attribute( "ShadowBallTex0" ); SrgbRead( true ); >;
