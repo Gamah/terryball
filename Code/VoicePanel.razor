@@ -10,9 +10,8 @@
 	with a speaking dot, MUTED state and the selected-row highlight. pointer-events: none — it is
 	navigated with ↑/↓, never the cursor, so mouselook is never interrupted.
 
-	The G/B keycap hints this panel used to draw now live in HudHints, with chat's, music's and the
-	respawn chip's — one stack, one style, one place to read the controls off. Keys are still handled
-	by VoiceScreen (G toggles voice, B opens this roster).
+	The G/B keycap hints are in HudHints. Keys are handled by VoiceScreen (G toggles voice, B opens
+	this roster).
 
 	NOTE the s&box gotcha: NO inline <span>s inside a line of text — panels lay children out as flex
 	items, not inline flow, so mixed spans shatter a paragraph into columns. Block lines only.

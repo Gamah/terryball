@@ -8,7 +8,7 @@ namespace Terryball;
 /// Gives the PINS an in-engine reverb tail without wetting anything else. Pin impacts route to a dedicated
 /// "Pins" mixer (a child of the "Game" SFX bus, so they still follow the game volume) and this inserts a
 /// DSP reverb onto THAT mixer only — so the ball roll, announcer, UI and music all stay dry on their own
-/// buses. (Earlier this sat on "Game" and reverbed everything, including the ball roll.)
+/// buses.
 ///
 /// We insert the <see cref="DspProcessor"/> directly rather than via a <see cref="DspVolume"/>: the volume
 /// path is listener-gated and hard-disabled in the editor. Reverb is local audio DSP and the mixer graph is

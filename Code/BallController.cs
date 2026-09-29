@@ -11,8 +11,7 @@ namespace Terryball;
 /// <summary>
 /// The hamster-ball mechanic.
 ///
-/// A large glass ball (Rigidbody + SphereCollider) with Terry (the Citizen) riding the
-/// INSIDE surface.
+/// A large glass ball (Rigidbody + SphereCollider) with Terry (the Citizen) riding inside.
 ///
 /// Control: WASD is camera-relative and names a target travel direction. Each tick we steer
 /// the ball's horizontal velocity toward wishDir * <see cref="MaxSpeed"/> with a proportional
@@ -20,11 +19,8 @@ namespace Terryball;
 /// the target is zero, so the same controller becomes a brake that opposes the current
 /// velocity — the ball coasts to a stop and never accelerates on its own.
 ///
-/// Terry is purely visual: he "runs" up the inner wall toward the wish direction and gravity
-/// settles him to the bottom, but his motion no longer drives the ball (it used to, via an
-/// off-centre-weight torque). His run animation is driven from how fast he's actually moving
-/// through the world, and no Terry↔ball collision is simulated (by design). The standalone
-/// <see cref="TerryController"/> stub is kept in the repo for other reuse.
+/// Terry is purely visual: he rides centred in the ball facing travel, his animation is driven
+/// from the ball's speed, and no Terry↔ball collision is simulated.
 /// </summary>
 public sealed class BallController : Component, Component.ICollisionListener
 {
@@ -34,18 +30,16 @@ public sealed class BallController : Component, Component.ICollisionListener
 	/// on a wall — the upward kick comes from tangential friction, not the collision). Low friction lets
 	/// it drive through low. The ball is force-driven, so it doesn't need grip to move.</summary>
 	[Property, Group( "Ball" )] public float Friction { get; set; } = 0.3f;
-	/// <summary>Restitution (bounciness) of the ball's surface. By the collision algebra (M=6.8 vs
-	/// m=1.6), HIGH restitution makes the ball lose MORE speed to the pin (keeps ~63% at e=0.95 vs
-	/// ~81% at e=0) AND makes the pin fly faster — both wanted. Low restitution makes ball and pin
-	/// move together (ball barely slows = plows). So keep this high; the steamroll was a contact/CCD
-	/// problem, not restitution.</summary>
+	/// <summary>Restitution (bounciness) of the ball's surface. By the collision algebra, higher
+	/// restitution makes the ball lose MORE speed to a pin and the pin fly faster; lower makes ball and
+	/// pin move together (the ball plows).</summary>
 	[Property, Group( "Ball" )] public float Elasticity { get; set; } = 0.3f;
 	/// <summary>Pit catch strength: once the ball passes the back of the pin deck it's over the pit, and
 	/// its speed bleeds at this rate (per-second exponential decay). A deterministic "cushion" so the
 	/// ball dumps its energy and settles in the pit instead of pinging off the dead back wall and
 	/// rocketing back up the lane — independent of any collision/restitution quirk. 0 = off.</summary>
 	[Property, Group( "Ball" )] public float PitDamping { get; set; } = 6f;
-	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active now —
+	/// <summary>Passive rolling resistance (per-second decay of spin). Braking is active —
 	/// releasing the keys applies a <see cref="BrakeGain"/> counter-force whose effective decay
 	/// rate is BrakeGain/Mass — so this MUST stay well below that or it silently dominates the
 	/// coast and overrides the brake. It mainly exists to bleed off lone vertical (yaw) spin the
@@ -53,8 +47,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	[Property, Group( "Ball" )] public float AngularDamping { get; set; } = 0.05f;
 	/// <summary>Mass in kg. A regulation bowling ball is ~6.8 kg (15 lb), but that makes the ball too
 	/// dominant ("meaty") over the pins. Detached down to reduce the ball:pin ratio so it deflects
-	/// more and clears fewer pins. NOTE: the live value is serialized in the scene — change it there,
-	/// the code default only applies to freshly-added components.</summary>
+	/// more and clears fewer pins.</summary>
 	[Property, Group( "Ball" )] public float Mass { get; set; } = 5.3f;
 
 	[Property, Group( "Occupant" )] public float TerryScale { get; set; } = 1.5f;
@@ -100,8 +93,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 	[Property, Group( "Drive" )] public float DriveGain { get; set; } = 15f;
 	/// <summary>Proportional gain on the braking force applied when no key is held; it opposes
 	/// the current velocity so the ball coasts to a stop. The coast's decay rate is
-	/// BrakeGain/Mass per second, so with Mass ≈ 6.8 a gain of 1 barely slows the ball (≈5 s
-	/// time-constant); 20 hauls the ball down hard, stopping it in well under a second. Tune by feel.</summary>
+	/// BrakeGain/Mass per second.</summary>
 	[Property, Group( "Drive" )] public float BrakeGain { get; set; } = 20f;
 
 	// --- Oiled-lane hook (guided-throw mode) -------------------------------------------
@@ -167,8 +159,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	/// <summary>True while the claw is flying the ball (crane mode): the collider is dropped so the ball sails
 	/// over the fresh rack without scattering it. Synced owner→everyone because the ball's transform is driven
-	/// to every client — without this, only the owner dropped its collider and spectators/waiting bowlers saw
-	/// the flying ball physically bump the pins as it reset between throws and frames.</summary>
+	/// to every client, and each client's copy of the collider must drop too.</summary>
 	[Sync] public bool CraneColliderOff { get; set; }
 
 	private Rigidbody _body;
@@ -260,8 +251,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		// NetworkMode.Never: this is a purely LOCAL cosmetic child. Runtime children of a networked object
 		// otherwise default to Snapshot and replicate inside the ball's snapshot — so the host's copy (whose
 		// runtime MaterialOverride can't replicate) would land on every client carrying the DEFAULT glass
-		// material, sitting over the copy each client builds + skins here. That's why a spectator's ball held
-		// the right synced design yet still rendered the default skin. Each client builds and skins its own.
+		// material, sitting over the copy each client builds + skins here. Each client builds and skins its own.
 		var visual = new GameObject( true, "BallVisual" )
 		{
 			Parent = GameObject,
@@ -279,7 +269,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		visual.LocalScale = new Vector3( (Radius * 2f) / shellBounds );
 
 		// Terry: a Citizen riding the inside. His world transform is driven every frame, so
-		// the ball's spin never carries him — he rides the inner surface independently. Also LOCAL
+		// the ball's spin never carries him. Also LOCAL
 		// (NetworkMode.Never): each client builds + dresses its own in-ball Terry (DressForBowler runs
 		// per client), so replicating this child would just duplicate/conflict with that local one.
 		_terry = new GameObject( true, "Terry" )
@@ -330,8 +320,8 @@ public sealed class BallController : Component, Component.ICollisionListener
 
 	// Skin the glass shell + coloured shadow to the active bowler's chosen ball design. The design comes
 	// from the lane DIRECTOR (GameDirector.ActiveBallDesign), not the bowler's avatar: the director's synced
-	// fields reliably reach late joiners, so a spectator connecting mid-turn skins the same as everyone else
-	// (the avatar's own design fields did not — see the note on GameDirector.ActiveBallPatternId). Regenerates
+	// fields reliably reach late joiners, so a spectator connecting mid-turn skins the same as everyone else.
+	// Regenerates
 	// the colour map only when the design actually changes — live designer edits update it, otherwise idle.
 	private void SkinToBowler()
 	{
@@ -347,7 +337,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		_shellMat?.Set( "g_tColor", _designMap );
 		if ( _shadow.IsValid() )
 		{
-			_shadow.ColorMap = _designMap;      // the projected shadow now samples the same map the shell shows
+			_shadow.ColorMap = _designMap;      // the projected shadow samples the same map the shell shows
 			_shadow.ColorMapPath = "";          // stop the post-process re-loading the pokeball fallback over it
 		}
 	}
@@ -545,7 +535,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		//
 		// Drive with a force at the ball's CENTRE, not a roll torque. A ball driven only by
 		// roll torque is friction-limited to ~1 g of forward accel (any extra torque just
-		// spins the contact out), which felt painfully slow. A centre force accelerates the
+		// spins the contact out). A centre force accelerates the
 		// COM directly and lets ground friction spin the ball up to roll — far stronger,
 		// friction-independent acceleration that still tapers smoothly toward MaxSpeed.
 		var hasInput = wish.Length > 0.01f;
@@ -570,8 +560,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 			var lateral = velError - velError.Dot( dir ) * dir;
 			SteerEffort01 = (lateral.Length / (MaxSpeed * 0.5f)).Clamp( 0f, 1f );
 		}
-
-		// Terry rides CENTRED in the ball now (see PlaceTerry) — the old inner-wall climb is gone.
 
 		// Pit catch: once the ball is behind the pin deck (out over the pit) bleed its speed hard, so it
 		// dumps energy into the cushion and settles instead of ricocheting off the dead back wall and
@@ -649,8 +637,7 @@ public sealed class BallController : Component, Component.ICollisionListener
 		if ( hasInput || _body.Velocity.LengthSquared > 1f )
 			_body.Sleeping = false;
 
-		// DEBUG: trace the coast through the rack every physics step — speed vs position, so we can see
-		// whether the ball steps down at each pin contact or sails through unaffected.
+		// Debug trace (director's LogPinCrash): ball speed vs position through the rack, every physics step.
 		if ( ControlsLocked && _body.IsValid() && (Director?.LogPinCrash ?? false) )
 		{
 			var v = _body.Velocity;
@@ -728,10 +715,6 @@ public sealed class BallController : Component, Component.ICollisionListener
 			// run/roll go the way the ball's rolling. Capped at RunTopSpeed (~9.5 mph) right as the roll takes over.
 			_anim.WithVelocity( _faceDir * (RunTopSpeed * ramp01) );
 		}
-
-		// The live speed used to float above the ball as debug text; it now lives in the first-party HUD
-		// (the SPEED card under the pin count in PinStatusOverlay) and shows the value LATCHED at the throw
-		// line — see ThrowLineMph.
 	}
 
 	// Bowling-scale mph ↔ units, treating the ball's diameter as RealBallInches (1 mph = 17.6 in/s). The
@@ -756,21 +739,17 @@ public sealed class BallController : Component, Component.ICollisionListener
 		_terry.WorldRotation = Rotation.LookAt( fwd, Vector3.Up );
 
 		// Hang his PELVIS on the ball centre, not his feet. His origin is at his feet, but each clip (walk,
-		// run, the curled roll) holds the pelvis a different height above that origin — pinning the feet let
-		// that per-clip difference bob his whole body up/down through the transitions. So we read the pelvis's
-		// current height above the origin and offset by THAT, which cancels the shift and keeps his middle
-		// framed dead-centre regardless of which animation is playing. (Falls back to the static half-height
-		// if the bone isn't resolvable yet.)
+		// run, the curled roll) holds the pelvis a different height above that origin, so we offset by the
+		// pelvis's live height to keep his middle centred whichever clip plays. (Falls back to the static
+		// half-height if the bone isn't resolvable yet.)
 		var pelvisUp = _bodyCentreUp;
 		if ( _terryRenderer.IsValid() && _terryRenderer.TryGetBoneTransformLocal( "pelvis", out var pelvisLocal ) )
 			pelvisUp = pelvisLocal.Position.z * TerryScale;
 		_terry.WorldPosition = WorldPosition - Vector3.Up * pelvisUp;
 	}
 
-	// DEBUG: log every ball↔pin contact and its impulse. This is the crux diagnostic — if the ball
-	// "isn't affected" by the pins, either no contacts fire (contact generation failing) or they fire
-	// with near-zero Impulse. Both are visible here. NormalSpeed = closing speed along the contact
-	// normal; Impulse = the actual momentum exchanged at the contact.
+	// Debug (director's LogPinCrash): log every ball↔pin contact. NormalSpeed = closing speed along the
+	// contact normal; Impulse = the momentum exchanged at the contact.
 	public void OnCollisionStart( Collision c )
 	{
 		RecordPinContact( c );

@@ -14,8 +14,8 @@ namespace Terryball;
 /// Everything is sized in real bowling inches and multiplied by a units-per-inch scale that
 /// is itself derived from the ball: the ball's actual diameter in units is treated as
 /// <see cref="BallDiameterInches"/> (8.5"), so the whole lane stays correctly scaled to the
-/// ball even if the ball's Radius is retuned. (Per the stylised-scale note, the platform
-/// height / ramp / pit are tuned for feel rather than literal millimetres.)
+/// ball even if the ball's Radius is retuned. (The platform height / ramp / pit are tuned for
+/// feel rather than literal millimetres.)
 ///
 /// The pin Model is a surface-of-revolution: a smooth render mesh plus a stack of convex-hull
 /// frustums for collision, so the physics engine derives a realistic low centre of mass and
@@ -38,7 +38,7 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Lane" )] public Color ArrowColor { get; set; } = new Color( 0.20f, 0.13f, 0.07f, 1f );
 	/// <summary>Restitution of the lane structures (bed, gutters, pit, back wall). Modest — enough that
 	/// struck pins ricochet off the deck/walls a little, but not so high the rolling ball hops on the
-	/// bed. (Was cranked to 0.9 as an overshoot; walked back with the rest of the restitution pass.)</summary>
+	/// bed.</summary>
 	[Property, Group( "Lane" )] public float LaneElasticity { get; set; } = 0.42f;
 
 	/// <summary>Restitution of the PIT FLOOR and BACK WALL only — the catch zone behind the pins.
@@ -92,7 +92,7 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Pins" )] public float PinHeightInches { get; set; } = 15f;
 	/// <summary>Mass in kg. A regulation bowling pin is ~1.6 kg (3 lb 8 oz) — but at that mass the
 	/// cascade is realistically efficient and a flush hit wrecks the rack (correct, but too-easy
-	/// strikes by feel). This is now a DIFFICULTY DIAL, deliberately detached from reality: heavier
+	/// strikes by feel). It is a DIFFICULTY DIAL, deliberately detached from reality: heavier
 	/// pins fly slower off the ball and a cascade-struck pin can't always topple its neighbour, so
 	/// the back corners survive more often → fewer strikes, more spares. Tune by feel.</summary>
 	[Property, Group( "Pins" )] public float PinMass { get; set; } = 2.5f;
@@ -101,17 +101,16 @@ public sealed class LaneBuilder : Component
 	[Property, Group( "Pins" )] public float PinFriction { get; set; } = 0.15f;
 	/// <summary>Restitution (bounciness) of the pins. By the collision algebra, HIGH restitution both
 	/// flings the pin away faster AND makes the ball lose more speed to it — both wanted. Low values
-	/// make ball+pin move together (ball plows, pin doesn't fly). Keep high; the steamroll was a
-	/// contact/CCD bug, not this. Drives pin-ball and pin-pin liveliness.</summary>
+	/// make ball+pin move together (ball plows, pin doesn't fly). Drives pin-ball and pin-pin
+	/// liveliness.</summary>
 	[Property, Group( "Pins" )] public float PinElasticity { get; set; } = 0.5f;
 	[Property, Group( "Pins" )] public Color PinColor { get; set; } = new Color( 1f, 1f, 1f, 1f );
 	/// <summary>The two trim stripes ringing the pin's neck.</summary>
 	[Property, Group( "Pins" )] public Color PinStripeColor { get; set; } = new Color( 0.78f, 0.07f, 0.09f, 1f );
 	/// <summary>Multiplier on the pins' SCALE-CORRECT gravity. The lane is ~10.7× bigger than world
 	/// gravity expects, so 1 here = a real 1g AT THIS SCALE — real-bowling fall speed and friction.
-	/// The data forced this: at world-normal gravity even a 0.9 mph ball clears 7 pins, because a
-	/// kicked pin slides the whole deck unchecked (friction ∝ m·g too weak) and floats (slow falls)
-	/// into its neighbours. Knock-down FORCE is gravity-independent (mass+restitution); gravity only
+	/// At world-normal gravity a kicked pin slides the whole deck unchecked (friction ∝ m·g too weak)
+	/// and floats (slow falls) into its neighbours. Knock-down FORCE is gravity-independent (mass+restitution); gravity only
 	/// governs fall speed + slide distance — which is what stops the unchecked chain reaction. Pins
 	/// only; world gravity is untouched, so players/other modes are unaffected.</summary>
 	[Property, Group( "Pins" )] public float PinGravityScale { get; set; } = 1f;
@@ -121,11 +120,10 @@ public sealed class LaneBuilder : Component
 
 	// ---- Settee: the bowlers' seating area on the floor behind the lane, at the foot of the ramp.
 	// (Real-alley term: the "settee".) A defined carpeted riser with bench seats, plus the overhead
-	// scoring monitor on posts. Walking-Citizen bowlers (Terry) now stand and sit here, so THEY are the
+	// scoring monitor on posts. Walking-Citizen bowlers (Terry) stand and sit here, so THEY are the
 	// ruler — everything is sized in real inches at CITIZEN scale (~1 u/in, derived from the Citizen's
 	// height below), NOT the lane's much larger units-per-inch. (The lane treats the 200u ball as 8.5",
-	// so the lane is ~23× a person; sizing the settee off the ball ballooned it far past the bowlers —
-	// hence the earlier "balls" units. Tune by feel.)
+	// so the lane is ~23× a person.)
 	[Property, Group( "Settee" )] public float BowlerHeightUnits { get; set; } = 72f;    // the s&box Citizen is ≈ 72u tall
 	[Property, Group( "Settee" )] public float BowlerHeightInches { get; set; } = 72f;   // treat Terry as a 6 ft human → ~1 u/in
 	[Property, Group( "Settee" )] public float SetteeDepthInches { get; set; } = 275f;   // how far back the seating zone runs (drives the backstop deck depth too)
@@ -141,7 +139,7 @@ public sealed class LaneBuilder : Component
 	// ---- Monitor: the overhead score + camera screens above the settee. WorldPanels in physical
 	// bezels on posts, facing back at the seats (toward -x). Citizen-scale too (real inches), so they
 	// read at head height for the people on the settee instead of dominating the back wall.
-	[Property, Group( "Monitor" )] public float MonitorWidthInches { get; set; } = 240f;        // per-board width (2× the first pass); height follows 16:9
+	[Property, Group( "Monitor" )] public float MonitorWidthInches { get; set; } = 240f;        // per-board width; height follows 16:9
 	[Property, Group( "Monitor" )] public float MonitorCenterHeightInches { get; set; } = 120f; // board centre above the settee floor (clears the taller boards)
 	[Property, Group( "Monitor" )] public Color MonitorBezelColor { get; set; } = new Color( 0.05f, 0.06f, 0.08f, 1f );
 	[Property, Group( "Monitor" )] public Color MonitorPostColor { get; set; } = new Color( 0.22f, 0.23f, 0.26f, 1f );
@@ -198,7 +196,7 @@ public sealed class LaneBuilder : Component
 	/// fade/glide re-rack animation (see <see cref="Pin.Sweep"/> / <see cref="Pin.RackTo"/>).</summary>
 	public readonly record struct PinPlacement( int Number, GameObject Object, Vector3 Home, Pin Pin );
 
-	// The pins are now NETWORKED objects (see Pin.cs): the host spawns them, the engine replicates them.
+	// The pins are NETWORKED objects (see Pin.cs): the host spawns them, the engine replicates them.
 	// So this lane doesn't own a private list — it RESOLVES its pins live from the Pin components in its
 	// own subtree, ordered by number. _pinSpots is just the rack layout the host spawns from.
 	private readonly List<(int Number, Vector3 Home)> _pinSpots = new();
@@ -299,7 +297,7 @@ public sealed class LaneBuilder : Component
 	}
 
 	/// <summary>World rotation a walking bowler should face when stood on the settee so they look down
-	/// the lane. The settee now sits behind the pins on the backboard, so they face back up-lane (-x)
+	/// the lane. The settee sits behind the pins on the backboard, so they face back up-lane (-x)
 	/// and watch the ball roll toward them. Read by the director/avatar on spawn + return.</summary>
 	public Rotation SetteeFaceRotation { get; private set; } = Rotation.FromYaw( 180f );
 
@@ -307,9 +305,9 @@ public sealed class LaneBuilder : Component
 	{
 		if ( _built || _buildQueued ) return;
 		_buildQueued = true;
-		// Defer the heavy geometry build OFF the scene-load / connection-critical path. Building all four
-		// lanes synchronously here — 160+ colliders plus the lathed pin mesh, per lane — pegged a JOINING
-		// client's main thread straight through the network handshake and timed the join out. BuildScheduler
+		// Defer the heavy geometry build OFF the scene-load / connection-critical path. Building the lanes
+		// synchronously here — 160+ colliders plus the lathed pin mesh, per lane — blocks a JOINING client's
+		// main thread through the network handshake long enough to time the join out. BuildScheduler
 		// runs one lane per frame AFTER load, so OnEnabled returns immediately, the connection settles, and
 		// the alley streams in. The scale + pin model are resolved on demand (EnsureScale / EnsurePinModel)
 		// so a pin that replicates in before this lane's turn in the queue can still skin/arm itself.
@@ -458,7 +456,7 @@ public sealed class LaneBuilder : Component
 			new Vector3( laneRegionLenX, gutterW, gutterTop ), Color.White, mat: _matGutter, tileWorld: 560f );
 
 		// ---- Barrier curbs + buffer margins, foul line through the pit. Barriers are low rails just
-		// outboard of each gutter; buffers are flat margin for future decoration. Both start at the
+		// outboard of each gutter; buffers are a flat margin. Both start at the
 		// foul line so they never overlap the approach shoulders (overlap would z-fight/flicker).
 		var sideCx = (foulX + pitEndX) * 0.5f;
 		var sideLenX = pitEndX - foulX;
@@ -476,9 +474,7 @@ public sealed class LaneBuilder : Component
 
 		// ---- Pit: a recessed catch behind the pins. The floor is a real dead SLAB whose top sits pitD
 		// below the deck — but never below the building floor (z = 0), which the ball can't pass anyway.
-		// (Earlier this was a box of HEIGHT H − pitD; once pitD exceeded the platform height that went
-		// negative, giving an inverted collider that flung the ball off the wall. A slab + clamping the
-		// floor to z ≥ 0 keeps it valid at any depth.)
+		// A slab (not a box of height H − pitD) stays a valid collider at any depth.
 		var pitThk = 12f * u;
 		// Clamp the pit floor to a hair ABOVE the building floor (z = 0), not exactly 0: at z = 0 the pit
 		// slab's top is coplanar with the building floor and the two z-fight (the pit floor flickers
@@ -564,7 +560,7 @@ public sealed class LaneBuilder : Component
 			var ax = foulX + (ArrowCenterDistanceInches - steps * ArrowStepInches) * u;
 			MakeArrow( $"Arrow{board}", new Vector3( ax, ay, arrowZ ) );
 		}
-		// Assign the shared procedural arrow model now. BuildNow is deferred by BuildScheduler, so it runs
+		// Assign the shared procedural arrow model here. BuildNow is deferred by BuildScheduler, so it runs
 		// post-OnStart during OnUpdate — the OnStart-or-later timing that dodges the client ERROR-model (the
 		// reason MakeArrow leaves the renderer's Model null; see its note and OnStart below).
 		foreach ( var mr in _arrowRenderers )
@@ -605,9 +601,9 @@ public sealed class LaneBuilder : Component
 	/// <summary>Fallback assignment of the procedural arrow model to its renderers. A runtime ModelBuilder
 	/// model must NOT be assigned during OnEnabled or a joining CLIENT shows the purple ERROR model; it has to
 	/// be a fresh null->model assignment in OnStart or later (the same trick the pins use via
-	/// Pin.OnStart/ConfigurePin). Now that the build is DEFERRED (BuildScheduler), BuildNow runs post-OnStart
-	/// and does the real assignment itself — so at OnStart the renderers usually don't exist yet and this is a
-	/// no-op. Kept as a safety net in case a lane ever builds before its OnStart. Host-harmless.</summary>
+	/// Pin.OnStart/ConfigurePin). The build is DEFERRED (BuildScheduler), so BuildNow normally runs
+	/// post-OnStart and does the assignment itself and the renderers don't exist yet here; this covers a lane
+	/// that builds before its OnStart. Host-harmless.</summary>
 	protected override void OnStart()
 	{
 		foreach ( var mr in _arrowRenderers )
@@ -628,7 +624,7 @@ public sealed class LaneBuilder : Component
 	/// </summary>
 	private void BuildSettee( float cu, float frontX, float away, float baseZ, float platformHalf, float deckDepth )
 	{
-		// Board dimensions first — the settee floor grows to seat the (now 2×) boards.
+		// Board dimensions first — the settee floor grows to seat the boards.
 		var boardW = MonitorWidthInches * cu;
 		var boardGap = boardW * 0.14f;            // space between the two boards
 		var monitorSpan = boardW * 2f + boardGap; // total width the two boards occupy
@@ -762,18 +758,13 @@ public sealed class LaneBuilder : Component
 	{
 		const float s2w = 0.05f;                           // WorldPanel.ScreenToWorldScale
 		// PORTRAIT canvas: header + count line stacked over the four-row rack triangle. CRITICAL: a
-		// WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2 — the old 760×1320
-		// board only gave the UI ~380×660 css px, which the ~648×880 content overflowed on BOTH axes
-		// (back row clipped to its middle pins, title + head pin clipped off top/bottom). Size the
-		// canvas to ~2× the content so it fits with margin. worldW scales by the SAME factor as
-		// panelPx.x, so `scale` (and therefore the circle world-size we like) is unchanged — only the
-		// canvas grew. The board ends up ~2.9× the lane width, big and legible from the approach.
+		// WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2; the canvas is ~2× the
+		// ~648×880 css-px content so it fits with margin.
 		var panelPx = new Vector2( 1400f, 1900f );
-		// 0.6× the previous board — it was a touch overbearing. Scaling worldW carries through scale, worldH
-		// and the bezel, so the whole board (and its pin circles) shrinks uniformly; y stays 0 = centred on
-		// the lane.
+		// sizeFactor carries through scale, worldH and the bezel, so the whole board (and its pin circles)
+		// scales uniformly; y stays 0 = centred on the lane.
 		const float sizeFactor = 0.6f;
-		var worldW = laneHalf * 2f * 1.6f * (1400f / 760f) * sizeFactor; // same px:world ratio as before, scaled down
+		var worldW = laneHalf * 2f * 1.6f * (1400f / 760f) * sizeFactor; // 1.6 lane widths per 760 canvas px
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills the board (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
 		// Float it clear above the backstop AND lift it well overhead so it stops sinking into the back
@@ -816,8 +807,8 @@ public sealed class LaneBuilder : Component
 		// past the lane edges is fine) and scale worldW by the SAME factor so the text's physical size
 		// is unchanged — only the canvas grows.
 		var panelPx = new Vector2( 3000f, 600f );
-		// 1.5× the earlier size for a bigger, bolder call-out. Scaling worldW (not the font/canvas) keeps
-		// the canvas:text ratio, so long calls still fit — everything just renders 1.5× larger.
+		// The 1.5 factor scales worldW (not the font/canvas), keeping the canvas:text ratio so long calls
+		// still fit.
 		var worldW = laneHalf * 2f * (3000f / 1800f) * 1.5f; // wider than the lane so long calls don't clip
 		var scale = worldW / (panelPx.x * s2w);            // GO scale so the panel fills that width (RenderScale stays 1)
 		var worldH = panelPx.y * s2w * scale;
@@ -908,8 +899,7 @@ public sealed class LaneBuilder : Component
 		const float s2w = 0.05f; // WorldPanel.ScreenToWorldScale — world units per panel pixel at scale 1
 		// The panel's world footprint is PanelSize·s2w·WorldScale (RenderScale does NOT change it), so we
 		// SCALE the panel GameObject to make it exactly boardW wide and keep RenderScale = 1: full-resolution
-		// UI that fills the panel. (The old code drove RenderScale instead, which left the panel half the
-		// bezel width and blew the text up.)
+		// UI that fills the panel.
 		var scale = boardW / (panelPx.x * s2w);
 		var worldW = boardW;
 		var worldH = panelPx.y * s2w * scale; // = boardW · (panelPx.y / panelPx.x)
@@ -960,7 +950,7 @@ public sealed class LaneBuilder : Component
 	// Positions are LANE-LOCAL (relative to this builder's GameObject = the lane root): the whole lane
 	// rides its root transform, so a second lane is just the same subtree dropped at another spot.
 	// An optional surface material (mat) is world-tiled to tileWorld units/tile and applied as a
-	// MaterialOverride; the tint still multiplies over it, so the old per-surface colour tuning survives.
+	// MaterialOverride; the tint still multiplies over it.
 	private void MakeBox( string name, Vector3 localPos, Vector3 size, Color tint, Rotation? rot = null,
 		float? elasticity = null, float? friction = null, Material mat = null, float tileWorld = 0f )
 	{
@@ -970,7 +960,7 @@ public sealed class LaneBuilder : Component
 
 		var col = go.Components.GetOrCreate<BoxCollider>();
 		col.Scale = size;
-		col.Elasticity = elasticity ?? LaneElasticity; // bouncy deck/walls so pins ricochet (cranked for chaos)
+		col.Elasticity = elasticity ?? LaneElasticity; // pit/backboard pass BackstopElasticity
 		if ( friction.HasValue ) col.Friction = friction.Value;
 
 		var visual = new GameObject( true, name + "Visual" ) { Parent = go };
@@ -1002,7 +992,7 @@ public sealed class LaneBuilder : Component
 	private void MakeArrow( string name, Vector3 localPos )
 	{
 		var go = new GameObject( true, name ) { Parent = GameObject, Flags = GameObjectFlags.NotSaved };
-		// Build the arrows purely client-local. Every client builds the lane geometry itself in OnEnabled,
+		// Build the arrows purely client-local. Every client builds the lane geometry itself,
 		// so this GO must NOT replicate: a runtime child of the networked lane root defaults to
 		// NetworkMode.Snapshot and replicates inside the lane's snapshot. The arrow's PROCEDURAL model can't
 		// serialize, so that replicated copy arrives as the purple ERROR model — overlapping the correct one
@@ -1012,10 +1002,10 @@ public sealed class LaneBuilder : Component
 		go.LocalPosition = localPos;
 		var mr = go.Components.GetOrCreate<ModelRenderer>();
 		mr.Tint = ArrowColor;
-		// NB: the model is set in OnStart, NOT here. Assigning the procedural model now (OnEnabled) leaves
-		// a client renderer showing the ERROR model, and re-setting the SAME reference later is a no-op
-		// (the setter short-circuits). Leaving it null here so OnStart's assign is a real null->model
-		// change — exactly how the pins (ConfigurePin) dodge it.
+		// NB: the model is assigned later (BuildNow's loop, or OnStart), NOT here. Assigning the procedural
+		// model during OnEnabled leaves a client renderer showing the ERROR model, and re-setting the SAME
+		// reference later is a no-op (the setter short-circuits). Leaving it null keeps the later assign a
+		// real null->model change — exactly how the pins (ConfigurePin) dodge it.
 		_arrowRenderers.Add( mr );
 	}
 
@@ -1075,7 +1065,7 @@ public sealed class LaneBuilder : Component
 	// lathed pin Model. The ModelCollider's convex hulls feed the Rigidbody's mass build, so the
 	// inertia tensor and CoM come from the true pin solid.
 	/// <summary>HOST ONLY: spawn this lane's ten pins as networked objects on their home spots, once.
-	/// Each is parented into the lane subtree (so <c>Lane.Of</c> resolves it), tagged Takeover so the
+	/// Each is spawned at the scene root with its lane's <c>LaneId</c>, tagged Takeover so the
 	/// active bowler can assume ownership for their turn, and network-spawned host-owned. The render/
 	/// collision mesh + physics are attached per-client in <see cref="ConfigurePin"/> (the procedural
 	/// model can't replicate). Idempotent — guarded by <see cref="PinsSpawned"/>.</summary>
@@ -1103,7 +1093,7 @@ public sealed class LaneBuilder : Component
 		foreach ( var (number, home) in _pinSpots )
 		{
 			// Root-spawned (NOT parented into the lane): a networked object under a non-networked scene
-			// parent fails to replicate to late-joiners. The Pin finds its lane via Lane.Local instead.
+			// parent fails to replicate to late-joiners. The Pin finds its lane via its synced LaneId instead.
 			var go = new GameObject( true, $"Pin{number}" ) { Flags = GameObjectFlags.NotSaved };
 			go.WorldPosition = home;
 			go.NetworkMode = NetworkMode.Object;
@@ -1153,8 +1143,7 @@ public sealed class LaneBuilder : Component
 
 		rb.MassOverride = PinMass;
 		// CCD stays OFF on pins: the engine skips CCD between two bodies that BOTH have EnhancedCcd
-		// (Rigidbody.cs doc), so enabling it here actually DISABLED ball↔pin CCD and let the fast ball
-		// sweep through. The ball keeps EnhancedCcd; with pins discrete, ball-vs-pin CCD runs again.
+		// (Rigidbody.EnhancedCcd doc), so the ball keeps it and the pins stay discrete for ball-vs-pin CCD.
 		rb.EnhancedCcd = false;
 		rb.GravityScale = _pinGravityScale; // scale-correct 1g at lane size × feel knob (pins only)
 
@@ -1292,8 +1281,8 @@ public sealed class LaneBuilder : Component
 				ringPos[i][j] = new Vector3( fr[i] * c, fr[i] * s, fz[i] );
 				ringNrm[i][j] = new Vector3( nPlane.x * c, nPlane.x * s, nPlane.y ).Normal;
 				// Circumferential tangent (dPos/dθ). A real, non-zero tangent is REQUIRED: the lit
-				// shader builds its TBN from it, and a zero tangent makes that basis NaN — which is
-				// what left the pins unlit / unable to take a shadow.
+				// shader builds its TBN from it, and a zero tangent makes that basis NaN (unlit, no
+				// shadow received).
 				ringTan[i][j] = new Vector3( -s, c, 0f );
 			}
 		}
@@ -1324,8 +1313,7 @@ public sealed class LaneBuilder : Component
 				var b = baseI + jn;
 				var cc = baseI + radial + j;
 				var d = baseI + radial + jn;
-				// Outward-facing winding (the old build was inside-out — backface culling ate the
-				// outer surface and you saw straight through the pin / its open underside).
+				// Outward-facing winding (backface culling keeps only the outer surface).
 				vb.AddRawIndex( a ); vb.AddRawIndex( b ); vb.AddRawIndex( cc );
 				vb.AddRawIndex( b ); vb.AddRawIndex( d ); vb.AddRawIndex( cc );
 			}
@@ -1347,8 +1335,7 @@ public sealed class LaneBuilder : Component
 		builder.AddMesh( meshRed );
 
 		// Collision: a convex hull per COARSE silhouette slab. Convex per slab handles the concave
-		// neck a single hull would fill in; the stack closes the whole solid. (Unchanged by the
-		// render-mesh stripe split, so mass + inertia stay exactly as tuned.)
+		// neck a single hull would fill in; the stack closes the whole solid.
 		// Hulls stay at a COARSE ring count, independent of the render lathe: the convex COOKER is
 		// far fussier than the mesh builder, and a 96-point-per-slab hull (render radial) can be
 		// rejected at cook time — which silently drops the pin's physics shapes and lets the ball

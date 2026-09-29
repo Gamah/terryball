@@ -11,16 +11,13 @@
 
 	  [Enter] Chat   [M] Mute music   [N] Music   [G] Voice   [B] Mute players   [R] Respawn
 
-	One panel is the point. These were scattered across four: chat drew its own at mid-left, music
-	drew a pair bottom-RIGHT, voice drew two bottom-left, and the respawn chip sat under them at a
-	third offset — every one of them commenting about dodging the others. A stack is a list a player
-	reads top to bottom. The same consolidation now exists in gambit and rotaliate-client, so the
-	three lobbies read alike.
+	One panel is the point: a stack is a list a player reads top to bottom. gambit and
+	rotaliate-client use the same stack, so the three lobbies read alike.
 
 	Ordering is by how often a newcomer needs it, and every keycap that CAN be read from a binding IS
 	(Input.GetButtonOrigin), so a rebind can't make the hint lie. M/N/G/B/R are raw key checks in
-	their drivers, so they are spelled out here — keep them in step with MusicScreen / VoiceScreen /
-	TerryAvatar if those ever move to bound actions.
+	their drivers, so they are spelled out here and must match MusicScreen / VoiceScreen /
+	TerryAvatar.
 
 	Purely an affordance: pointer-events: none throughout, no state of its own. Keys live in
 	MusicScreen (M/N), VoiceScreen (G/B) and TerryAvatar (R); the engine's chat overlay owns chat.
@@ -85,10 +82,8 @@
 
 	/* Every text div: nowrap AND flex-shrink 0 — a shrunk text div in a flex row doesn't ellipsize,
 	   it wraps, and a wrapped line here renders as a few pixels of its middle. */
-	/* Each row carries its own dark pill, and that is the whole contrast story. A text-shadow was
-	   doing the job alone, which only works over a dark world: over a light floor it left near-white
-	   labels on near-white background and the stack was unreadable. A hint is only useful if it
-	   reads over ANY background, and these three lobbies do not share one. */
+	/* Each row carries its own dark pill so it reads over ANY background; a text-shadow alone only
+	   works over a dark world. */
 	.hint {
 		flex-direction: row;
 		align-items: center;
@@ -103,11 +98,8 @@
 		flex-shrink: 0;
 	}
 
-	/* The keycap is LIGHT-ON-DARK, and that is a bug fix, not a look. It was dark text on a white
-	   cap — an idiom this repo copied around — and the dark text never rendered: the glyph draws
-	   white whatever `color` says here, so the cap was white on white and all you saw was the
-	   text-shadow's grey halo. Hence "light grey glyphs". Keep the cap dark and the glyph light,
-	   which reads correctly whether or not that declaration ever starts taking effect. */
+	/* The keycap is LIGHT-ON-DARK because the glyph draws white whatever `color` says here
+	   [SOURCE]; a light cap would be white on white. */
 	.hint .key {
 		font-size: 13px;
 		font-weight: 700;
@@ -152,7 +144,7 @@
 	private string ChatKey => Input.GetButtonOrigin( "Chat" ) ?? "Enter";
 
 	// Hidden while the lane controls own the cursor (their UI takes over) or the music board is up
-	// (its own controls do). Same gate the chat hint used to carry on its own.
+	// (its own controls do).
 	private bool Show
 	{
 		get

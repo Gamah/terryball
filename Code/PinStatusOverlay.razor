@@ -8,7 +8,7 @@
 @*
 	Top-left corner status stack. Two first-party cards in a column: the pin-status rack (reads the
 	GameDirector's live per-pin scoring — the same "tipped or knocked off its spot" test a modern alley's
-	pin camera uses — head pin at top, back row at the bottom, green for standing, red for down) and,
+	pin camera uses — head pin at the bottom, back row at the top, green for standing, red for down) and,
 	under it, the ball-speed readout: the bowling-scale mph LATCHED as the ball crossed the blue throw
 	line and HELD until the next throw (BallController.ThrowLineMph), not the live velocity.
 *@
@@ -64,7 +64,7 @@
 @code
 {
 	// The rack layout (GameDirector.RackRows) and per-pin down state (director.IsPinDown) both live on
-	// the director now, so this corner overlay and the big lane-width board above the backstop draw
+	// the director, so this corner overlay and the big lane-width board above the backstop draw
 	// from one source and can't disagree.
 	private GameDirector Director => Lane.ForLocalPlayer( Scene )?.Director;
 

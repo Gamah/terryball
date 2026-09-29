@@ -13,8 +13,7 @@ namespace Terryball;
 /// The camera is a DISABLED CameraComponent driven by an on-demand <see cref="CameraComponent.RenderToTexture"/>
 /// call each frame - NOT a live scene camera. A live/enabled second camera hijacks the main screen/HUD (it goes
 /// through OnEnabled -> UpdateMainCamera and joins the screen render list); a disabled one never enters that path
-/// (AddToRenderList early-outs on !Active) yet still renders on demand via RenderToTexture. That is the crucial
-/// difference from the earlier attempt that had to be reverted.
+/// (AddToRenderList early-outs on !Active) yet still renders on demand via RenderToTexture [SOURCE].
 ///
 /// The framing (centred on the ball, height 2*radius, world-up) matches what the shader assumes, so no capture
 /// matrix needs to cross over - the shader projects using the ball's own centre/radius. Lives at the scene root.
@@ -44,8 +43,8 @@ public sealed class OccupantSilhouetteCapture : Component
 
 	protected override void OnEnabled()
 	{
-		// Headless (dedicated server) has no render device — RenderToTexture null-derefs
-		// (CCameraRenderer::RenderToTexture -> ACCESS_VIOLATION 0x0). This capture is client-only visual, so skip it.
+		// Headless (dedicated server) has no render device and RenderToTexture crashes there [SOURCE].
+		// This capture is client-only visual, so skip it.
 		if ( Application.IsHeadless ) return;
 
 		SilhouetteTexture = Texture.CreateRenderTarget()

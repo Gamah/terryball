@@ -144,8 +144,7 @@ public sealed class BallCamera : Component
 		// Lateral follow anchor: the camera tracks the ball's own Y. This light easing is an AIM-MODE behaviour
 		// only — while lining up (and until it re-converges after the aimed release) the ball is hand-positioned
 		// side to side / parked, so the aiming and the release slide onto its line rather than snapping. In free
-		// hamster-ball drive it must follow the ball TIGHTLY: the eased Y used to lag the ball as it darted
-		// across the lane, leaving the camera sat on the lane centre-line instead of behind the ball.
+		// hamster-ball drive it follows the ball's Y exactly: an eased Y lags a ball darting across the lane.
 		var aimFollow = director?.AimMode ?? false;
 		var tightY = _ball.WorldPosition.y;
 		if ( !_followYInit ) { _followY = tightY; _followYInit = true; }

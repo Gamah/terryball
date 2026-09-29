@@ -8,17 +8,18 @@ namespace Terryball;
 
 /// <summary>
 /// Rides each player's networked walking-Terry object (a <see cref="PlayerController"/> Citizen).
-/// Carries their display name + the two state bits the director (host) flips, AND is the networked
-/// conduit for the active bowler's throw (it's owned by that client, so its RPCs originate there):
+/// Carries their display name and lane state, AND is the networked conduit for the active bowler's
+/// throw (it's owned by that client, so its calls to the director originate there):
 ///   <see cref="DisplayName"/> — Steam name, host-set on spawn.
 ///   <see cref="Joined"/>      — opted into the next game's roster (owner-controlled).
-///   <see cref="Bowling"/>     — currently up, riding the ball (host-set; exactly one true).
+///   <see cref="Bowling"/>     — currently up (derived from the lane director's ActiveBowlerId).
 ///
-/// While a player is Bowling their walking body steps aside — hidden (their Terry appears riding
-/// inside the glass ball instead) and their PlayerController suspended so the ball owns the throw.
+/// While a player is <see cref="Carried"/> their walking body steps aside — hidden (their Terry appears
+/// riding inside the glass ball instead) and their PlayerController suspended so the ball owns the throw.
 ///
-/// Throw networking (approach B — the bowler is authoritative for their own turn):
-///   <see cref="ReportBall"/>  — bowler → host: a settled ball's pinfall + whether the turn's done.
+/// Throw networking (the bowler is authoritative for their own turn):
+///   <see cref="ReportBall"/>  — bowler → director: a settled ball's pinfall.
+///   <see cref="EndTurn"/>     — bowler → director: the turn is over.
 ///   (the throw itself isn't streamed here — the bowler owns the lane's networked ball + rack and the
 ///   engine replicates them, so spectators just watch the shared objects.)
 /// </summary>
@@ -28,21 +29,19 @@ public sealed class TerryAvatar : Component
 	[Sync( SyncFlags.FromHost )] public string DisplayName { get; set; } = "Bowler";
 
 	/// <summary>Opted into the next game's roster (toggled from the lane controls before START). Owner-
-	/// controlled — each client flips its OWN avatar's flag directly; the host reads it on START.</summary>
+	/// controlled — each client flips its OWN avatar's flag directly; the director reads it on START.</summary>
 	[Sync] public bool Joined { get; set; }
 
 	/// <summary>The id of the <see cref="Lane"/> this player has joined (its root GameObject id), or
 	/// <see cref="Guid.Empty"/> if not joined. Owner-set from the lane station they pressed JOIN at, and
-	/// host-read so each lane's director only rosters ITS own joiners. This is the per-player lane
+	/// director-read so each lane's director only rosters ITS own joiners. This is the per-player lane
 	/// assignment — with N lanes a player picks which lane they're playing on.</summary>
 	[Sync] public Guid JoinedLaneId { get; set; }
 
 	/// <summary>Currently up — riding the ball, not walking. DERIVED (not a stored/synced field) from
 	/// this avatar's lane director's <see cref="GameDirector.ActiveBowlerId"/>: this avatar is bowling iff
-	/// its owner is the one the director has spotlighted. It's derived rather than a <c>FromHost</c> flag
-	/// because the director is no longer the host — it's a claimable, player-owned authority, and a
-	/// non-host director can't write another player's avatar field. The single synced source (the
-	/// director's ActiveBowlerId) drives it on every client instead.</summary>
+	/// its owner is the one the director has spotlighted. Derived rather than stored because the director
+	/// can be any player, and a non-host director can't write another player's avatar field.</summary>
 	public bool Bowling
 	{
 		get
@@ -111,8 +110,7 @@ public sealed class TerryAvatar : Component
 	}
 
 	/// <summary>Register our current ball design with the lane we're on, via the director's owner RPC. The
-	/// director (not this avatar) is the ball's skin source — its [Sync] fields reliably reach late joiners
-	/// where the avatar's did not. No-op until we've joined a lane / networking is live; re-asserted
+	/// director (not this avatar) is the ball's skin source — see GameDirector.ActiveBallPatternId. No-op until we've joined a lane / networking is live; re-asserted
 	/// periodically from OnUpdate so it also survives a director ownership handover.</summary>
 	private void SubmitDesignToDirector()
 	{
@@ -218,12 +216,10 @@ public sealed class TerryAvatar : Component
 		_renderer = _player.IsValid() ? _player.Renderer : null;
 		_body = _renderer.IsValid() ? _renderer.GameObject : null;
 
-		// NB: we deliberately DON'T publish our saved ball design here. This avatar is host-spawned with the
-		// DEFAULT design, and a [Sync] write in OnStart lands too early to be sent as an owner change — it just
-		// sets our local field to the real value, leaving the sync baseline equal to it, so no delta ever goes
-		// out and every other client (incl. late joiners, off the host's snapshot) keeps the default skin
-		// forever. Instead we leave the field at its synced default and make the FIRST write happen once
-		// networking is live (OnUpdate), so it's a genuine default→real change that replicates.
+		// The saved ball design is NOT published here. This avatar is host-spawned with the DEFAULT design,
+		// and a [Sync] write in OnStart becomes the sync baseline rather than a sent change [SOURCE], so no
+		// other client would ever see it. The FIRST write happens in OnUpdate once networking is live, so
+		// it's a genuine default→real change that replicates.
 
 		_ = DressAvatar();
 	}
@@ -384,7 +380,7 @@ public sealed class TerryAvatar : Component
 
 		var half = builder.SetteeHalfWidthUnits;
 		// SetteeHalfWidthUnits is 0 until the lane has actually built its geometry; teleporting then would
-		// drop us at the world origin (under the floor → endless fall/respawn, which reads as a hang).
+		// drop us at the world origin, under the floor.
 		if ( half <= 0f ) return;
 		var spread = (Math.Abs( (Network.Owner?.Id.GetHashCode() ?? 0) ) % 1000) / 1000f; // 0..1, stable
 		var y = MathX.Lerp( -half * 0.7f, half * 0.7f, spread );
@@ -763,7 +759,7 @@ public sealed class TerryAvatar : Component
 	}
 
 	/// <summary>Bowler → director: a settled ball knocked <paramref name="knocked"/> pins. Routed to the
-	/// lane's director-OWNER (an [Rpc.Owner] on the director, no longer necessarily the host) which books it
+	/// lane's director-OWNER (an [Rpc.Owner] on the director, which need not be the host) which books it
 	/// onto the scorecard right away. Rotating to the next bowler is a separate step — see <see cref="EndTurn"/>.</summary>
 	public void ReportBall( int knocked, int downMask, bool pocket )
 		=> Director?.BookBall( knocked, downMask, pocket );

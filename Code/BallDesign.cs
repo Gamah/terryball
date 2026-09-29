@@ -19,9 +19,9 @@ public enum BallPattern
 
 /// <summary>
 /// A player's chosen ball look: a <see cref="BallPattern"/> plus two hues (primary + accent, 0–360°).
-/// Saved client-local to a JSON in <see cref="FileSystem.Data"/> so it persists across sessions, and
-/// mirrored onto the player's networked <see cref="TerryAvatar"/> so their ball skins the same for
-/// everyone when it's their turn. <see cref="BuildColorMap"/> turns it into the equirectangular colour
+/// Saved client-local to a JSON in <see cref="FileSystem.Data"/> so it persists across sessions,
+/// mirrored onto the player's <see cref="TerryAvatar"/>, and submitted to the lane's
+/// <see cref="GameDirector"/>, whose synced active design skins the ball for everyone. <see cref="BuildColorMap"/> turns it into the equirectangular colour
 /// map the glass shell renders AND the ball's projected shadow samples — one texture drives both.
 /// </summary>
 public struct BallDesign : IEquatable<BallDesign>
@@ -32,7 +32,7 @@ public struct BallDesign : IEquatable<BallDesign>
 	/// <summary>Accent hue in degrees (0–360). The dots / second hemisphere / star-nebula colour.</summary>
 	public float AccentHue { get; set; }
 
-	// The default look — a red/blue half-and-half, matching the old fixed pokeball ball. Exposed as
+	// The default look — a red/blue half-and-half (the pokeball). Exposed as
 	// consts so they can seed the [Sync] fields on TerryAvatar (whose initializers must be constant).
 	public const BallPattern DefaultPattern = BallPattern.HalfHalf;
 	public const float DefaultPrimaryHue = 0f;
@@ -122,7 +122,6 @@ public struct BallDesign : IEquatable<BallDesign>
 				float col = u * cellsX + (((int)row & 1) == 1 ? 0.5f : 0f);
 				float fx = Frac( col ) - 0.5f;
 				float fy = Frac( row ) - 0.5f;
-				// Squash the vertical distance a touch — latitude is compressed near the poles.
 				float d = MathF.Sqrt( fx * fx + fy * fy );
 				return (d < 0.30f ? accent : primary).ToColor32();
 			}
@@ -169,9 +168,8 @@ public struct BallDesign : IEquatable<BallDesign>
 			bytes[i * 4 + 0] = px[i].r;
 			bytes[i * 4 + 1] = px[i].g;
 			bytes[i * 4 + 2] = px[i].b;
-			// Force a fully-opaque alpha: the glass shader reads g_tColor.a as base opacity, then scales it
-			// by g_flOpacityScale (0.35 on the real ball → the same translucent glass as before; 1.0 on the
-			// designer preview → solid). Pattern maths that dims alpha (galaxy) must not leak into that.
+			// Force a fully-opaque alpha: the glass material reads g_tColor.a as base opacity, so pattern
+			// maths that dims alpha (galaxy) must not leak into it.
 			bytes[i * 4 + 3] = 255;
 		}
 		return bytes;

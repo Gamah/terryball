@@ -1,18 +1,7 @@
 # Terryball
 
-An s&box game: Terry (the Citizen) on a flat floor. A momentum toy whose control
-mechanic gestures at the *shape* of Super Monkey Ball (input once-removed from the
-avatar) but **diverges from it fundamentally** — the actual mechanic is the user's
-call and is intentionally not yet built.
+An s&box bowling alley: Terry rides inside a glass ball down the lanes, and up to 16 players share
+the alley and take turns on each lane.
 
-See **[PLAN.md](PLAN.md)** — start there. The current scene runs but Terry has no
-input (`Code/TerryController.cs` is a stub on purpose).
-
-## Layout
-
-```
-terryball.sbproj          # open via the s&box editor's New Project (see PLAN.md)
-Assets/scenes/main.scene  # floor + Terry + sun + camera
-Code/FloorBuilder.cs      # runtime flat floor
-Code/TerryController.cs   # STUB — input mechanic deliberately empty
-```
+Open it through the s&box editor's New Project flow pointed at this folder, not by opening
+`terryball.sbproj` directly. `CLAUDE.md` indexes the docs in `docs/`.

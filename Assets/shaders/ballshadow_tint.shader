@@ -1,5 +1,5 @@
 //
-// Ball shadow tint - projects each ball's SURFACE COLOUR into its real shadow (see PLAN.md).
+// Ball shadow tint - projects each ball's SURFACE COLOUR into its real shadow.
 //
 // For every shadowed pixel we trace the ray toward the sun, find where it pierces each ball, sample that
 // ball's colour map at that surface point (so a pokeball's red half lands red in the shadow, blue half
@@ -105,8 +105,8 @@ PS
 
     // Extra coloured point lights (beyond the sun), a dynamic count up to a component-set cap. Pos = (xyz world,
     // w = range/radius); Col = rgb. Each casts an ANALYTIC ball-colour shadow (ball surface colour x light
-    // colour), faded out past the light's range. Terry's silhouette inside is the ENGINE's real shadow (these
-    // lights cast real shadows), already in the colour buffer - we don't re-derive it. StructuredBuffer => N dynamic.
+    // colour) plus Terry's projected captured silhouette, faded out past the light's range.
+    // StructuredBuffer => N dynamic.
     struct ShadowLight
     {
         float4 Pos;
@@ -116,7 +116,7 @@ PS
     int g_nLightCount < Attribute( "ShadowLightCount" ); Default( 0 ); >;
 
     // DIAGNOSTIC MODE (live-switchable uniform - flip in the inspector, no recompile):
-    //   1 FULL / 2 DEPTH / 3 CASCADES / 4 ALLSHADOWS / 5 BALLMASK / 6 FINAL (the real effect)
+    //   1 FULL / 2 DEPTH / 3 CASCADES / 4 ALLSHADOWS / 5 BALLMASK / 6 FINAL (the real effect) / 7 PROJECTED
     int g_nDebugMode < Attribute( "BallShadowDebugMode" ); Default( 6 ); >;
 
     float3 QuatRotate( float4 q, float3 v )

@@ -9,11 +9,10 @@ namespace Terryball;
 /// it owns the responsibilities that are per-SESSION rather than per-lane:
 ///   • spawning one walking Terry per connected player (and despawning it on leave).
 ///
-/// This used to live on the <see cref="GameDirector"/> (via INetworkListener), but that fires on EVERY
-/// component that implements it — so with N lanes each joiner got N avatars. Centralising it here means a
-/// player joins the server once, gets one Terry in the spawn area, and walks up the stairs to whichever
-/// lane they like. Whether they BOWL on a lane is a separate opt-in (JOIN at that lane's station, then a
-/// player claims the lane's director and presses START).
+/// INetworkListener fires on EVERY component that implements it, so this must not live on a per-lane
+/// component (N lanes would spawn N avatars per joiner). A player gets one Terry in the spawn area and
+/// walks to whichever lane they like; bowling there is a separate opt-in (JOIN at that lane's station,
+/// then START).
 /// </summary>
 public sealed class AlleyServer : Component, Component.INetworkListener
 {
@@ -80,11 +79,10 @@ public sealed class AlleyServer : Component, Component.INetworkListener
 
 		// Proximity voice: only the owner records their mic, every other client plays it back in 3D. Starts
 		// silent in Manual mode — the owner's client-local VoiceScreen flips it to AlwaysOn when they press G.
-		// The engine's default 15,000u Distance is too big for the lane scale, but its default Falloff curve
-		// is savagely front-loaded (down to ~4% volume by 20% of range), so voices went near-inaudible just a
-		// couple of Terry-lengths apart. We give it a gentle *linear* falloff and a roomier Distance so a
-		// normal speaking voice carries across a lane / settee group and fades over the neighbouring lanes,
-		// plus a touch of extra Volume for headroom. Renderer drives lip-sync on the Citizen.
+		// The engine's default 15,000u Distance is too big for the lane scale, and its default Falloff curve
+		// is front-loaded (~4% volume by 20% of range) [SOURCE]. A linear falloff over a shorter Distance
+		// carries a normal speaking voice across a lane / settee group and fades it over the neighbouring
+		// lanes, plus a touch of extra Volume for headroom. Renderer drives lip-sync on the Citizen.
 		var voice = go.Components.Create<TerryVoice>();
 		voice.WorldspacePlayback = true;             // 3D / proximity playback at the avatar's position
 		voice.Renderer = renderer;                   // lip-sync visemes on the walking body

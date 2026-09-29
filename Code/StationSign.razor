@@ -8,9 +8,8 @@
 	WorldPanel the lane builder places above each podium (LookAtCamera, so it always reads). CRITICAL: a
 	WorldPanel's root has Scale == 2, so the CSS layout area is PanelSize / 2 — sized for that below.
 
-	ONE font size for every podium, set by the LONGEST label. SETTINGS is eight characters where LANE is
-	four, so at the old 44px it ran past the panel and wrapped; sizing each sign to its own label instead
-	would have made the words physically different sizes across the concourse, which reads as a mistake.
+	ONE font size for every podium, set by the LONGEST label (SETTINGS); sizing each sign to its own label
+	would make the words physically different sizes across the concourse, which reads as a mistake.
 	Both numbers below are load-bearing together: at 32px/1px spacing the widest label lays out to roughly
 	205px, inside the 280px the builder's 560px panel gives us. Grow a label past SETTINGS and this has to
 	come down again — nowrap means it would clip rather than wrap, silently.

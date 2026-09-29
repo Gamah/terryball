@@ -9,9 +9,8 @@ namespace Terryball;
 /// <c>Assets/sounds/pins/</c>), jumbled per contact the way bowling games do: each pin collision
 /// fires a short one-shot picked at random with pitch/volume variation, so a clean pocket strike and
 /// a weak corner tap sound different purely from how the individual hits layer up — no pre-baked
-/// "crash" sample. (We abandoned the procedural synth: it kept reading as metallic/hollow.) The samples
-/// are dry/close-mic'd, normalized + de-harshed; the alley's room reverb is added live in-engine by
-/// <see cref="AlleyReverb"/> (a DSP reverb on the Game mixer), not baked into the files.
+/// "crash" sample. The samples are dry/close-mic'd, normalized + de-harshed; the alley's room reverb is
+/// added live in-engine by <see cref="AlleyReverb"/> (a DSP reverb on the Pins mixer), not baked in.
 ///
 /// One of these lives on the lane; every pin carries a <see cref="PinImpactListener"/> that funnels
 /// its collisions here. This component owns classification (wood clack vs low thud), the per-frame

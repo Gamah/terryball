@@ -32,9 +32,7 @@ public sealed class BallPreviewPanel : ScenePanel
 
 		// Reproduce the GAME scene's environment exactly (its Sun + 2D Skybox + Envmap probe) so the glass
 		// shell reads the same translucent, sky-reflecting way it does in-world — a bare SceneWorld gives
-		// glass nothing to reflect (renders near-black), which is why the preview looked flat/opaque before.
-		// The skybox is the only light source that "moves" with the ball; there's no near point light now
-		// (that read as a light sitting right on the ball).
+		// glass nothing to reflect and it renders near-black.
 		_ = new SceneSkyBox( _world, Material.Load( "materials/skybox/skybox_day_01.vmat" ) );
 		_ = new SceneCubemap( _world, Texture.Load( "textures/cubemaps/default2.vtex" ),
 			BBox.FromPositionAndSize( Vector3.Zero, int.MaxValue ) );

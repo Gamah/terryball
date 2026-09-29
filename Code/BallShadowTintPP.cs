@@ -7,7 +7,7 @@ using System.Linq;
 namespace Terryball;
 
 /// <summary>
-/// Projects each ball's surface colour into its REAL shadow, in screen space (see PLAN.md). A fullscreen
+/// Projects each ball's surface colour into its REAL shadow, in screen space. A fullscreen
 /// pass runs after opaque, reconstructs each pixel's world position from depth, reads the engine's real
 /// directional-shadow term, and for every ShadowBall samples its colour map at the point the sun ray
 /// pierced the ball - so the shadow is a spatial projection of the ball (a pokeball casts a two-tone
@@ -27,8 +27,8 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// black instead of taking the colour. High so only the solid silhouette darkens, not the dithered glass.</summary>
 	[Property, Range( 0.5f, 1f )] public float TerryCut { get; set; } = 0.92f;
 
-	/// <summary>How dark the opaque occupant (Terry) reads in the SUN shadow: 0 = pure black, higher = deep grey
-	/// (ambient fill). The extra lights get Terry's silhouette from the engine's real shadows, not this.</summary>
+	/// <summary>How dark the opaque occupant (Terry) reads in his shadow, for the sun and the extra lights:
+	/// 0 = pure black, higher = deep grey (ambient fill).</summary>
 	[Property, Range( 0f, 0.5f )] public float OccupantDark { get; set; } = 0.1f;
 
 	/// <summary>0 = multiply (dark, shadow-like), 1 = colorize (bright/vibrant). Lower reads more like a shadow.</summary>
@@ -46,7 +46,7 @@ public sealed class BallShadowTintPP : BasePostProcess
 	/// <summary>
 	/// Diagnostic view. Final is the real effect; the rest isolate the pipeline:
 	/// 1 whole-screen tint, 2 depth greyscale, 3 shadow-cbuffer bound?, 4 all shadows red,
-	/// 5 ball-shadow mask, 6 the real projection.
+	/// 5 ball-shadow mask, 6 the real projection, 7 raw projected colour.
 	/// </summary>
 	public enum DebugModes { Full = 1, Depth = 2, CascadesBound = 3, AllShadows = 4, BallMask = 5, Final = 6, ProjectedColor = 7 }
 

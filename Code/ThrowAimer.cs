@@ -34,7 +34,7 @@ public sealed class ThrowAimer : Component
 	private Phase _phase = Phase.Idle;
 
 	// --- Manual control (all four steps are positioned by hand, not swept) --------------
-	/// <summary>How fast the movement keys (A/D on the sideways steps, W/S on POWER) nudge a step, as fractions
+	/// <summary>How fast the movement keys (A/D) nudge a step, as fractions
 	/// of the 0..1 caret track per second — so every step feels the same regardless of lane width.</summary>
 	[Property, Group( "Aim" )] public float ManualKeySpeed { get; set; } = 0.9f;
 	/// <summary>How far a step's caret moves per degree of mouse movement (fraction of the 0..1 track). The
@@ -54,7 +54,7 @@ public sealed class ThrowAimer : Component
 	/// <summary>Fraction of the no-slip roll rate (v/R) the ball launches with. A real thrown ball comes off
 	/// the hand SKIDDING on the oiled front and only revs up to a true roll on the dry back end — so we launch
 	/// it under-rolling and let the lane's friction spin it up, instead of forcing a full-grip roll off the
-	/// line (which read as the ball "spinning as if it had full friction"). 1 = full roll, 0 = pure skid.</summary>
+	/// line. 1 = full roll, 0 = pure skid.</summary>
 	[Property, Group( "Launch" )] public float LaunchRollFraction { get; set; } = 0.5f;
 	/// <summary>Side-rotation rate (rad/s) a full ±1 spin puts on the ball at launch, ABOUT THE TRAVEL AXIS — a
 	/// real hook ball's tilted rotation axis, and the genuine cause of the hook. The ball leaves the hand

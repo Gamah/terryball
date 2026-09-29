@@ -11,9 +11,7 @@ namespace Terryball;
 /// </summary>
 /// <remarks>
 /// Same community, same invite, same shape as rotaliate-client's and gambit's
-/// <c>Rotaliate.World.DiscordButton</c> / <c>Gambit.World.DiscordButton</c> — the constant
-/// used to be inline in HowToPlay.razor, which is how it came to be the one link with no
-/// obvious home when the invite moved off the help screen.
+/// <c>Rotaliate.World.DiscordButton</c> / <c>Gambit.World.DiscordButton</c>.
 /// </remarks>
 public static class DiscordButton
 {

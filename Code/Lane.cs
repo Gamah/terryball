@@ -14,8 +14,6 @@ namespace Terryball;
 /// look within that subtree) instead of scanning the whole scene, so dropping a second Lane subtree
 /// into the alley "just works" — nothing reaches across lanes by a scene-global FirstOrDefault, and
 /// each director is authoritative only for ITS own ball/pins/active-bowler.
-///
-/// Only one lane is instantiated today; all the lookups are written for N.
 /// </summary>
 public sealed class Lane : Component
 {
@@ -77,9 +75,9 @@ public sealed class Lane : Component
 	/// per-lane, so this resolves it scene-wide rather than within the lane subtree; every lane's director
 	/// drives the same camera's Watching flag when its local bowler is up.</summary>
 	public BallCamera Camera => _camera.IsValid() ? _camera : (_camera = Scene.GetAllComponents<BallCamera>().FirstOrDefault( c => c.IsValid() ));
-	/// <summary>This lane's scoring/turn director (host-authoritative for this lane).</summary>
+	/// <summary>This lane's scoring/turn director (a claimable, network-owned authority for this lane).</summary>
 	public GameDirector Director => _director.IsValid() ? _director : (_director = GetComponentInChildren<GameDirector>( true ));
-	/// <summary>This lane's settee feed camera (renders the active ball to the right-hand screen).</summary>
+	/// <summary>This lane's settee feed camera (renders the active ball to the settee feed screen).</summary>
 	public LaneMonitorCamera Monitor => _monitor.IsValid() ? _monitor : (_monitor = GetComponentInChildren<LaneMonitorCamera>( true ));
 	/// <summary>This lane's announcer voice-over bank (the director routes settled-ball calls here).</summary>
 	public AnnouncerAudio Announcer => _announcer.IsValid() ? _announcer : (_announcer = GetComponentInChildren<AnnouncerAudio>( true ));

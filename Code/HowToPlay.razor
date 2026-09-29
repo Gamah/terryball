@@ -6,7 +6,7 @@
 
 @*
 	The how-to-play screen. Walking up to the HELP podium on the settee and pressing E opens this
-	(TerryAvatar runs the engage / cursor-free, the same as the other two podiums). Read-only text —
+	(TerryAvatar runs the engage / cursor-free, like the other podiums). Read-only text —
 	joining/starting at the lane controls (incl. the Throw-style and ball-crane toggles), the ball
 	designer, and the two bowling styles (FREE ride / guided AIM). Pointer-events: none except the
 	modal, like LaneControls/BallDesigner.
@@ -103,7 +103,7 @@
 					<div style="font-size: 17px; font-weight: 800; color: #f1c40f; margin-bottom: 6px;">5 — INVITE YOUR FRIENDS!</div>
 					<div style="font-size: 15px; color: rgba(255,255,255,0.85); margin-bottom: 10px;">
 						Terryball is multiplayer — up to 16 players share the alley, take turns on the roster and
-						watch each other bowl (more lanes coming soon!). Invite friends through the Steam overlay,
+						watch each other bowl. Invite friends through the Steam overlay,
 						and come hang out on the Discord — the invite is on the MORE podium out on the concourse,
 						next to the teleporter.
 					</div>
@@ -129,10 +129,6 @@
 		Scene?.GetAllComponents<TerryAvatar>().FirstOrDefault( a => a.IsValid() && !a.IsProxy );
 
 	private void CloseHelp() => LocalAvatar?.RequestCloseHelp();
-
-	// The Discord invite used to be a button here, with the URL inline. It lives on the MORE
-	// podium now (MorePanel, Terryball.DiscordButton) alongside the link to our other games —
-	// one place for "how to reach us" beats a link at the bottom of a how-to-play screen.
 
 	protected override int BuildHash()
 	{

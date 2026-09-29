@@ -14,8 +14,7 @@ namespace Terryball;
 ///
 /// The roll is synthesised (filtered noise fed through a <see cref="SoundStream"/>) rather than a
 /// looped sample: it's inherently seamless and modulates in real time on speed + steering, which a
-/// looped clip can't do cleanly — and a rolling rumble is just broadband noise, so there's no
-/// "metallic" risk like the pitched pin hits had. The throw, being a one-shot, stays sample-based.
+/// looped clip can't do cleanly. The throw, being a one-shot, is sample-based.
 /// </summary>
 public sealed class BallAudio : Component
 {
@@ -193,7 +192,7 @@ public sealed class BallAudio : Component
 		}
 
 		float steer01 = _ball.SteerEffort01;            // non-zero only while still steering (pre-lock)
-		// DEEP rumble: a ~40-90 Hz cutoff, not the old ~hundreds-of-Hz hiss that read as wind.
+		// DEEP rumble: a ~40-90 Hz cutoff; a cutoff in the hundreds of Hz reads as wind.
 		float cutoff = 0.006f + speed01 * 0.007f;
 		float amInc = (24f + steer01 * 26f) / SR;       // wobble rate, faster while steering
 		// "whump whump whump": one amplitude pulse per ball revolution. Spin rate tracks speed, so the

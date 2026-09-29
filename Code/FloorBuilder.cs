@@ -35,7 +35,7 @@ public sealed class FloorBuilder : Component, Component.ExecuteInEditor
 		var visual = new GameObject( true, "FloorVisual" ) { Parent = floor };
 		var model = visual.Components.GetOrCreate<ModelRenderer>();
 		model.Model = Model.Load( "models/dev/box.vmdl" );
-		// Stylised terrazzo (Assets/materials/gen_textures.py) replacing the old dev measure grid. The box
+		// Stylised terrazzo (Assets/materials/gen_textures.py). The box
 		// face UVs run 0..1, so tile the texture to a fixed physical size across the whole floor.
 		const float TileWorld = 200f; // units per terrazzo tile
 		var mat = Material.Load( "materials/floor.vmat" ).CreateCopy();
